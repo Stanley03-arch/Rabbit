@@ -6,7 +6,7 @@ Rabbit is a pure-C engine that keeps dense weights in RAM and streams routed exp
 
 Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) — not a clone of its product or UI.
 
-> **Status:** early development (v0.2.2). Synthetic models validate the pipeline. Original **engine dashboard** available.
+> **Status:** Phase A complete (v0.2.5). Synthetic models give exact C↔NumPy parity. Real HF MoE conversion + documented tensor map available. Full SwiGLU / RoPE still Phase B.
 
 [![Dashboard in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_dashboard.ipynb)
 
@@ -52,8 +52,9 @@ make test-model
 - Dense RAM + expert `mmap` + LRU cache  
 - Attention → dense residual → MoE  
 - int4 / int8 expert GEMV  
-- HF → `.rabbit` converter  
+- HF → `.rabbit` converter (Qwen / Mixtral / DeepSeek heuristics)  
 - CLI + original web dashboard  
+- Exact C vs NumPy parity on the frozen ref model  
 
 ---
 
@@ -64,6 +65,8 @@ pip install safetensors numpy
 python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf --out models/m.rabbit --quant 4
 ```
 
+See [docs/tensor-map.md](docs/tensor-map.md) and [docs/conversion.md](docs/conversion.md).
+
 ---
 
 ## Limitations
@@ -71,6 +74,7 @@ python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf --out models/m.rabb
 - Synthetic weights do not produce real language.  
 - Dashboard is **Rabbit’s own UI**, not Colibrì’s.  
 - Large real MoEs still need aggressive quant / expert limits on 4 GB hosts.  
+- Current expert kernels are square-matrix only (full SwiGLU is Phase B).  
 
 ## License
 
