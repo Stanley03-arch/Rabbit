@@ -7,13 +7,8 @@
 /*
  * Faithful rabbit-ref-v2 forward — must match tools/ref_forward_v2.py
  *
- * Dense layout:
- *   embed [V*H f32]
- *   lm_head [H*V f32]
- *   per layer:
- *     rms_attn[H], rms_ffn[H], w_qkv[3H*H], w_o[H*H], w_router[E*H]
- *
- * Experts (int8): gate[I*H], up[I*H], down[H*I] each as [scale f32][int8 payload]
+ * Experts on disk: either shared (E records) or per-layer (L*E records
+ * ordered L0E0..L0E{n-1}, L1E0, ...).
  */
 
 #define V2_EPS 1e-5f
@@ -21,8 +16,8 @@
 #define V2_MAX_HEADS 16
 
 typedef struct {
-    const float *embed;     /* V x H */
-    const float *lm_head;   /* H x V */
+    const float *embed;
+    const float *lm_head;
     int n_layers;
     int hidden;
     int vocab;
@@ -40,7 +35,7 @@ typedef struct {
 } RefV2Weights;
 
 typedef struct {
-    float *k; /* [len * n_heads * head_dim] */
+    float *k;
     float *v;
     int len;
     int max_len;
@@ -111,10 +106,10 @@ static int parse_weights(const RabbitModel *m, RefV2Weights *w) {
     size_t floats = m->dense_size / sizeof(float);
     size_t need = (size_t)w->vocab * w->hidden + (size_t)w->hidden * w->vocab;
     for (int L = 0; L < w->n_layers; L++) {
-        need += (size_t)w->hidden * 2; /* rms */
-        need += (size_t)3 * w->hidden * w->hidden; /* qkv */
-        need += (size_t)w->hidden * w->hidden; /* o */
-        need += (size_t)w->n_experts * w->hidden; /* router */
+        need += (size_t)w->hidden * 2;
+        need += (size_t)3 * w->hidden * w->hidden;
+        need += (size_t)w->hidden * w->hidden;
+        need += (size_t)w->n_experts * w->hidden;
     }
     if (need > floats) return -1;
 
@@ -237,9 +232,9 @@ static void select_top_k(const float *scores, int n, int k, int *ids, float *wei
             weights[i] /= sum;
 }
 
-static void expert_swiglu(const RabbitModel *m, int expert_id, const float *xn,
-                          float *delta, int H, int inter, float weight) {
-    const uint8_t *bytes = (const uint8_t *)rabbit_expert_ptr(m, expert_id);
+static void expert_swiglu(const RabbitModel *m, int layer, int local_expert_id,
+                          const float *xn, float *delta, int H, int inter, float weight) {
+    const uint8_t *bytes = (const uint8_t *)rabbit_expert_ptr_layer(m, layer, local_expert_id);
     if (!bytes) return;
 
     size_t mat = (size_t)inter * (size_t)H;
@@ -304,7 +299,7 @@ static void moe_step(const RabbitModel *m, const RefV2Weights *w, int layer, flo
 
     for (int i = 0; i < k; i++) {
         if (ids[i] < 0) continue;
-        expert_swiglu(m, ids[i], xn, delta, H, w->inter, weights[i]);
+        expert_swiglu(m, layer, ids[i], xn, delta, H, w->inter, weights[i]);
     }
 
     for (int i = 0; i < H; i++)
@@ -314,7 +309,6 @@ static void moe_step(const RabbitModel *m, const RefV2Weights *w, int layer, flo
 }
 
 static void logits_from_hidden(const RefV2Weights *w, const float *h, float *logits) {
-    /* lm_head is H x V; logits[v] = sum_h lm_head[h,v] * h[h] */
     int H = w->hidden;
     int V = w->vocab;
     for (int v = 0; v < V; v++) {
@@ -333,11 +327,6 @@ static int argmax_f(const float *x, int n) {
     return best;
 }
 
-/*
- * Run full ref-v2 forward on token_ids[0..n_tokens-1].
- * Writes final hidden into out_hidden (length H).
- * If out_logits non-NULL, writes vocab logits for the last position.
- */
 int rabbit_ref_v2_forward(RabbitModel *m, const int *token_ids, int n_tokens,
                           float *out_hidden, float *out_logits) {
     if (!m || !token_ids || n_tokens <= 0 || !out_hidden) return -1;
