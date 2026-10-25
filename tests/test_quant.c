@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "rabbit.h"
 
@@ -36,8 +37,31 @@ static void test_int4_roundtrip(void) {
         float e = fabsf(src[i] - dst[i]);
         if (e > max_err) max_err = e;
     }
-    /* 4-bit is coarse; allow generous error */
     expect(max_err < 1.0f, "int4 round-trip error bound");
+}
+
+static void test_int4_grouped_roundtrip(void) {
+    const int n = 100;
+    float src[100];
+    float dst[100];
+    uint8_t buf[512];
+
+    for (int i = 0; i < n; i++)
+        src[i] = sinf((float)i * 0.17f) * 3.0f;
+
+    int written = rabbit_pack_int4_grouped(src, n, 32, buf, (int)sizeof(buf));
+    expect(written > 0, "pack_int4_grouped writes");
+    expect(written == rabbit_int4_grouped_nbytes(n, 32), "nbytes matches");
+
+    expect(rabbit_dequant_int4_grouped(buf, dst, n) == 0, "dequant ok");
+
+    float max_err = 0.0f;
+    for (int i = 0; i < n; i++) {
+        float e = fabsf(src[i] - dst[i]);
+        if (e > max_err) max_err = e;
+    }
+    /* group scale is tighter than global; still coarse */
+    expect(max_err < 0.6f, "group int4 error bound");
 }
 
 static void test_int8_dequant(void) {
@@ -58,6 +82,7 @@ static void test_tokenize_byte(void) {
 
 int main(void) {
     test_int4_roundtrip();
+    test_int4_grouped_roundtrip();
     test_int8_dequant();
     test_tokenize_byte();
 
