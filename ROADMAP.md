@@ -6,7 +6,7 @@ See [docs/PHASE_A.md](docs/PHASE_A.md).
 
 ## Phase B — Engine depth (mostly complete)
 
-See earlier checklist in git history; memory + SwiGLU + multi-head RoPE done.
+Memory + SwiGLU + multi-head RoPE done.
 
 ## Phase C — Product surface (mostly complete)
 
@@ -22,15 +22,13 @@ See [docs/PHASE_D.md](docs/PHASE_D.md).
 - [x] Chat uses ref-v2 path for matching models
 
 ### M2 — HF-shaped conversion
-- [x] `--layout v2` exact dense + gate/up/down (no square crop)
+- [x] `--layout v2` exact dense + gate/up/down
 - [x] Deterministic HF-like micro fixture (`make micro-hf`)
-- [x] `make m2` / CI: convert → C↔NumPy token match
-- [x] Per-layer expert tables (`n_expert_records = L×E`)
-- [x] **Float32 experts** (`--quant 0`) + `make exact-f32`
-- [x] Token-parity harness (`tools/hf_token_parity.py`; optional live HF)
-- [x] **Real BPE tokenizer** (RBTTOK01 + `export_hf_tokenizer.py`)
-- [x] **Group-scaled int4** (group=32, pack/dequant/GEMV + converter)
-- [ ] Live public MoE with matching arch (standard MHA + SwiGLU)
+- [x] `make m2` / CI + per-layer experts + f32 path
+- [x] Real BPE tokenizer (RBTTOK01)
+- [x] Group-scaled int4 (group=32)
+- [x] GQA dense layout (Q/K/V separate, header.reserved metadata)
+- [ ] Live public MoE end-to-end (TinyBrainBot 360M Mixtral-style) — convert + smoke
 
 ## Non-goals
 
