@@ -5,7 +5,7 @@ Run large Mixture-of-Experts (MoE) models on extremely constrained hardware (tar
 
 Inspired by [Colibrì](https://github.com/JustVugg/colibri).
 
-> **Status**: Core MoE path working. Real expert matmul (int8 GEMV) is live on the test model.
+> **Status**: End-to-end generation loop working on the synthetic test model.
 
 ## Goal
 
@@ -26,12 +26,12 @@ make test-model
 ./rabbit chat --model models/tiny-test.rabbit
 ```
 
-Type any message. Rabbit will:
-1. Run a simple router
-2. Select top-k experts
-3. Fetch them (RAM cache → mmap)
-4. Apply a real int8 matrix-vector multiply
-5. Print a fingerprint of the final hidden state
+Type a message. Rabbit will:
+1. Tokenize the prompt (byte-level)
+2. Run MoE layers (router → fetch experts → int8 matmul)
+3. Sample new tokens and print them
+
+This is still a synthetic model, so the text is not meaningful language — it proves the full engine path works.
 
 ## What works today
 
@@ -43,22 +43,23 @@ Type any message. Rabbit will:
 | Tiny LRU expert cache           | ✅     |
 | Expert fetch (cache + mmap)     | ✅     |
 | Real expert matmul (int8 GEMV)  | ✅     |
-| Minimal MoE forward             | ✅     |
-| int8 / int4 dequant helpers     | ✅     |
-| Tokenizer + sampling            | ❌     |
+| Byte-level tokenizer            | ✅     |
+| Sampling loop (temperature)     | ✅     |
+| End-to-end generation           | ✅     |
 | Real model conversion           | ❌     |
+| Real language model quality     | ❌     |
 
 ## Project Structure
 
 ```
 src/
-  rabbit.h          Public API + format
+  rabbit.h
   main.c
-  model.c           Loader + chat + forward
-  memory.c          mmap + LRU cache
-  moe.c             Router + fetch + matmul kernels
-  quant.c           int8 / int4 helpers
-  tokenizer.c
+  model.c           # Loader + chat + generation
+  memory.c          # mmap + LRU cache
+  moe.c             # Router + fetch + matmul
+  quant.c           # int8 / int4 helpers
+  tokenizer.c       # byte-level tokenizer
   utils.c
 tools/
   create_test_model.c
@@ -66,10 +67,10 @@ tools/
 
 ## Next steps
 
-1. Better quantization + fused kernels
-2. Tokenizer + sampling loop
-3. Converter for real open MoE models (DeepSeek Flash, Kimi, …)
-4. Attention / dense path implementation
+1. Attention / dense path
+2. Better quantization + fused kernels
+3. Real tokenizer support (SentencePiece / tiktoken style)
+4. Converter for open MoE models (DeepSeek Flash, Kimi, …)
 
 ## License
 
