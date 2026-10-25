@@ -8,6 +8,7 @@ Layouts:
   square — legacy H×H expert (lossy)
   flat   — gate/up/down ordered for SwiGLU kernel (still opaque dense)
   v2     — Phase D faithful dense + exact gate/up/down (no square crop)
+           packs per-layer experts: n_expert_records = n_layers × n_experts
 
 Usage:
   python tools/convert_hf_to_rabbit.py --demo --out models/demo-moe.rabbit
@@ -36,7 +37,8 @@ HEADER_SIZE = struct.calcsize(
 def write_header(f, **kw) -> None:
     name_bytes = kw["name"].encode("utf-8")[:63].ljust(64, b"\0")
     reserved = b"\0" * 128
-    total_experts_size = kw["n_experts"] * kw["expert_size"]
+    n_records = kw.get("n_expert_records", kw["n_experts"])
+    total_experts_size = n_records * kw["expert_size"]
     header = struct.pack(
         "<8sIIIIIIIIQQQII64s128s",
         RABBIT_MAGIC,
@@ -196,6 +198,84 @@ def classify_tensors(tensors: Dict[str, np.ndarray]):
     return dense, experts
 
 
+def collect_experts_per_layer(
+    tensors: Dict[str, np.ndarray],
+    n_layers: int,
+    n_experts: int,
+) -> List[List[Dict[str, np.ndarray]]]:
+    """
+    Build [n_layers][n_experts] maps of {tensor_name: array} for per-layer experts.
+
+    Supports common HF naming:
+      model.layers.{L}.mlp.experts.{E}.gate_proj.weight
+      model.layers.{L}.block_sparse_moe.experts.{E}.w1
+      layers.{L}.moe.experts.{E}.up_proj.weight
+
+    When a checkpoint shares one expert pool across layers, the same tensors are
+    referenced for every layer so n_expert_records still equals L×E and the C
+    runtime can use global_id = L * n_experts + E.
+    """
+    per_layer: List[List[Dict[str, np.ndarray]]] = [
+        [{} for _ in range(n_experts)] for _ in range(n_layers)
+    ]
+
+    expert_markers = (
+        ".experts.",
+        "block_sparse_moe.experts",
+        "mlp.experts",
+        "moe.experts",
+    )
+
+    def _parse_layer_expert(name: str) -> Optional[Tuple[int, int]]:
+        lower = name.replace("/", ".").lower()
+        if not any(m in lower for m in expert_markers):
+            return None
+        parts = lower.split(".")
+        layer_idx: Optional[int] = None
+        expert_idx: Optional[int] = None
+        for i, p in enumerate(parts):
+            if p in ("layers", "layer", "h") and i + 1 < len(parts) and parts[i + 1].isdigit():
+                layer_idx = int(parts[i + 1])
+            if p in ("experts", "expert") and i + 1 < len(parts) and parts[i + 1].isdigit():
+                expert_idx = int(parts[i + 1])
+        if expert_idx is None:
+            return None
+        return (layer_idx if layer_idx is not None else -1, expert_idx)
+
+    shared: Dict[int, Dict[str, np.ndarray]] = {}
+    saw_layered = False
+
+    for name, arr in tensors.items():
+        parsed = _parse_layer_expert(name)
+        if parsed is None:
+            continue
+        layer_idx, expert_idx = parsed
+        if expert_idx < 0 or expert_idx >= n_experts:
+            continue
+        if layer_idx >= 0:
+            if layer_idx >= n_layers:
+                continue
+            per_layer[layer_idx][expert_idx][name] = arr
+            saw_layered = True
+        else:
+            shared.setdefault(expert_idx, {})[name] = arr
+
+    if not saw_layered and shared:
+        for L in range(n_layers):
+            for e in range(n_experts):
+                if e in shared:
+                    per_layer[L][e] = dict(shared[e])
+        print(
+            f"[v2] shared expert pool replicated across {n_layers} layers "
+            f"({n_experts} experts → {n_layers * n_experts} records)"
+        )
+    else:
+        filled = sum(1 for L in range(n_layers) for e in range(n_experts) if per_layer[L][e])
+        print(f"[v2] per-layer experts: {filled}/{n_layers * n_experts} slots populated")
+
+    return per_layer
+
+
 def pack_dense(dense: Dict[str, np.ndarray], quant: int = 8) -> bytes:
     pieces = []
     for name in sorted(dense.keys()):
@@ -283,11 +363,9 @@ def pack_v2_dense(tensors: Dict[str, np.ndarray], n_layers: int, hidden: int,
         raise RuntimeError("v2 layout: missing embedding weights")
     if embed.ndim != 2:
         raise RuntimeError(f"embed shape {embed.shape}")
-    # [V, H]
     if embed.shape[0] == hidden and embed.shape[1] == vocab:
         embed = embed.T
     if embed.shape != (vocab, hidden):
-        # pad/crop vocabulary axis if needed
         e = np.zeros((vocab, hidden), dtype=np.float32)
         v = min(vocab, embed.shape[0])
         h = min(hidden, embed.shape[1])
@@ -296,9 +374,8 @@ def pack_v2_dense(tensors: Dict[str, np.ndarray], n_layers: int, hidden: int,
 
     lm = _find(tensors, "lm_head")
     if lm is None:
-        lm = embed.copy()  # tied
+        lm = embed.copy()
     lm = np.asarray(lm, dtype=np.float32)
-    # want [H, V]
     if lm.shape == (vocab, hidden):
         lm = lm.T
     if lm.shape != (hidden, vocab):
@@ -335,7 +412,6 @@ def pack_v2_dense(tensors: Dict[str, np.ndarray], n_layers: int, hidden: int,
         v = _find_layer(tensors, L, "v_proj")
         o = _find_layer(tensors, L, "o_proj")
         if q is None or k is None or v is None:
-            # stacked qkv
             qkv = _find_layer(tensors, L, "qkv")
             if qkv is not None and qkv.shape[0] >= 3 * hidden:
                 q = qkv[:hidden]
@@ -356,7 +432,7 @@ def pack_v2_dense(tensors: Dict[str, np.ndarray], n_layers: int, hidden: int,
             return out
 
         q, k, v, o = square(q), square(k), square(v), square(o)
-        w_qkv = np.concatenate([q, k, v], axis=0)  # [3H, H]
+        w_qkv = np.concatenate([q, k, v], axis=0)
 
         router = _find_layer(tensors, L, "mlp.gate")
         if router is None:
@@ -368,7 +444,6 @@ def pack_v2_dense(tensors: Dict[str, np.ndarray], n_layers: int, hidden: int,
         router = np.asarray(router, dtype=np.float32)
         if router.ndim == 1:
             router = router.reshape(n_experts, -1)
-        # [E, H]
         if router.shape[0] == hidden and router.shape[1] == n_experts:
             router = router.T
         rr = np.zeros((n_experts, hidden), dtype=np.float32)
@@ -453,23 +528,30 @@ def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
     )
 
     if layout == "v2":
-        # Faithful dense + exact expert matrices
         dense_blob = pack_v2_dense(tensors, n_layers, hidden_dim, vocab_size, n_experts)
+        per_layer = collect_experts_per_layer(tensors, n_layers, n_experts)
         expert_blobs = []
-        for idx in expert_ids:
-            expert_blobs.append(
-                pack_v2_expert(experts[idx], quant=quant, hidden=hidden_dim, inter=expert_dim)
-            )
+        for L in range(n_layers):
+            for e in range(n_experts):
+                expert_blobs.append(
+                    pack_v2_expert(
+                        per_layer[L][e],
+                        quant=quant,
+                        hidden=hidden_dim,
+                        inter=expert_dim,
+                    )
+                )
         if not expert_blobs:
             raise RuntimeError("v2 layout requires expert tensors")
         expert_size = max(len(b) for b in expert_blobs)
         expert_blobs = [b + b"\0" * (expert_size - len(b)) for b in expert_blobs]
-        dense_quant = 0  # float32 dense
-        name = (config.get("rabbit_fixture") and "micro-hf-v2") or model_dir.name[:63]
-        if config.get("rabbit_fixture"):
-            name = "micro-hf-v2"
-        else:
-            name = model_dir.name[:63]
+        dense_quant = 0
+        name = "micro-hf-v2" if config.get("rabbit_fixture") else model_dir.name[:63]
+        n_expert_records = n_layers * n_experts
+        print(
+            f"[v2] packing {n_expert_records} expert records "
+            f"(layers={n_layers} × experts={n_experts}, quant={quant})"
+        )
     else:
         dense_blob = pack_dense(dense, quant=8)
         expert_blobs = []
@@ -494,6 +576,7 @@ def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
             hidden_dim=hidden_dim,
             vocab_size=vocab_size,
             n_experts=n_experts,
+            n_expert_records=(n_layers * n_experts) if layout == "v2" else n_experts,
             experts_per_token=experts_per_token,
             expert_dim=expert_dim,
             dense_size=len(dense_blob),
@@ -512,6 +595,7 @@ def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
     print(f"       quant={quant}  layout={layout}  total={total/1024:.1f} KB")
     if layout == "v2":
         print(f"       forward: rabbit ref-v2 (./rabbit chat --model {out_path})")
+        print(f"       expert records: {n_layers * n_experts} (per-layer)")
     else:
         print(f"\nRun:  ./rabbit chat --model {out_path}")
 
@@ -527,7 +611,7 @@ def main():
         "--layout",
         choices=["square", "flat", "v2"],
         default="square",
-        help="square=H×H; flat=ordered SwiGLU pieces; v2=faithful dense+experts",
+        help="square=H×H; flat=ordered SwiGLU pieces; v2=faithful dense+per-layer experts",
     )
     ap.add_argument("--hidden-dim", type=int, default=128)
     ap.add_argument("--n-experts", type=int, default=16)
