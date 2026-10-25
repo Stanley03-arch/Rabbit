@@ -5,7 +5,7 @@ Run large Mixture-of-Experts models on constrained hardware (target: **4 GB RAM*
 
 Inspired by [Colibrì](https://github.com/JustVugg/colibri).
 
-> **Status**: Engine + int4 path + HF converter + tokenizer layer (v0.2.0-dev)
+> **Status**: v0.2.1-dev — CLI options, int4 experts, HF converter, tokenizer, grouped attention
 
 ## Quick Start
 
@@ -14,13 +14,14 @@ git clone https://github.com/Stanley03-arch/Rabbit.git
 cd Rabbit
 make
 
-# Tiny test model
 make test-model
 ./rabbit chat --model models/tiny-test.rabbit
 
-# Larger int4 demo MoE
 make demo-model
-./rabbit chat --model models/demo-moe.rabbit
+./rabbit chat --model models/demo-moe.rabbit --tokens 80 --temp 0.7
+
+# Optional word vocab
+./rabbit chat --model models/demo-moe.rabbit --vocab models/sample_vocab.txt
 ```
 
 ### Convert a real HF MoE
@@ -33,33 +34,31 @@ python tools/convert_hf_to_rabbit.py \
     --out models/my-moe.rabbit \
     --quant 4 --layout square --max-experts 32
 
-./rabbit chat --model models/my-moe.rabbit
+./rabbit chat --model models/my-moe.rabbit --tokens 128
+```
+
+## CLI
+
+```
+rabbit chat --model <path> [options]
+
+  --model <path>   .rabbit model (required)
+  --vocab <path>   word vocab file (one token per line)
+  --tokens <n>     max new tokens (default 64)
+  --temp <f>       temperature (default 0.85)
 ```
 
 ## What works
 
 | Feature | Status |
 |---------|--------|
-| Dense in RAM + experts mmap + LRU | ✅ |
-| Attention → Dense FFN → MoE layer | ✅ |
-| int8 + **int4** expert matmul | ✅ |
-| Expert layout `[scale][packed weights]` | ✅ |
+| Dense RAM + expert mmap + LRU | ✅ |
+| Attention (grouped) + dense FFN + MoE | ✅ |
+| int4 / int8 expert GEMV | ✅ |
 | HF → Rabbit converter | ✅ |
-| Byte + simple word tokenizer | ✅ |
-| Sampling loop | ✅ |
+| Byte + word tokenizer | ✅ |
+| CLI: vocab / tokens / temp | ✅ |
 | Production LM quality | ❌ |
-
-## Architecture
-
-```
-Token → hidden
-         │
-   Attention (KV cache)
-   Dense residual (RAM)
-   MoE (experts streamed from disk, int4/int8 GEMV)
-         │
-      LM head → sample
-```
 
 ## Docs
 

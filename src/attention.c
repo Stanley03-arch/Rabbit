@@ -5,21 +5,19 @@
 #include <math.h>
 
 /*
- * Minimal attention + residual dense path for the synthetic test model.
+ * Attention + residual dense path.
  *
- * This is intentionally simple so it fits the 4 GB design goals and
- * can later be replaced by real multi-head / MLA / KDA implementations.
- *
- * For the tiny model we treat the dense blob as a pool of weights and
- * implement:
- *   - a single-head self-attention over a short context window
- *   - a residual feed-forward style update using dense weights
+ * Still a compact implementation aimed at low RAM:
+ *   - single logical head over a short KV window
+ *   - optional multi-query style by splitting the hidden dim into groups
+ *   - residual FFN using the dense blob
  */
 
-#define RABBIT_MAX_CTX 64
+#define RABBIT_MAX_CTX 128
+#define RABBIT_N_GROUPS 4   /* simple multi-query style groups */
 
 typedef struct {
-    float *k_cache;   /* [ctx, dim] */
+    float *k_cache;
     float *v_cache;
     int    len;
     int    dim;
@@ -40,8 +38,8 @@ static int ensure_kv(int dim) {
     rabbit_attn_reset();
     g_kv.dim = dim;
     g_kv.max_len = RABBIT_MAX_CTX;
-    g_kv.k_cache = calloc(g_kv.max_len * dim, sizeof(float));
-    g_kv.v_cache = calloc(g_kv.max_len * dim, sizeof(float));
+    g_kv.k_cache = calloc((size_t)g_kv.max_len * dim, sizeof(float));
+    g_kv.v_cache = calloc((size_t)g_kv.max_len * dim, sizeof(float));
     if (!g_kv.k_cache || !g_kv.v_cache) {
         rabbit_attn_reset();
         return -1;
@@ -49,79 +47,77 @@ static int ensure_kv(int dim) {
     return 0;
 }
 
-/* Simple scaled dot-product attention over the growing KV cache */
 static void tiny_attention(float *x, int dim) {
     if (ensure_kv(dim) != 0) return;
 
-    /* Append current x as new key/value */
     if (g_kv.len < g_kv.max_len) {
-        memcpy(g_kv.k_cache + g_kv.len * dim, x, dim * sizeof(float));
-        memcpy(g_kv.v_cache + g_kv.len * dim, x, dim * sizeof(float));
+        memcpy(g_kv.k_cache + g_kv.len * dim, x, (size_t)dim * sizeof(float));
+        memcpy(g_kv.v_cache + g_kv.len * dim, x, (size_t)dim * sizeof(float));
         g_kv.len++;
     } else {
-        /* Shift left (drop oldest) */
-        memmove(g_kv.k_cache, g_kv.k_cache + dim, (g_kv.max_len - 1) * dim * sizeof(float));
-        memmove(g_kv.v_cache, g_kv.v_cache + dim, (g_kv.max_len - 1) * dim * sizeof(float));
-        memcpy(g_kv.k_cache + (g_kv.max_len - 1) * dim, x, dim * sizeof(float));
-        memcpy(g_kv.v_cache + (g_kv.max_len - 1) * dim, x, dim * sizeof(float));
+        memmove(g_kv.k_cache, g_kv.k_cache + dim, (size_t)(g_kv.max_len - 1) * dim * sizeof(float));
+        memmove(g_kv.v_cache, g_kv.v_cache + dim, (size_t)(g_kv.max_len - 1) * dim * sizeof(float));
+        memcpy(g_kv.k_cache + (g_kv.max_len - 1) * dim, x, (size_t)dim * sizeof(float));
+        memcpy(g_kv.v_cache + (g_kv.max_len - 1) * dim, x, (size_t)dim * sizeof(float));
     }
 
-    /* Compute attention scores against all keys */
+    int groups = RABBIT_N_GROUPS;
+    if (groups > dim) groups = 1;
+    int group_dim = dim / groups;
+    if (group_dim < 1) group_dim = dim;
+
     float scores[RABBIT_MAX_CTX];
-    float scale = 1.0f / sqrtf((float)dim);
+    float scale = 1.0f / sqrtf((float)group_dim);
 
-    for (int t = 0; t < g_kv.len; t++) {
-        float dot = 0.0f;
-        const float *k = g_kv.k_cache + t * dim;
-        for (int i = 0; i < dim; i++)
-            dot += x[i] * k[i];
-        scores[t] = dot * scale;
-    }
-
-    /* Softmax */
-    float max_s = scores[0];
-    for (int t = 1; t < g_kv.len; t++)
-        if (scores[t] > max_s) max_s = scores[t];
-
-    float sum = 0.0f;
-    for (int t = 0; t < g_kv.len; t++) {
-        scores[t] = expf(scores[t] - max_s);
-        sum += scores[t];
-    }
-    if (sum > 0.0f) {
-        for (int t = 0; t < g_kv.len; t++)
-            scores[t] /= sum;
-    }
-
-    /* Weighted sum of values → write back into x (residual style) */
+    /* Average attention across groups for simplicity */
     float out[512];
     if (dim > 512) return;
-    memset(out, 0, dim * sizeof(float));
+    memset(out, 0, (size_t)dim * sizeof(float));
 
-    for (int t = 0; t < g_kv.len; t++) {
-        const float *v = g_kv.v_cache + t * dim;
-        for (int i = 0; i < dim; i++)
-            out[i] += scores[t] * v[i];
+    for (int g = 0; g < groups; g++) {
+        int off = g * group_dim;
+        int gd = (g == groups - 1) ? (dim - off) : group_dim;
+
+        for (int t = 0; t < g_kv.len; t++) {
+            float dot = 0.0f;
+            const float *k = g_kv.k_cache + t * dim + off;
+            for (int i = 0; i < gd; i++)
+                dot += x[off + i] * k[i];
+            scores[t] = dot * scale;
+        }
+
+        float max_s = scores[0];
+        for (int t = 1; t < g_kv.len; t++)
+            if (scores[t] > max_s) max_s = scores[t];
+
+        float sum = 0.0f;
+        for (int t = 0; t < g_kv.len; t++) {
+            scores[t] = expf(scores[t] - max_s);
+            sum += scores[t];
+        }
+        if (sum > 0.0f)
+            for (int t = 0; t < g_kv.len; t++)
+                scores[t] /= sum;
+
+        for (int t = 0; t < g_kv.len; t++) {
+            const float *v = g_kv.v_cache + t * dim + off;
+            for (int i = 0; i < gd; i++)
+                out[off + i] += scores[t] * v[i];
+        }
     }
 
     for (int i = 0; i < dim; i++)
-        x[i] = x[i] * 0.5f + out[i] * 0.5f;   /* residual blend */
+        x[i] = x[i] * 0.5f + out[i] * 0.5f;
 }
 
-/*
- * Dense residual update using a slice of the dense blob.
- * Treats dense weights as a simple linear transform.
- */
 static void tiny_dense_ffn(RabbitModel *m, float *x, int dim) {
     if (!m || !m->dense || m->dense_size < (size_t)dim) return;
 
     const uint8_t *bytes = (const uint8_t *)m->dense;
     float scale = 1.0f / 128.0f;
 
-    /* Use a rotating window into the dense blob so different layers
-       see slightly different weights. */
     static int offset = 0;
-    offset = (offset + dim) % (int)(m->dense_size > 0 ? m->dense_size : 1);
+    offset = (offset + dim * 3) % (int)(m->dense_size > 0 ? m->dense_size : 1);
 
     float tmp[512];
     if (dim > 512) return;
@@ -129,18 +125,15 @@ static void tiny_dense_ffn(RabbitModel *m, float *x, int dim) {
     for (int i = 0; i < dim; i++) {
         int idx = (offset + i) % (int)m->dense_size;
         float w = ((float)bytes[idx] - 128.0f) * scale;
-        tmp[i] = x[i] + 0.1f * w * x[i % (dim > 8 ? 8 : dim)];
+        /* gated-style residual */
+        float gate = 1.0f / (1.0f + expf(-x[i]));
+        tmp[i] = x[i] + 0.15f * w * gate * x[(i * 7) % dim];
     }
-
-    memcpy(x, tmp, dim * sizeof(float));
+    memcpy(x, tmp, (size_t)dim * sizeof(float));
 }
 
-/*
- * One full layer: attention → residual FFN → MoE
- */
 int rabbit_layer_step(RabbitModel *m, float *hidden, int hidden_dim) {
     if (!m || !hidden || hidden_dim <= 0) return -1;
-
     tiny_attention(hidden, hidden_dim);
     tiny_dense_ffn(m, hidden, hidden_dim);
     return rabbit_moe_step(m, hidden, hidden_dim);
