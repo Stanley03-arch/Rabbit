@@ -1,12 +1,12 @@
 /*
  * create_test_model.c
  *
- * Builds a tiny synthetic Rabbit model so we can test the loader
- * and memory mapping without needing real multi-GB weights.
+ * Builds a synthetic Rabbit model large enough to exercise
+ * the real expert matmul path (int8 GEMV).
  *
  * Usage:
- *   gcc -O2 -o create_test_model tools/create_test_model.c
- *   ./create_test_model models/tiny-test.rabbit
+ *   make test-model
+ *   ./rabbit chat --model models/tiny-test.rabbit
  */
 
 #include <stdio.h>
@@ -49,17 +49,19 @@ int main(int argc, char **argv) {
 
     const char *out_path = argv[1];
 
-    /* Tiny synthetic model */
+    /* Dimensions chosen so each expert holds a full int8 matrix */
     const uint32_t n_layers = 4;
     const uint32_t hidden_dim = 64;
-    const uint32_t vocab_size = 128;
+    const uint32_t vocab_size = 256;
     const uint32_t n_experts = 8;
     const uint32_t experts_per_token = 2;
-    const uint32_t expert_dim = 128;
+    const uint32_t expert_dim = 64;
 
-    /* Fake sizes (small enough for any machine) */
-    const uint64_t dense_size = 64 * 1024;          /* 64 KB dense */
-    const uint64_t expert_size = 16 * 1024;         /* 16 KB per expert */
+    /* Dense: small fake blob */
+    const uint64_t dense_size = 128 * 1024;   /* 128 KB */
+
+    /* Each expert = full int8 matrix [hidden_dim x hidden_dim] */
+    const uint64_t expert_size = (uint64_t)hidden_dim * hidden_dim;  /* 4096 bytes */
     const uint64_t total_experts = n_experts * expert_size;
 
     RabbitHeader hdr;
@@ -80,7 +82,7 @@ int main(int argc, char **argv) {
     hdr.total_experts_size = total_experts;
 
     hdr.dense_quant = 16;
-    hdr.expert_quant = 16;
+    hdr.expert_quant = 8;   /* int8 experts */
 
     strncpy(hdr.name, "tiny-test", sizeof(hdr.name) - 1);
 
@@ -96,16 +98,11 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    /* Write dummy dense data */
+    /* Dummy dense data */
     uint8_t *dense = calloc(1, dense_size);
-    if (!dense) {
-        close(fd);
-        return 1;
-    }
-    /* Fill with a simple pattern */
+    if (!dense) { close(fd); return 1; }
     for (size_t i = 0; i < dense_size; i++)
         dense[i] = (uint8_t)(i & 0xFF);
-
     if (write(fd, dense, dense_size) != (ssize_t)dense_size) {
         perror("write dense");
         free(dense);
@@ -114,16 +111,18 @@ int main(int argc, char **argv) {
     }
     free(dense);
 
-    /* Write dummy experts */
-    uint8_t *expert = calloc(1, expert_size);
-    if (!expert) {
-        close(fd);
-        return 1;
-    }
+    /* Create int8 expert matrices with a simple pattern */
+    int8_t *expert = calloc(1, expert_size);
+    if (!expert) { close(fd); return 1; }
 
     for (uint32_t e = 0; e < n_experts; e++) {
-        for (size_t i = 0; i < expert_size; i++)
-            expert[i] = (uint8_t)((e * 17 + i) & 0xFF);
+        for (uint32_t o = 0; o < hidden_dim; o++) {
+            for (uint32_t i = 0; i < hidden_dim; i++) {
+                /* Deterministic but different per expert */
+                int v = (int)((e * 13 + o * 7 + i * 3) % 255) - 128;
+                expert[o * hidden_dim + i] = (int8_t)v;
+            }
+        }
 
         if (write(fd, expert, expert_size) != (ssize_t)expert_size) {
             perror("write expert");
@@ -135,10 +134,13 @@ int main(int argc, char **argv) {
     free(expert);
     close(fd);
 
-    printf("Created tiny test model: %s\n", out_path);
-    printf("  dense   : %.1f KB\n", dense_size / 1024.0);
-    printf("  experts : %u x %.1f KB\n", n_experts, expert_size / 1024.0);
-    printf("  total   : %.1f KB\n", (sizeof(hdr) + dense_size + total_experts) / 1024.0);
+    printf("Created test model: %s\n", out_path);
+    printf("  layers       : %u\n", n_layers);
+    printf("  hidden_dim   : %u\n", hidden_dim);
+    printf("  experts      : %u (top-%u)\n", n_experts, experts_per_token);
+    printf("  dense        : %.1f KB\n", dense_size / 1024.0);
+    printf("  one expert   : %llu bytes (int8 matrix)\n", (unsigned long long)expert_size);
+    printf("  total experts: %.1f KB\n", total_experts / 1024.0);
 
     return 0;
 }
