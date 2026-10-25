@@ -26,6 +26,9 @@ jobs:
       - name: Unit tests
         run: make test
 
+      - name: OLMoE tensor map
+        run: make olmoe-map
+
       - name: Smoke test
         run: make smoke
 
