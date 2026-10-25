@@ -18,6 +18,47 @@ const char *rabbit_version(void) {
     return RABBIT_VERSION;
 }
 
+size_t rabbit_default_mem_budget(void) {
+    const char *env = getenv("RABBIT_MEM_BUDGET_MB");
+    if (env && env[0]) {
+        long mb = strtol(env, NULL, 10);
+        if (mb > 64 && mb < 65536)
+            return (size_t)mb * 1024u * 1024u;
+    }
+    return (size_t)RABBIT_DEFAULT_MEM_BUDGET_MB * 1024u * 1024u;
+}
+
+void rabbit_memory_report(const RabbitModel *m, RabbitMemoryReport *out) {
+    if (!out) return;
+    memset(out, 0, sizeof(*out));
+    if (!m) return;
+
+    out->dense_bytes = m->dense_size;
+    out->cache_slots = m->cache_slots > 0 ? m->cache_slots : 4;
+    out->cache_bytes = (size_t)out->cache_slots * m->expert_size;
+
+    /* KV estimate: 2 * max_ctx * hidden * sizeof(float) */
+    const int max_ctx = 128;
+    out->kv_bytes = (size_t)2 * max_ctx * (size_t)m->hidden_dim * sizeof(float);
+
+    out->total_estimate = out->dense_bytes + out->cache_bytes + out->kv_bytes;
+    out->budget_bytes = m->mem_budget > 0 ? m->mem_budget : rabbit_default_mem_budget();
+    out->over_budget = (out->total_estimate > out->budget_bytes) ? 1 : 0;
+}
+
+void rabbit_print_memory(const RabbitModel *m) {
+    RabbitMemoryReport r;
+    rabbit_memory_report(m, &r);
+    printf("  mem budget         %.1f MB\n", r.budget_bytes / (1024.0 * 1024.0));
+    printf("  dense (RAM)        %.2f MB\n", r.dense_bytes / (1024.0 * 1024.0));
+    printf("  expert cache       %.2f MB (%d slots)\n",
+           r.cache_bytes / (1024.0 * 1024.0), r.cache_slots);
+    printf("  KV cache est.      %.2f MB\n", r.kv_bytes / (1024.0 * 1024.0));
+    printf("  total estimate     %.2f MB%s\n",
+           r.total_estimate / (1024.0 * 1024.0),
+           r.over_budget ? "  [OVER BUDGET]" : "");
+}
+
 void rabbit_print_info(const RabbitModel *m) {
     if (!m) return;
     printf("  name               %s\n", m->name);
@@ -31,6 +72,7 @@ void rabbit_print_info(const RabbitModel *m) {
     printf("  dense_quant        %u-bit\n", m->hdr.dense_quant ? m->hdr.dense_quant : 16);
     printf("  expert_quant       %u-bit\n", m->hdr.expert_quant ? m->hdr.expert_quant : 16);
     printf("  expert_map         %s\n", m->expert_map ? "mapped" : "unavailable");
+    rabbit_print_memory(m);
 }
 
 static void print_cache_stats(const RabbitModel *m) {
@@ -45,6 +87,17 @@ static void print_cache_stats(const RabbitModel *m) {
     printf("  cache inserts      %llu\n", (unsigned long long)inserts);
     printf("  cache hit rate     %.1f%%\n", rate);
     printf("----------------------------------------\n");
+}
+
+static int choose_cache_slots(size_t expert_size, size_t budget, size_t dense_size) {
+    if (expert_size == 0) return 2;
+    size_t remain = 0;
+    if (budget > dense_size + 8 * 1024 * 1024)
+        remain = budget - dense_size - 8 * 1024 * 1024; /* leave headroom for KV + OS */
+    int slots = (int)(remain / expert_size);
+    if (slots < 1) slots = 1;
+    if (slots > RABBIT_MAX_CACHE_SLOTS) slots = RABBIT_MAX_CACHE_SLOTS;
+    return slots;
 }
 
 RabbitModel *rabbit_load(const char *path) {
@@ -75,6 +128,19 @@ RabbitModel *rabbit_load(const char *path) {
         return NULL;
     }
 
+    size_t budget = rabbit_default_mem_budget();
+
+    /* Hard cap: refuse dense blob that alone exceeds the budget */
+    if (hdr.dense_size > budget) {
+        fprintf(stderr,
+                "error: dense section (%.1f MB) exceeds memory budget (%.1f MB).\n"
+                "       Set RABBIT_MEM_BUDGET_MB higher or use a smaller model.\n",
+                hdr.dense_size / (1024.0 * 1024.0),
+                budget / (1024.0 * 1024.0));
+        close(fd);
+        return NULL;
+    }
+
     RabbitModel *m = calloc(1, sizeof(RabbitModel));
     if (!m) {
         close(fd);
@@ -91,6 +157,8 @@ RabbitModel *rabbit_load(const char *path) {
     m->expert_size = (size_t)hdr.expert_size;
     m->dense_size = (size_t)hdr.dense_size;
     m->expert_fd = -1;
+    m->mem_budget = budget;
+    m->cache_slots = choose_cache_slots(m->expert_size, budget, m->dense_size);
 
     if (hdr.dense_size > 0) {
         m->dense = malloc(hdr.dense_size);
@@ -129,7 +197,7 @@ RabbitModel *rabbit_load(const char *path) {
         fprintf(stderr, "warning: could not memory-map model file\n");
     }
 
-    m->cache = rabbit_cache_create(4);
+    m->cache = rabbit_cache_create(m->cache_slots);
     if (m->cache)
         rabbit_cache_set_expert_size(m->cache, m->expert_size);
 
