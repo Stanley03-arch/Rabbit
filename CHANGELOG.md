@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.5] - 2026-10-25
+
+### Group-scaled int4
+- `rabbit_pack_int4_grouped` / `rabbit_dequant_int4_grouped` / `rabbit_gemv_int4_grouped`
+- Default group size 32 (`RABBIT_INT4_GROUP`)
+- `forward_v2` expert path handles `expert_quant == 4`
+- Converter `--quant 4` packs gate/up/down with per-group scales
+- Unit test for group int4 round-trip
+- File-format docs updated
+
 ## [0.4.4] - 2026-10-25
 
 ### Real BPE tokenizer
