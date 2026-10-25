@@ -28,7 +28,8 @@ See [docs/PHASE_D.md](docs/PHASE_D.md).
 - [x] Real BPE tokenizer (RBTTOK01)
 - [x] Group-scaled int4 (group=32)
 - [x] GQA dense layout (Q/K/V separate, header.reserved metadata)
-- [ ] Live public MoE end-to-end (TinyBrainBot 360M Mixtral-style) — convert + smoke
+- [x] Mixtral naming (`w1/w3/w2`, `block_sparse_moe`) + `make mixtral-micro`
+- [ ] Live public MoE end-to-end (TinyBrainBot 360M) — needs HF download on your machine
 
 ## Non-goals
 
