@@ -28,7 +28,8 @@ See [docs/PHASE_D.md](docs/PHASE_D.md).
 - [x] Per-layer expert tables (`n_expert_records = L×E`)
 - [x] **Float32 experts** (`--quant 0`) + `make exact-f32`
 - [x] Token-parity harness (`tools/hf_token_parity.py`; optional live HF)
-- [ ] Live public MoE with matching arch + real BPE tokenizer
+- [x] **Real BPE tokenizer** (RBTTOK01 + `export_hf_tokenizer.py`)
+- [ ] Live public MoE with matching arch (standard MHA + SwiGLU)
 - [ ] Group-scaled int4
 
 ## Non-goals
