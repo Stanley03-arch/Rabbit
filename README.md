@@ -6,7 +6,7 @@ Rabbit is a pure-C engine that keeps dense weights in RAM and streams routed exp
 
 Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) — not a clone of its product or UI.
 
-> **Status:** Phase A complete (v0.2.5). Synthetic models validate the pipeline; real HF MoE tensor map documented for OLMoE. Original **engine dashboard** available.
+> **Status:** Phase B in progress (v0.3.0). SwiGLU experts + RoPE attention; Phase A parity still holds for square/ref models.
 
 [![Dashboard in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_dashboard.ipynb)
 
@@ -16,7 +16,7 @@ Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) �
 
 | Interface | Description |
 |-----------|-------------|
-| **CLI** | `./rabbit chat --model …` |
+| **CLI** | `./rabbit chat --model …` · `probe` · `mem` |
 | **Dashboard** | Dark cockpit: chat, model stats, expert cache, activity grid |
 | **Gradio** | Simple browser chat (`tools/rabbit_ui.py`) |
 
@@ -43,12 +43,13 @@ cd Rabbit
 make
 make test-model
 ./rabbit chat --model models/tiny-test.rabbit
+./rabbit mem --model models/tiny-test.rabbit
 ```
 
-Phase A checks:
+Checks:
 
 ```bash
-make check    # unit tests + smoke + C↔NumPy parity
+make check    # unit tests + smoke + C↔NumPy parity + OLMoE map
 ```
 
 ---
@@ -56,12 +57,13 @@ make check    # unit tests + smoke + C↔NumPy parity
 ## Features
 
 - Dense RAM + expert `mmap` + LRU cache  
-- Attention → dense residual → MoE  
-- int4 / int8 expert GEMV  
-- HF → `.rabbit` converter (heuristic + **exact OLMoE map**)  
-- CLI + original web dashboard  
+- Multi-head RoPE attention + dense residual + MoE  
+- SwiGLU experts (when `expert_dim > hidden_dim`) or square GEMV  
+- int4 / int8 expert quant  
+- HF → `.rabbit` converter (heuristic + exact OLMoE map)  
+- Memory budget report for ~4 GB hosts  
 
-Tensor maps and packing rules: [docs/tensor-map.md](docs/tensor-map.md).
+Docs: [architecture](docs/architecture.md) · [tensor-map](docs/tensor-map.md) · [Phase B](docs/PHASE_B.md)
 
 ---
 
@@ -70,10 +72,8 @@ Tensor maps and packing rules: [docs/tensor-map.md](docs/tensor-map.md).
 ```bash
 pip install safetensors numpy
 
-# Heuristic path (Mixtral / DeepSeek / Qwen-style)
 python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf --out models/m.rabbit --quant 4
 
-# Exact OLMoE map (Phase A)
 python tools/convert_hf_to_rabbit.py \
   --model-dir /path/to/OLMoE-1B-7B-0924 \
   --out models/olmoe.rabbit \
@@ -84,10 +84,9 @@ python tools/convert_hf_to_rabbit.py \
 
 ## Limitations
 
-- Synthetic / square-collapsed experts do not produce real language quality yet.  
-- Dashboard is **Rabbit’s own UI**, not Colibrì’s.  
-- Large real MoEs still need aggressive quant / expert limits on 4 GB hosts.  
-- Full HF forward parity needs Phase B (real SwiGLU + RoPE attention).
+- Square-collapsed experts still used for Phase A / converter default.  
+- Dense attention/FFN weights are not fully structured QKV projections yet.  
+- Large real MoEs need aggressive quant / expert limits on 4 GB hosts.
 
 ## License
 

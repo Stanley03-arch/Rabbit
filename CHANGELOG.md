@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0] - 2026-10-25
+
+### Added (Phase B)
+- SwiGLU expert path when `expert_dim > hidden_dim` (gate / up / down + SiLU)
+- Multi-head attention with RoPE and 256-token KV window
+- `rabbit mem --model` memory budget report + suggested max experts on ~4 GB
+- Chat startup prints resident estimate
+
+### Compatibility
+- Square / Phase A experts (ref-v1, parity) unchanged
+
 ## [0.2.5] - 2026-10-25
 
 ### Added

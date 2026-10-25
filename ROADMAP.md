@@ -11,12 +11,15 @@ See [docs/PHASE_A.md](docs/PHASE_A.md) and [docs/tensor-map.md](docs/tensor-map.
 - [x] Exact C vs NumPy tensor dump compare (via probe fingerprints)
 - [x] One real small HF MoE with documented tensor map (OLMoE)
 
-## Phase B — Engine depth
+## Phase B — Engine depth (in progress)
 
-- Real expert MLP (SwiGLU or family-correct) — replace square collapse
-- Real attention (RoPE + proper KV)
-- Memory budget report + caps
-- Optional: teacher-forcing parity against a tiny HF MoE subset
+See [docs/PHASE_B.md](docs/PHASE_B.md).
+
+- [x] Real expert MLP (SwiGLU) layout + kernel with square fallback
+- [x] RoPE + multi-head KV attention (sliding window)
+- [x] Memory budget report (`rabbit mem`) + 4 GB suggestion
+- [ ] Converter `--layout swiglu` packs gate/up/down without square collapse
+- [ ] Teacher-forcing parity against a tiny HF MoE subset (optional)
 
 ## Phase C — Product surface
 
