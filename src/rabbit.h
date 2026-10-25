@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-#define RABBIT_VERSION "0.4.0"
+#define RABBIT_VERSION "0.4.1"
 #define RABBIT_MAGIC   "RABBIT01"
 #define RABBIT_MAX_CACHE_SLOTS 8
 
@@ -119,6 +119,12 @@ int         rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim);
 int         rabbit_ref_forward(RabbitModel *m, const char *prompt, float *out_hidden);
 void        rabbit_attn_reset(void);
 int         rabbit_layer_step(RabbitModel *m, float *hidden, int hidden_dim);
+
+/* Phase D: faithful ref-v2 forward */
+int rabbit_ref_v2_forward(RabbitModel *m, const int *token_ids, int n_tokens,
+                          float *out_hidden, float *out_logits);
+int rabbit_ref_v2_greedy(RabbitModel *m, const char *prompt, int n_new,
+                         int *out_ids, int max_ids);
 
 /* Quantization */
 void rabbit_dequant_int8(const int8_t *src, float *dst, int n, float scale);
