@@ -1,40 +1,34 @@
 # Changelog
 
+## [0.4.0] - 2026-10-25
+
+### Added (Phase C)
+- `rabbit stats --model …` — machine-readable JSON engine metrics (memory, architecture)
+- OpenAI-compatible HTTP API: `tools/rabbit_server.py`
+  - `POST /v1/chat/completions`
+  - `GET /v1/models`, `/v1/stats`, `/health`
+- Dashboard now sources model/memory metrics from `rabbit stats` (not log scrape only)
+- Dashboard Memory panel (budget / estimate / cache slots)
+
 ## [0.3.1] - 2026-10-25
 
 ### Added (Phase B continued)
-- Memory budget report and hard caps at load time
-  - Default 1536 MB; override with `RABBIT_MEM_BUDGET_MB`
-  - Dense blob that exceeds budget is refused
-  - Expert cache slot count chosen from remaining budget
-- Multi-head attention with derived `n_heads` / `head_dim` and per-head RoPE
-
-### API
-- `rabbit_memory_report()`, `rabbit_print_memory()`, `rabbit_default_mem_budget()`
+- Memory budget report and hard caps (`RABBIT_MEM_BUDGET_MB`)
+- Multi-head attention with per-head RoPE
 
 ## [0.3.0] - 2026-10-25
 
 ### Added (Phase B start)
-- Structured expert apply path: gate / up / down → SwiGLU-style step
-- Basic RoPE on the attention path
-- Flat converter layout emits gate → up → down order
+- SwiGLU-style expert path when gate/up/down present
+- Basic RoPE; flat converter layout ordered for SwiGLU
 
 ## [0.2.5] - 2026-10-25
 
-### Added
-- Documented tensor map for real HF MoE families
-- Improved HF converter expert detection and packing heuristics
-- Phase A closed
+- Phase A closed; tensor map docs; converter heuristics
 
 ## [0.2.4] - 2026-10-25
 
-### Added
-- Phase A ref model, NumPy forward, parity tests
-- `rabbit probe` machine-readable fingerprints
-- Exact C vs NumPy parity within 1e-4
-
-### Fixed
-- Expert GEMV read/write alias
+- Ref model, parity tests, probe, GEMV alias fix
 
 ## [0.2.3] - 2026-10-25
 
