@@ -14,7 +14,7 @@ TARGET = rabbit
 TEST_TOOL = tools/create_test_model
 TEST_BIN = tests/test_quant
 
-.PHONY: all clean debug test-model demo-model ref-model smoke test parity check
+.PHONY: all clean debug test-model demo-model ref-model ref-v2 smoke test parity parity-v2 check
 
 all: $(TARGET)
 
@@ -41,6 +41,10 @@ ref-model:
 	@mkdir -p models
 	python3 tools/create_ref_model.py --out models/ref-v1.rabbit --seed 1
 
+ref-v2:
+	@mkdir -p models
+	python3 tools/create_ref_v2.py --out models/ref-v2.rabbit --seed 2
+
 demo-model:
 	@mkdir -p models
 	python3 tools/convert_hf_to_rabbit.py --demo --out models/demo-moe.rabbit \
@@ -48,6 +52,9 @@ demo-model:
 
 parity: $(TARGET) ref-model
 	python3 tests/test_parity_ref.py
+
+parity-v2: ref-v2
+	python3 tests/test_parity_ref_v2.py
 
 smoke: $(TARGET) test-model
 	@printf 'hello\nquit\n' | ./$(TARGET) chat --model models/tiny-test.rabbit \
