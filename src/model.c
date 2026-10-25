@@ -25,12 +25,59 @@ void rabbit_print_info(const RabbitModel *m) {
     printf("  hidden_dim         %u\n", m->hdr.hidden_dim);
     printf("  vocab_size         %u\n", m->hdr.vocab_size);
     printf("  experts            %u (top-%u)\n", m->hdr.n_experts, m->hdr.experts_per_token);
+    printf("  expert_dim         %u\n", m->hdr.expert_dim);
     printf("  dense              %.2f MB\n", m->dense_size / (1024.0 * 1024.0));
     printf("  expert record      %.2f KB\n", m->expert_size / 1024.0);
     printf("  experts total      %.2f MB\n", m->hdr.total_experts_size / (1024.0 * 1024.0));
     printf("  dense_quant        %u-bit\n", m->hdr.dense_quant ? m->hdr.dense_quant : 16);
     printf("  expert_quant       %u-bit\n", m->hdr.expert_quant ? m->hdr.expert_quant : 16);
+    printf("  expert_layout      %s\n",
+           (m->hdr.expert_dim > m->hdr.hidden_dim) ? "swiglu" : "square");
     printf("  expert_map         %s\n", m->expert_map ? "mapped" : "unavailable");
+}
+
+void rabbit_mem_budget(const RabbitModel *m, RabbitMemBudget *out) {
+    if (!out) return;
+    memset(out, 0, sizeof(*out));
+    if (!m) return;
+
+    out->dense_bytes = m->dense_size;
+    out->expert_record_bytes = m->expert_size;
+    out->cache_slots = 4;
+    out->cache_bytes = out->cache_slots * out->expert_record_bytes;
+    out->kv_bytes = rabbit_kv_bytes_estimate(m->hidden_dim, 256);
+    out->resident_estimate = out->dense_bytes + out->cache_bytes + out->kv_bytes
+                             + (size_t)m->hidden_dim * sizeof(float) * 8;
+    out->total_experts_on_disk = (size_t)m->hdr.total_experts_size;
+
+    /* Leave ~1.5 GB for OS + process on a 4 GB host */
+    const size_t target = (size_t)2500 * 1024 * 1024;
+    size_t fixed = out->dense_bytes + out->kv_bytes + (size_t)64 * 1024 * 1024;
+    if (fixed < target && out->expert_record_bytes > 0) {
+        size_t room = target - fixed;
+        out->suggested_max_experts_4gb = (int)(room / out->expert_record_bytes);
+        if (out->suggested_max_experts_4gb < 1)
+            out->suggested_max_experts_4gb = 1;
+    } else {
+        out->suggested_max_experts_4gb = 1;
+    }
+}
+
+void rabbit_print_mem_budget(const RabbitModel *m) {
+    RabbitMemBudget b;
+    rabbit_mem_budget(m, &b);
+    printf("Memory budget (estimate)\n");
+    printf("----------------------------------------\n");
+    printf("  dense (RAM)        %.2f MB\n", b.dense_bytes / (1024.0 * 1024.0));
+    printf("  expert cache       %.2f MB (%zu slots × %.1f KB)\n",
+           b.cache_bytes / (1024.0 * 1024.0),
+           b.cache_slots,
+           b.expert_record_bytes / 1024.0);
+    printf("  KV window          %.2f MB\n", b.kv_bytes / (1024.0 * 1024.0));
+    printf("  resident ~         %.2f MB\n", b.resident_estimate / (1024.0 * 1024.0));
+    printf("  experts on disk    %.2f MB\n", b.total_experts_on_disk / (1024.0 * 1024.0));
+    printf("  suggested max experts on ~4 GB host: %d\n", b.suggested_max_experts_4gb);
+    printf("----------------------------------------\n");
 }
 
 static void print_cache_stats(const RabbitModel *m) {
@@ -111,7 +158,6 @@ RabbitModel *rabbit_load(const char *path) {
     }
     close(fd);
 
-    /* Map entire file; expert_map points at the expert region. */
     void *base = NULL;
     size_t map_size = 0;
     int map_fd = -1;
@@ -256,6 +302,7 @@ rabbit_status rabbit_chat_ex(RabbitModel *model, int max_tokens, float temperatu
     printf("----------------------------------------\n");
     rabbit_print_info(model);
     printf("----------------------------------------\n");
+    rabbit_print_mem_budget(model);
     printf("  max_tokens         %d\n", max_tokens);
     printf("  temperature        %.2f\n", temperature);
     printf("  tokenizer_vocab    %d\n", rabbit_tokenizer_vocab());
