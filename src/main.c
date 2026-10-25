@@ -6,12 +6,13 @@
 
 static void print_usage(const char *prog) {
     fprintf(stderr,
-        "Rabbit %s \u2014 local MoE inference for constrained hardware\n"
+        "Rabbit %s — local MoE inference for constrained hardware\n"
         "\n"
         "Usage:\n"
         "  %s version\n"
-        "  %s chat --model <path> [options]\n"
+        "  %s chat  --model <path> [options]\n"
         "  %s probe --model <path> [--prompt text]\n"
+        "  %s stats --model <path>\n"
         "\n"
         "Options:\n"
         "  --model <path>   Path to .rabbit model\n"
@@ -20,7 +21,7 @@ static void print_usage(const char *prog) {
         "  --temp <f>       Sampling temperature (default: 0.85)\n"
         "  --prompt <text>  Prompt for probe (default: hi)\n"
         "  -h, --help       Show this help\n",
-        rabbit_version(), prog, prog, prog);
+        rabbit_version(), prog, prog, prog, prog);
 }
 
 static int cmd_probe(int argc, char **argv) {
@@ -70,7 +71,6 @@ static int cmd_probe(int argc, char **argv) {
     }
     l2 = sqrt(l2);
 
-    /* Machine-readable line for tests */
     printf("PROBE prompt=%s dim=%d sum=%.8f l1=%.8f l2=%.8f first8=", prompt, dim, sum, l1, l2);
     for (int i = 0; i < dim && i < 8; i++) {
         if (i) printf(",");
@@ -80,6 +80,84 @@ static int cmd_probe(int argc, char **argv) {
 
     free(h);
     rabbit_free(m);
+    return 0;
+}
+
+/* Machine-readable engine metrics for dashboard / HTTP server (Phase C). */
+static int cmd_stats(int argc, char **argv) {
+    const char *model_path = NULL;
+
+    for (int i = 2; i < argc; i++) {
+        if ((strcmp(argv[i], "--model") == 0) && i + 1 < argc)
+            model_path = argv[++i];
+        else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+            print_usage(argv[0]);
+            return 0;
+        } else {
+            fprintf(stderr, "Unknown option: %s\n", argv[i]);
+            return 1;
+        }
+    }
+    if (!model_path) {
+        fprintf(stderr, "error: --model required\n");
+        return 1;
+    }
+
+    RabbitModel *m = rabbit_load(model_path);
+    if (!m) return 1;
+
+    RabbitMemoryReport r;
+    rabbit_memory_report(m, &r);
+
+    /* Escape name for JSON (minimal). */
+    char name_esc[160];
+    size_t j = 0;
+    for (size_t i = 0; m->name[i] && j + 2 < sizeof(name_esc); i++) {
+        char c = m->name[i];
+        if (c == '"' || c == '\\') {
+            name_esc[j++] = '\\';
+            name_esc[j++] = c;
+        } else if ((unsigned char)c < 0x20) {
+            continue;
+        } else {
+            name_esc[j++] = c;
+        }
+    }
+    name_esc[j] = 0;
+
+    printf("{\n");
+    printf("  \"version\": \"%s\",\n", rabbit_version());
+    printf("  \"model_name\": \"%s\",\n", name_esc);
+    printf("  \"layers\": %d,\n", m->n_layers);
+    printf("  \"hidden_dim\": %d,\n", m->hidden_dim);
+    printf("  \"vocab_size\": %d,\n", m->vocab_size);
+    printf("  \"n_experts\": %d,\n", m->num_experts);
+    printf("  \"experts_per_token\": %d,\n", m->experts_per_token);
+    printf("  \"expert_dim\": %u,\n", m->hdr.expert_dim);
+    printf("  \"dense_bytes\": %zu,\n", r.dense_bytes);
+    printf("  \"expert_size\": %zu,\n", m->expert_size);
+    printf("  \"total_experts_bytes\": %llu,\n",
+           (unsigned long long)m->hdr.total_experts_size);
+    printf("  \"dense_quant\": %u,\n", m->hdr.dense_quant ? m->hdr.dense_quant : 16);
+    printf("  \"expert_quant\": %u,\n", m->hdr.expert_quant ? m->hdr.expert_quant : 16);
+    printf("  \"expert_mapped\": %s,\n", m->expert_map ? "true" : "false");
+    printf("  \"cache_slots\": %d,\n", r.cache_slots);
+    printf("  \"cache_bytes\": %zu,\n", r.cache_bytes);
+    printf("  \"kv_bytes_est\": %zu,\n", r.kv_bytes);
+    printf("  \"mem_budget_bytes\": %zu,\n", r.budget_bytes);
+    printf("  \"mem_total_est_bytes\": %zu,\n", r.total_estimate);
+    printf("  \"over_budget\": %s\n", r.over_budget ? "true" : "false");
+    printf("}\n");
+
+    /* Suppress the usual free-time cache print for clean JSON pipelines. */
+    free(m->dense);
+    m->dense = NULL;
+    rabbit_munmap_file(m->expert_map_base, m->expert_map_size, m->expert_fd);
+    m->expert_map_base = NULL;
+    rabbit_cache_free(m->cache);
+    m->cache = NULL;
+    rabbit_attn_reset();
+    free(m);
     return 0;
 }
 
@@ -103,6 +181,9 @@ int main(int argc, char **argv) {
 
     if (strcmp(argv[1], "probe") == 0)
         return cmd_probe(argc, argv);
+
+    if (strcmp(argv[1], "stats") == 0)
+        return cmd_stats(argc, argv);
 
     if (strcmp(argv[1], "chat") == 0) {
         const char *model_path = NULL;
