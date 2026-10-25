@@ -1,46 +1,40 @@
 # Changelog
 
+## [0.4.6] - 2026-10-25
+
+### GQA + Mixtral path
+- `forward_v2` separate Q/K/V with GQA (`n_kv_heads`); up to 32 layers
+- Header `reserved[0:12]` stores `n_heads`, `n_kv_heads`, `head_dim`
+- Converter packs real Q/K/V shapes; Mixtral expert map **w1=gate, w3=up, w2=down**
+- Offline fixture `tools/create_mixtral_micro.py` + `make mixtral-micro`
+- Target live model: TinyBrainBot 360M (`make live-moe`)
+
 ## [0.4.5] - 2026-10-25
 
 ### Group-scaled int4
-- `rabbit_pack_int4_grouped` / `rabbit_dequant_int4_grouped` / `rabbit_gemv_int4_grouped`
-- Default group size 32 (`RABBIT_INT4_GROUP`)
-- `forward_v2` expert path handles `expert_quant == 4`
-- Converter `--quant 4` packs gate/up/down with per-group scales
-- Unit test for group int4 round-trip
-- File-format docs updated
+- `rabbit_pack_int4_grouped` / dequant / GEMV (group=32)
+- Converter `--quant 4` + `forward_v2` expert path
 
 ## [0.4.4] - 2026-10-25
 
 ### Real BPE tokenizer
-- `rabbit_tokenizer_load_bpe()` loads compact RBTTOK01 `.tok` files
-- Byte-level BPE encode/decode with pair-rank merges
-- CLI: `--tokenizer path.tok` for `chat` and `probe-v2`
-- `tools/export_hf_tokenizer.py` exports HF tokenizers to `.tok`
-- `rabbit_ref_v2_greedy` uses `rabbit_tokenize` (no longer raw bytes)
+- RBTTOK01 + `export_hf_tokenizer.py` + CLI `--tokenizer`
 
 ## [0.4.3] - 2026-10-25
 
 ### Exact parity path
-- Converter `--quant 0` packs pure float32 gate/up/down (no scale/int)
-- C `forward_v2` + NumPy oracle load f32 experts when `expert_quant==0`
-- `make exact-f32` + `tools/hf_token_parity.py` (optional transformers)
+- `--quant 0` float32 experts + `make exact-f32`
 
 ## [0.4.2] - 2026-10-25
 
 ### Per-layer expert tables
-- C: `experts_shared` / `n_expert_records` / `rabbit_expert_ptr_layer`
-- Converter `--layout v2` packs **L×E** records
+- `n_expert_records = L×E`
 
 ## [0.4.1] - 2026-10-25
 
 ### Phase D M1 / M2 start
-- Faithful `ref-v2` + `parity-v2` + HF micro fixture + `make m2`
+- Faithful `ref-v2` + HF micro fixture
 
 ## [0.4.0] - 2026-10-25
 
-- OpenAI API + SSE, `rabbit stats`, dashboard metrics
-
-## [0.3.x] - 2026-10-25
-
-- Memory budget, multi-head RoPE, SwiGLU path
+- OpenAI API + SSE, `rabbit stats`
