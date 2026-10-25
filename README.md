@@ -5,7 +5,7 @@ Run large Mixture-of-Experts (MoE) models on extremely constrained hardware (tar
 
 Inspired by [Colibrì](https://github.com/JustVugg/colibri).
 
-> **Status**: End-to-end generation loop working on the synthetic test model.
+> **Status**: Full layer path working — Attention → Dense FFN → MoE → Sampling.
 
 ## Goal
 
@@ -26,12 +26,12 @@ make test-model
 ./rabbit chat --model models/tiny-test.rabbit
 ```
 
-Type a message. Rabbit will:
-1. Tokenize the prompt (byte-level)
-2. Run MoE layers (router → fetch experts → int8 matmul)
-3. Sample new tokens and print them
+Type a message. Rabbit runs a complete (synthetic) transformer-style step:
 
-This is still a synthetic model, so the text is not meaningful language — it proves the full engine path works.
+1. **Attention** over a short KV cache
+2. **Dense residual FFN** using the dense blob
+3. **MoE** (router → fetch experts from mmap/cache → int8 matmul)
+4. **Sample** next token and continue
 
 ## What works today
 
@@ -41,36 +41,38 @@ This is still a synthetic model, so the text is not meaningful language — it p
 | Dense weights → RAM             | ✅     |
 | Experts memory-mapped           | ✅     |
 | Tiny LRU expert cache           | ✅     |
-| Expert fetch (cache + mmap)     | ✅     |
-| Real expert matmul (int8 GEMV)  | ✅     |
+| Expert fetch + int8 matmul      | ✅     |
+| Attention + KV cache            | ✅     |
+| Dense residual path             | ✅     |
+| Full layer step                 | ✅     |
 | Byte-level tokenizer            | ✅     |
-| Sampling loop (temperature)     | ✅     |
-| End-to-end generation           | ✅     |
+| Sampling + generation loop      | ✅     |
 | Real model conversion           | ❌     |
-| Real language model quality     | ❌     |
 
-## Project Structure
+## Architecture (current)
 
 ```
-src/
-  rabbit.h
-  main.c
-  model.c           # Loader + chat + generation
-  memory.c          # mmap + LRU cache
-  moe.c             # Router + fetch + matmul
-  quant.c           # int8 / int4 helpers
-  tokenizer.c       # byte-level tokenizer
-  utils.c
-tools/
-  create_test_model.c
+Token → hidden
+         │
+         ▼
+   ┌────────────────┐
+   │  Attention (KV)   │
+   ├────────────────┤
+   │  Dense residual   │
+   ├────────────────┤
+   │  MoE (streamed)   │
+   └────────────────┘
+         │
+         ▼
+      LM head → sample
 ```
 
 ## Next steps
 
-1. Attention / dense path
-2. Better quantization + fused kernels
-3. Real tokenizer support (SentencePiece / tiktoken style)
-4. Converter for open MoE models (DeepSeek Flash, Kimi, …)
+1. Better quantization + fused kernels
+2. Real tokenizer (SentencePiece / tiktoken style)
+3. Converter for open MoE models (DeepSeek Flash, Kimi, …)
+4. Multi-head / MLA-style attention
 
 ## License
 
