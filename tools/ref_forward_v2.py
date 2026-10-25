@@ -16,9 +16,8 @@ EPS = 1e-5
 
 
 def _read_f32(data: bytes, off: int, n: int) -> Tuple[np.ndarray, int]:
-    need = n * 4
     arr = np.frombuffer(data, dtype=np.float32, count=n, offset=off).copy()
-    return arr, off + need
+    return arr, off + n * 4
 
 
 def _dequant_int8(blob: bytes, off: int, n: int) -> Tuple[np.ndarray, float, int]:
@@ -56,7 +55,6 @@ def load_ref_v2(path: Path) -> Dict[str, Any]:
     dense = data[off : off + dense_size]
     off += dense_size
 
-    # parse dense
     d_off = 0
     embed, d_off = _read_f32(dense, d_off, vocab * hidden)
     embed = embed.reshape(vocab, hidden)
@@ -121,7 +119,6 @@ def rmsnorm(x: np.ndarray, weight: np.ndarray) -> np.ndarray:
 
 
 def rope(q: np.ndarray, k: np.ndarray, pos: int, head_dim: int) -> Tuple[np.ndarray, np.ndarray]:
-    """q,k: [n_heads, head_dim]"""
     half = head_dim // 2
     freqs = 1.0 / (10000.0 ** (np.arange(0, half, dtype=np.float32) / half))
     angles = pos * freqs
@@ -152,7 +149,7 @@ def attention(
 ) -> np.ndarray:
     H = x.shape[0]
     x_n = rmsnorm(x, layer["rms_attn"])
-    qkv = layer["w_qkv"] @ x_n  # [3H]
+    qkv = layer["w_qkv"] @ x_n
     q, k, v = np.split(qkv, 3)
     q = q.reshape(n_heads, head_dim)
     k = k.reshape(n_heads, head_dim)
@@ -184,7 +181,7 @@ def attention(
 
 def moe_swiglu(x: np.ndarray, layer: Dict[str, Any], experts: List[Dict], top_k: int) -> np.ndarray:
     x_n = rmsnorm(x, layer["rms_ffn"])
-    logits = layer["w_router"] @ x_n  # [E]
+    logits = layer["w_router"] @ x_n
     idx = np.argsort(-logits)[:top_k]
     sel = logits[idx]
     sel = sel - sel.max()
@@ -196,27 +193,27 @@ def moe_swiglu(x: np.ndarray, layer: Dict[str, Any], experts: List[Dict], top_k:
         e = experts[eid]
         g = silu(e["gate"] @ x_n)
         u = e["up"] @ x_n
-        h = g * u
-        acc = acc + float(wt) * (e["down"] @ h)
+        mid = g * u
+        acc = acc + float(wt) * (e["down"] @ mid)
     return x + acc
 
 
 def forward_logits(model: Dict[str, Any], token_ids: List[int]) -> np.ndarray:
-    """Return logits for the last position after consuming token_ids."""
     H = model["hidden"]
     n_heads = model["n_heads"]
     head_dim = model["head_dim"]
-    kv = {"k": [], "v": []}
+    # one KV cache per layer (matches C)
+    kv_layers = [{"k": [], "v": []} for _ in model["layers"]]
 
     h = np.zeros(H, dtype=np.float32)
     for pos, tid in enumerate(token_ids):
         tid = int(tid) % model["vocab"]
         h = model["embed"][tid].copy()
-        for layer in model["layers"]:
-            h = attention(h, layer, kv, n_heads, head_dim, pos)
+        for li, layer in enumerate(model["layers"]):
+            h = attention(h, layer, kv_layers[li], n_heads, head_dim, pos)
             h = moe_swiglu(h, layer, model["experts"], model["top_k"])
 
-    logits = model["lm_head"].T @ h  # [vocab]  (lm_head is H x V)
+    logits = model["lm_head"].T @ h
     return logits
 
 
