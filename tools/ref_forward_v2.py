@@ -60,6 +60,7 @@ def load_ref_v2(path: Path) -> Dict[str, Any]:
     embed = embed.reshape(vocab, hidden)
     lm_head, d_off = _read_f32(dense, d_off, hidden * vocab)
     lm_head = lm_head.reshape(hidden, vocab)
+    final_norm, d_off = _read_f32(dense, d_off, hidden)
 
     layers = []
     for _ in range(n_layers):
@@ -133,6 +134,7 @@ def load_ref_v2(path: Path) -> Dict[str, Any]:
         "head_dim": hidden // 4,
         "embed": embed,
         "lm_head": lm_head,
+        "final_norm": final_norm,
         "layers": layers,
         "experts_by_layer": experts_by_layer,
         "experts_shared": shared,
@@ -241,6 +243,7 @@ def forward_logits(model: Dict[str, Any], token_ids: List[int]) -> np.ndarray:
             h = attention(h, layer, kv_layers[li], n_heads, head_dim, pos)
             h = moe_swiglu(h, layer, model["experts_by_layer"][li], model["top_k"])
 
+    h = rmsnorm(h, model["final_norm"])
     logits = model["lm_head"].T @ h
     return logits
 
