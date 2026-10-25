@@ -7,14 +7,14 @@
 /*
  * Faithful rabbit-ref-v2 forward — must match tools/ref_forward_v2.py
  *
- * Experts on disk: either shared (E records) or per-layer (L*E records
- * ordered L0E0..L0E{n-1}, L1E0, ...).
+ * Experts on disk: either shared (E records) or per-layer (L*E records).
  * expert_quant 0 = pure f32; 4 = group-scaled int4; 8 = scale+int8.
+ * Dense Q/K/V: GQA-aware (q_dim / kv_dim) when header.reserved has head meta.
  */
 
 #define V2_EPS 1e-5f
 #define V2_MAX_CTX 256
-#define V2_MAX_HEADS 16
+#define V2_MAX_HEADS 32
 
 typedef struct {
     const float *embed;
@@ -26,13 +26,18 @@ typedef struct {
     int top_k;
     int inter;
     int n_heads;
+    int n_kv_heads;
     int head_dim;
+    int q_dim;   /* n_heads * head_dim */
+    int kv_dim;  /* n_kv_heads * head_dim */
 
-    const float *rms_attn[8];
-    const float *rms_ffn[8];
-    const float *w_qkv[8];
-    const float *w_o[8];
-    const float *w_router[8];
+    const float *rms_attn[32];
+    const float *rms_ffn[32];
+    const float *w_q[32];
+    const float *w_k[32];
+    const float *w_v[32];
+    const float *w_o[32];
+    const float *w_router[32];
 } RefV2Weights;
 
 typedef struct {
@@ -96,20 +101,39 @@ static int parse_weights(const RabbitModel *m, RefV2Weights *w) {
     w->n_experts = m->num_experts;
     w->top_k = m->experts_per_token > 0 ? m->experts_per_token : 2;
     w->inter = m->hdr.expert_dim > 0 ? (int)m->hdr.expert_dim : m->hidden_dim * 2;
-    w->n_heads = 4;
-    if (w->hidden % w->n_heads != 0)
-        w->n_heads = 1;
-    w->head_dim = w->hidden / w->n_heads;
 
-    if (w->n_layers > 8) return -1;
+    /* GQA metadata from header.reserved (u32 LE); 0 => legacy MHA square */
+    {
+        uint32_t nh = 0, nkv = 0, hd = 0;
+        memcpy(&nh,  m->hdr.reserved + 0, 4);
+        memcpy(&nkv, m->hdr.reserved + 4, 4);
+        memcpy(&hd,  m->hdr.reserved + 8, 4);
+        if (nh > 0 && hd > 0 && (int)(nh * hd) == w->hidden) {
+            w->n_heads = (int)nh;
+            w->n_kv_heads = nkv > 0 ? (int)nkv : (int)nh;
+            w->head_dim = (int)hd;
+        } else {
+            w->n_heads = 4;
+            if (w->hidden % w->n_heads != 0)
+                w->n_heads = 1;
+            w->n_kv_heads = w->n_heads;
+            w->head_dim = w->hidden / w->n_heads;
+        }
+    }
+    w->q_dim = w->n_heads * w->head_dim;
+    w->kv_dim = w->n_kv_heads * w->head_dim;
+
+    if (w->n_layers > 32) return -1;
 
     const float *p = (const float *)m->dense;
     size_t floats = m->dense_size / sizeof(float);
     size_t need = (size_t)w->vocab * w->hidden + (size_t)w->hidden * w->vocab;
     for (int L = 0; L < w->n_layers; L++) {
         need += (size_t)w->hidden * 2;
-        need += (size_t)3 * w->hidden * w->hidden;
-        need += (size_t)w->hidden * w->hidden;
+        need += (size_t)w->q_dim * w->hidden;   /* Q */
+        need += (size_t)w->kv_dim * w->hidden;  /* K */
+        need += (size_t)w->kv_dim * w->hidden;  /* V */
+        need += (size_t)w->hidden * w->q_dim;   /* O */
         need += (size_t)w->n_experts * w->hidden;
     }
     if (need > floats) return -1;
@@ -122,8 +146,10 @@ static int parse_weights(const RabbitModel *m, RefV2Weights *w) {
     for (int L = 0; L < w->n_layers; L++) {
         w->rms_attn[L] = p; p += w->hidden;
         w->rms_ffn[L]  = p; p += w->hidden;
-        w->w_qkv[L]    = p; p += (size_t)3 * w->hidden * w->hidden;
-        w->w_o[L]      = p; p += (size_t)w->hidden * w->hidden;
+        w->w_q[L]      = p; p += (size_t)w->q_dim * w->hidden;
+        w->w_k[L]      = p; p += (size_t)w->kv_dim * w->hidden;
+        w->w_v[L]      = p; p += (size_t)w->kv_dim * w->hidden;
+        w->w_o[L]      = p; p += (size_t)w->hidden * w->q_dim;
         w->w_router[L] = p; p += (size_t)w->n_experts * w->hidden;
     }
     return 0;
@@ -132,34 +158,37 @@ static int parse_weights(const RabbitModel *m, RefV2Weights *w) {
 static void attention_step(const RefV2Weights *w, int layer, float *h, RefV2KV *kv, int pos) {
     int H = w->hidden;
     int nh = w->n_heads;
+    int nkv = w->n_kv_heads;
     int hd = w->head_dim;
+    int q_dim = w->q_dim;
+    int kv_dim = w->kv_dim;
+    int rep = nh / nkv;
+    if (rep < 1) rep = 1;
 
     float *xn = (float *)malloc(sizeof(float) * (size_t)H);
-    float *qkv = (float *)malloc(sizeof(float) * (size_t)3 * H);
-    float *q = (float *)malloc(sizeof(float) * (size_t)H);
-    float *k = (float *)malloc(sizeof(float) * (size_t)H);
-    float *v = (float *)malloc(sizeof(float) * (size_t)H);
-    float *att_out = (float *)calloc((size_t)H, sizeof(float));
+    float *q = (float *)malloc(sizeof(float) * (size_t)q_dim);
+    float *k = (float *)malloc(sizeof(float) * (size_t)kv_dim);
+    float *v = (float *)malloc(sizeof(float) * (size_t)kv_dim);
+    float *att_out = (float *)calloc((size_t)q_dim, sizeof(float));
     float *proj = (float *)malloc(sizeof(float) * (size_t)H);
-    if (!xn || !qkv || !q || !k || !v || !att_out || !proj) {
-        free(xn); free(qkv); free(q); free(k); free(v); free(att_out); free(proj);
+    if (!xn || !q || !k || !v || !att_out || !proj) {
+        free(xn); free(q); free(k); free(v); free(att_out); free(proj);
         return;
     }
 
     rmsnorm(h, w->rms_attn[layer], xn, H);
-    gemv_f32(w->w_qkv[layer], xn, qkv, 3 * H, H);
-    memcpy(q, qkv, sizeof(float) * (size_t)H);
-    memcpy(k, qkv + H, sizeof(float) * (size_t)H);
-    memcpy(v, qkv + 2 * H, sizeof(float) * (size_t)H);
+    gemv_f32(w->w_q[layer], xn, q, q_dim, H);
+    gemv_f32(w->w_k[layer], xn, k, kv_dim, H);
+    gemv_f32(w->w_v[layer], xn, v, kv_dim, H);
 
-    for (int head = 0; head < nh; head++) {
+    for (int head = 0; head < nh; head++)
         apply_rope_head(q + head * hd, hd, pos);
+    for (int head = 0; head < nkv; head++)
         apply_rope_head(k + head * hd, hd, pos);
-    }
 
     if (kv->len < kv->max_len) {
-        memcpy(kv->k + (size_t)kv->len * H, k, sizeof(float) * (size_t)H);
-        memcpy(kv->v + (size_t)kv->len * H, v, sizeof(float) * (size_t)H);
+        memcpy(kv->k + (size_t)kv->len * kv_dim, k, sizeof(float) * (size_t)kv_dim);
+        memcpy(kv->v + (size_t)kv->len * kv_dim, v, sizeof(float) * (size_t)kv_dim);
         kv->len++;
     }
 
@@ -167,12 +196,14 @@ static void attention_step(const RefV2Weights *w, int layer, float *h, RefV2KV *
     float scores[V2_MAX_CTX];
 
     for (int head = 0; head < nh; head++) {
-        int off = head * hd;
+        int q_off = head * hd;
+        int kv_head = head / rep;
+        int k_off = kv_head * hd;
         for (int t = 0; t < kv->len; t++) {
             float dot = 0.0f;
-            const float *kt = kv->k + (size_t)t * H + off;
+            const float *kt = kv->k + (size_t)t * kv_dim + k_off;
             for (int i = 0; i < hd; i++)
-                dot += q[off + i] * kt[i];
+                dot += q[q_off + i] * kt[i];
             scores[t] = dot * scale;
         }
         float max_s = scores[0];
@@ -188,17 +219,17 @@ static void attention_step(const RefV2Weights *w, int layer, float *h, RefV2KV *
                 scores[t] /= sum;
 
         for (int t = 0; t < kv->len; t++) {
-            const float *vt = kv->v + (size_t)t * H + off;
+            const float *vt = kv->v + (size_t)t * kv_dim + k_off;
             for (int i = 0; i < hd; i++)
-                att_out[off + i] += scores[t] * vt[i];
+                att_out[q_off + i] += scores[t] * vt[i];
         }
     }
 
-    gemv_f32(w->w_o[layer], att_out, proj, H, H);
+    gemv_f32(w->w_o[layer], att_out, proj, H, q_dim);
     for (int i = 0; i < H; i++)
         h[i] += proj[i];
 
-    free(xn); free(qkv); free(q); free(k); free(v); free(att_out); free(proj);
+    free(xn); free(q); free(k); free(v); free(att_out); free(proj);
 }
 
 static void select_top_k(const float *scores, int n, int k, int *ids, float *weights) {
@@ -268,7 +299,6 @@ static void expert_swiglu(const RabbitModel *m, int layer, int local_expert_id,
         }
         gemv_f32(p, mid, down_out, H, inter);
     } else if (quant == 4) {
-        /* group-scaled int4: gate + up + down */
         const uint8_t *p = bytes;
         int nbytes_g = rabbit_int4_grouped_nbytes((int)mat, RABBIT_INT4_GROUP);
         int nbytes_u = nbytes_g;
@@ -383,12 +413,12 @@ int rabbit_ref_v2_forward(RabbitModel *m, const int *token_ids, int n_tokens,
     }
 
     int H = w.hidden;
-    RefV2KV kv[8];
+    RefV2KV kv[32];
     memset(kv, 0, sizeof(kv));
     for (int L = 0; L < w.n_layers; L++) {
         kv[L].max_len = V2_MAX_CTX;
-        kv[L].k = (float *)calloc((size_t)V2_MAX_CTX * H, sizeof(float));
-        kv[L].v = (float *)calloc((size_t)V2_MAX_CTX * H, sizeof(float));
+        kv[L].k = (float *)calloc((size_t)V2_MAX_CTX * w.kv_dim, sizeof(float));
+        kv[L].v = (float *)calloc((size_t)V2_MAX_CTX * w.kv_dim, sizeof(float));
         if (!kv[L].k || !kv[L].v) {
             for (int j = 0; j <= L; j++) {
                 free(kv[j].k); free(kv[j].v);
@@ -435,13 +465,11 @@ int rabbit_ref_v2_greedy(RabbitModel *m, const char *prompt, int n_new,
     RefV2Weights w;
     if (parse_weights(m, &w) != 0) return -1;
 
-    /* Use active tokenizer (BPE / word / byte) instead of raw bytes */
     int n = rabbit_tokenize(prompt, out_ids, max_ids - n_new - 1);
     if (n <= 0) {
         out_ids[0] = 1;
         n = 1;
     }
-    /* Clamp ids into model vocab */
     for (int i = 0; i < n; i++) {
         if (out_ids[i] < 0) out_ids[i] = 0;
         out_ids[i] %= w.vocab;
