@@ -3,12 +3,11 @@
 ## [0.4.0] - 2026-10-25
 
 ### Added (Phase C)
-- `rabbit stats --model …` — machine-readable JSON engine metrics (memory, architecture)
+- `rabbit stats --model …` — machine-readable JSON engine metrics
 - OpenAI-compatible HTTP API: `tools/rabbit_server.py`
-  - `POST /v1/chat/completions`
+  - `POST /v1/chat/completions` (supports **`stream: true` → SSE**)
   - `GET /v1/models`, `/v1/stats`, `/health`
-- Dashboard now sources model/memory metrics from `rabbit stats` (not log scrape only)
-- Dashboard Memory panel (budget / estimate / cache slots)
+- Dashboard metrics from `rabbit stats` + Memory panel
 
 ## [0.3.1] - 2026-10-25
 
