@@ -91,11 +91,14 @@ debug: clean $(TARGET)
 clean:
 	rm -f $(OBJ) $(TARGET) $(TEST_TOOL) $(TEST_BIN)
 
-# Live Mixtral-style MoE (TinyBrainBot 360M). Requires: pip install huggingface_hub safetensors
+# Live Mixtral-style MoE (TinyBrainBot 360M).
+# Requires: pip install huggingface_hub safetensors numpy
+# Uses streaming converter so ~1GB RAM hosts can convert the 1.5GB f32 checkpoint.
 live-moe: $(TARGET)
 	@mkdir -p models/tinybrainbot
-	python3 -c "from huggingface_hub import snapshot_download; snapshot_download('nkthebass/tinybrainbot-360m-a75m-v4.1-moe-base', local_dir='models/tinybrainbot')"
-	python3 tools/convert_hf_to_rabbit.py --model-dir models/tinybrainbot \
-		--out models/tinybrainbot-v2.rabbit --layout v2 --quant 4
-	python3 tools/export_hf_tokenizer.py --model models/tinybrainbot --out models/tinybrainbot.tok || true
+	python3 -c "from huggingface_hub import snapshot_download; snapshot_download('nkthebass/tinybrainbot-360m-a75m-v4.1-moe-base', local_dir='models/tinybrainbot', allow_patterns=['config.json','model.safetensors','tokenizer.json','tokenizer.model','tokenizer_config.json'])"
+	python3 tools/convert_hf_stream.py --model-dir models/tinybrainbot \
+		--out models/tinybrainbot-v2.rabbit --quant 4
+	python3 tools/export_hf_tokenizer.py --hf-dir models/tinybrainbot --out models/tinybrainbot.tok || true
 	./$(TARGET) probe-v2 --model models/tinybrainbot-v2.rabbit --prompt Hello --tokens 16
+	@echo "Chat: ./rabbit chat --model models/tinybrainbot-v2.rabbit --tokenizer models/tinybrainbot.tok"
