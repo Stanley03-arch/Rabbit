@@ -6,7 +6,7 @@ Rabbit is a pure-C engine that keeps dense weights in RAM and streams routed exp
 
 Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) — not a clone of its product or UI.
 
-> **Status:** v0.4.0 — Phase A/B largely complete, Phase C started. OpenAI-compatible HTTP API, `rabbit stats` engine metrics, dashboard driven by engine JSON.
+> **Status:** v0.4.0 — Phase A/B largely complete, Phase C mostly complete. OpenAI-compatible HTTP API with **SSE streaming**, `rabbit stats`, dashboard driven by engine JSON.
 
 [![Dashboard in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_dashboard.ipynb)
 
@@ -18,7 +18,7 @@ Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) �
 |-----------|-------------|
 | **CLI** | `./rabbit chat --model …` |
 | **Stats** | `./rabbit stats --model …` (JSON) |
-| **HTTP API** | OpenAI-compatible (`tools/rabbit_server.py`) |
+| **HTTP API** | OpenAI-compatible + SSE streaming |
 | **Dashboard** | Dark cockpit: chat, model/memory stats, expert cache |
 | **Gradio** | Simple browser chat (`tools/rabbit_ui.py`) |
 
@@ -29,9 +29,15 @@ make && make test-model
 pip install flask
 python tools/rabbit_server.py --model models/tiny-test.rabbit --port 8080
 
+# non-streaming
 curl http://127.0.0.1:8080/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model":"rabbit","messages":[{"role":"user","content":"hello"}],"max_tokens":32}'
+
+# streaming (SSE)
+curl -N http://127.0.0.1:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"rabbit","messages":[{"role":"user","content":"hello"}],"max_tokens":32,"stream":true}'
 ```
 
 ### Engine dashboard
@@ -69,11 +75,11 @@ export RABBIT_MEM_BUDGET_MB=1024   # default 1536
 
 ## Features
 
-- Dense RAM + expert `mmap` + LRU cache (slot count from remaining budget)  
+- Dense RAM + expert `mmap` + LRU cache  
 - Multi-head attention with per-head RoPE → dense residual → MoE  
 - int4 / int8 expert GEMV + SwiGLU-style path when gate/up/down present  
 - HF → `.rabbit` converter  
-- OpenAI-compatible HTTP API  
+- OpenAI-compatible HTTP API with SSE streaming  
 - Dashboard metrics from `rabbit stats`  
 - Exact C vs NumPy parity on the frozen ref model  
 
@@ -96,7 +102,7 @@ See [docs/tensor-map.md](docs/tensor-map.md) and [docs/conversion.md](docs/conve
 - Synthetic weights do not produce real language.  
 - Dashboard is **Rabbit’s own UI**, not Colibrì’s.  
 - Large real MoEs still need aggressive quant / expert limits on 4 GB hosts.  
-- HTTP API does not yet stream (SSE) completions.  
+- Streaming reads engine stdout as tokens are flushed; banner filtering is best-effort.  
 
 ## License
 
