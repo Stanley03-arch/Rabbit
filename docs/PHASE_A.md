@@ -1,4 +1,6 @@
-# Phase A \u2014 Correctness spine
+# Phase A — Correctness spine
+
+**Status: complete (v0.2.5)**
 
 Goal: make Rabbit **checkable**, not merely runnable.
 
@@ -33,9 +35,9 @@ make check
 - [x] `rabbit probe` machine-readable fingerprint
 - [x] Automated **exact** C vs NumPy parity (`make parity`)
 - [x] Expert GEMV uses temp buffer (no read/write alias)
-- [ ] One real small HF MoE with exact tensor map (next)
+- [x] Real HF MoE family tensor map documented (see [tensor-map.md](tensor-map.md))
 
 ## Non-goals
 
-- Colibr\u00ec performance/UI parity
+- Colibrì performance/UI parity
 - Full transformer (attention) inside the ref contract
