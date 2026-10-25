@@ -10,9 +10,10 @@ static void print_usage(const char *prog) {
         "\n"
         "Usage:\n"
         "  %s version\n"
-        "  %s chat  --model <path> [options]\n"
-        "  %s probe --model <path> [--prompt text]\n"
-        "  %s stats --model <path>\n"
+        "  %s chat     --model <path> [options]\n"
+        "  %s probe    --model <path> [--prompt text]\n"
+        "  %s probe-v2 --model <path> [--prompt text] [--tokens n]\n"
+        "  %s stats    --model <path>\n"
         "\n"
         "Options:\n"
         "  --model <path>   Path to .rabbit model\n"
@@ -21,7 +22,7 @@ static void print_usage(const char *prog) {
         "  --temp <f>       Sampling temperature (default: 0.85)\n"
         "  --prompt <text>  Prompt for probe (default: hi)\n"
         "  -h, --help       Show this help\n",
-        rabbit_version(), prog, prog, prog, prog);
+        rabbit_version(), prog, prog, prog, prog, prog);
 }
 
 static int cmd_probe(int argc, char **argv) {
@@ -83,7 +84,65 @@ static int cmd_probe(int argc, char **argv) {
     return 0;
 }
 
-/* Machine-readable engine metrics for dashboard / HTTP server (Phase C). */
+/* Phase D: greedy tokens from faithful ref-v2 path (machine-readable). */
+static int cmd_probe_v2(int argc, char **argv) {
+    const char *model_path = NULL;
+    const char *prompt = "hi";
+    int n_new = 32;
+
+    for (int i = 2; i < argc; i++) {
+        if ((strcmp(argv[i], "--model") == 0) && i + 1 < argc)
+            model_path = argv[++i];
+        else if ((strcmp(argv[i], "--prompt") == 0) && i + 1 < argc)
+            prompt = argv[++i];
+        else if ((strcmp(argv[i], "--tokens") == 0) && i + 1 < argc) {
+            n_new = atoi(argv[++i]);
+            if (n_new < 1) n_new = 1;
+            if (n_new > 128) n_new = 128;
+        } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+            print_usage(argv[0]);
+            return 0;
+        } else {
+            fprintf(stderr, "Unknown option: %s\n", argv[i]);
+            return 1;
+        }
+    }
+    if (!model_path) {
+        fprintf(stderr, "error: --model required\n");
+        return 1;
+    }
+
+    RabbitModel *m = rabbit_load(model_path);
+    if (!m) return 1;
+
+    int max_ids = (int)strlen(prompt) + n_new + 8;
+    int *ids = (int *)malloc(sizeof(int) * (size_t)max_ids);
+    if (!ids) {
+        rabbit_free(m);
+        return 1;
+    }
+
+    int n = rabbit_ref_v2_greedy(m, prompt, n_new, ids, max_ids);
+    if (n < 0) {
+        fprintf(stderr, "error: ref-v2 greedy failed (is this a ref-v2 model?)\n");
+        free(ids);
+        rabbit_free(m);
+        return 1;
+    }
+
+    /* Machine-readable for parity tests */
+    printf("PROBE_V2 prompt=%s n=%d ids=", prompt, n);
+    for (int i = 0; i < n; i++) {
+        if (i) printf(",");
+        printf("%d", ids[i]);
+    }
+    printf("\n");
+
+    free(ids);
+    rabbit_free(m);
+    return 0;
+}
+
 static int cmd_stats(int argc, char **argv) {
     const char *model_path = NULL;
 
@@ -109,7 +168,6 @@ static int cmd_stats(int argc, char **argv) {
     RabbitMemoryReport r;
     rabbit_memory_report(m, &r);
 
-    /* Escape name for JSON (minimal). */
     char name_esc[160];
     size_t j = 0;
     for (size_t i = 0; m->name[i] && j + 2 < sizeof(name_esc); i++) {
@@ -149,7 +207,6 @@ static int cmd_stats(int argc, char **argv) {
     printf("  \"over_budget\": %s\n", r.over_budget ? "true" : "false");
     printf("}\n");
 
-    /* Suppress the usual free-time cache print for clean JSON pipelines. */
     free(m->dense);
     m->dense = NULL;
     rabbit_munmap_file(m->expert_map_base, m->expert_map_size, m->expert_fd);
@@ -181,6 +238,9 @@ int main(int argc, char **argv) {
 
     if (strcmp(argv[1], "probe") == 0)
         return cmd_probe(argc, argv);
+
+    if (strcmp(argv[1], "probe-v2") == 0)
+        return cmd_probe_v2(argc, argv);
 
     if (strcmp(argv[1], "stats") == 0)
         return cmd_stats(argc, argv);
