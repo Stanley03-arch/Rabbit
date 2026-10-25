@@ -1,0 +1,27 @@
+# Build artifacts
+*.o
+*.a
+*.so
+*.dylib
+rabbit
+rabbit.exe
+
+# Model weights (large files)
+models/*
+!models/.gitkeep
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python (tools)
+__pycache__/
+*.pyc
+.venv/
+venv/
