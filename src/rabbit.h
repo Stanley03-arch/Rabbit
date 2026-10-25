@@ -11,6 +11,7 @@
  * ============================================================ */
 
 #define RABBIT_VERSION "0.1.0-dev"
+#define RABBIT_MAGIC   "RABBIT01"
 
 /* Maximum number of experts we keep hot in RAM (keep tiny for 4GB) */
 #define RABBIT_MAX_CACHE_SLOTS 8
@@ -30,9 +31,39 @@ typedef struct RabbitModel RabbitModel;
 typedef struct ExpertCache ExpertCache;
 
 /* ------------------------------------------------------------
- * Model handle
+ * On-disk header (must stay packed / little-endian)
+ * ------------------------------------------------------------ */
+#pragma pack(push, 1)
+typedef struct {
+    char     magic[8];          /* "RABBIT01" */
+    uint32_t version;
+    uint32_t header_size;
+
+    uint32_t n_layers;
+    uint32_t hidden_dim;
+    uint32_t vocab_size;
+    uint32_t n_experts;
+    uint32_t experts_per_token;
+    uint32_t expert_dim;
+
+    uint64_t dense_size;
+    uint64_t expert_size;         /* size of one expert */
+    uint64_t total_experts_size;
+
+    uint32_t dense_quant;         /* 0=f16, 4=int4, ... */
+    uint32_t expert_quant;
+
+    char     name[64];
+    uint8_t  reserved[128];
+} RabbitHeader;
+#pragma pack(pop)
+
+/* ------------------------------------------------------------
+ * Model handle (in-memory)
  * ------------------------------------------------------------ */
 struct RabbitModel {
+    RabbitHeader hdr;
+
     /* Always-resident dense / shared part */
     void   *dense;
     size_t  dense_size;
@@ -43,12 +74,12 @@ struct RabbitModel {
     size_t  expert_map_size;
     size_t  expert_size;          /* size of one expert in bytes */
     int     num_experts;
-    int     experts_per_token;    /* how many experts the router selects */
+    int     experts_per_token;
 
     /* Tiny LRU cache of hot experts in RAM */
     ExpertCache *cache;
 
-    /* Architecture metadata (filled by loader) */
+    /* Architecture metadata (convenience) */
     int     n_layers;
     int     hidden_dim;
     int     vocab_size;
@@ -70,5 +101,8 @@ rabbit_status rabbit_chat(RabbitModel *model);
 
 /* Version string. */
 const char *rabbit_version(void);
+
+/* Print model info. */
+void rabbit_print_info(const RabbitModel *model);
 
 #endif /* RABBIT_H */

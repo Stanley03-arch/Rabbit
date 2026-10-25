@@ -2,39 +2,128 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
 /* Forward declarations from other modules */
 ExpertCache *rabbit_cache_create(int n_slots);
-void rabbit_cache_free(ExpertCache *c);
-int  rabbit_mmap_experts(const char *path, void **map, size_t *size, int *fd);
-void rabbit_munmap_experts(void *map, size_t size, int fd);
+void         rabbit_cache_free(ExpertCache *c);
+int          rabbit_mmap_experts(const char *path, void **map, size_t *size, int *fd);
+void         rabbit_munmap_experts(void *map, size_t size, int fd);
 
 const char *rabbit_version(void) {
     return RABBIT_VERSION;
 }
 
+void rabbit_print_info(const RabbitModel *m) {
+    if (!m) return;
+    printf("Model name          : %s\n", m->name);
+    printf("Layers              : %u\n", m->hdr.n_layers);
+    printf("Hidden dim          : %u\n", m->hdr.hidden_dim);
+    printf("Vocab size          : %u\n", m->hdr.vocab_size);
+    printf("Experts             : %u\n", m->hdr.n_experts);
+    printf("Experts per token   : %u\n", m->hdr.experts_per_token);
+    printf("Dense size          : %.2f MB\n", m->dense_size / (1024.0 * 1024.0));
+    printf("One expert size     : %.2f MB\n", m->expert_size / (1024.0 * 1024.0));
+    printf("Total experts size  : %.2f GB\n", m->hdr.total_experts_size / (1024.0 * 1024.0 * 1024.0));
+    printf("Dense quant         : %u-bit\n", m->hdr.dense_quant ? m->hdr.dense_quant : 16);
+    printf("Expert quant        : %u-bit\n", m->hdr.expert_quant ? m->hdr.expert_quant : 16);
+}
+
 RabbitModel *rabbit_load(const char *path) {
     if (!path) return NULL;
 
-    /*
-     * Placeholder loader.
-     * Real implementation will:
-     *   1. Read a Rabbit header (magic, version, architecture)
-     *   2. Load dense weights into RAM
-     *   3. mmap the expert blob
-     *   4. Initialize a tiny expert cache
-     */
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        perror("open model");
+        return NULL;
+    }
 
-    printf("[rabbit] model loader is still a stub.\n");
-    printf("[rabbit] path: %s\n", path);
-    printf("[rabbit] next step: define Rabbit file format + dense loader.\n");
+    RabbitHeader hdr;
+    ssize_t n = read(fd, &hdr, sizeof(hdr));
+    if (n != (ssize_t)sizeof(hdr)) {
+        fprintf(stderr, "[rabbit] failed to read header\n");
+        close(fd);
+        return NULL;
+    }
+
+    /* Validate magic */
+    if (memcmp(hdr.magic, RABBIT_MAGIC, 8) != 0) {
+        fprintf(stderr, "[rabbit] bad magic (not a Rabbit model)\n");
+        close(fd);
+        return NULL;
+    }
+
+    if (hdr.version != 1) {
+        fprintf(stderr, "[rabbit] unsupported version: %u\n", hdr.version);
+        close(fd);
+        return NULL;
+    }
 
     RabbitModel *m = calloc(1, sizeof(RabbitModel));
-    if (!m) return NULL;
+    if (!m) {
+        close(fd);
+        return NULL;
+    }
 
-    strncpy(m->name, "stub-model", sizeof(m->name) - 1);
+    m->hdr = hdr;
+    strncpy(m->name, hdr.name, sizeof(m->name) - 1);
+    m->n_layers = (int)hdr.n_layers;
+    m->hidden_dim = (int)hdr.hidden_dim;
+    m->vocab_size = (int)hdr.vocab_size;
+    m->num_experts = (int)hdr.n_experts;
+    m->experts_per_token = (int)hdr.experts_per_token;
+    m->expert_size = (size_t)hdr.expert_size;
+    m->dense_size = (size_t)hdr.dense_size;
     m->expert_fd = -1;
-    m->cache = rabbit_cache_create(4);  /* very small cache for 4GB target */
+
+    /* Load dense blob into RAM */
+    if (hdr.dense_size > 0) {
+        m->dense = malloc(hdr.dense_size);
+        if (!m->dense) {
+            fprintf(stderr, "[rabbit] out of memory for dense weights (%.1f MB)\n",
+                    hdr.dense_size / (1024.0 * 1024.0));
+            free(m);
+            close(fd);
+            return NULL;
+        }
+
+        n = read(fd, m->dense, hdr.dense_size);
+        if (n != (ssize_t)hdr.dense_size) {
+            fprintf(stderr, "[rabbit] failed to read dense blob\n");
+            free(m->dense);
+            free(m);
+            close(fd);
+            return NULL;
+        }
+    }
+
+    /* Memory-map the expert section (from current offset to end of file) */
+    off_t expert_offset = sizeof(RabbitHeader) + hdr.dense_size;
+    struct stat st;
+    if (fstat(fd, &st) == 0) {
+        size_t remaining = (size_t)(st.st_size - expert_offset);
+        if (remaining > 0) {
+            /* We re-open for mmap simplicity for now */
+            close(fd);
+            fd = -1;
+
+            /* For the first version we just record the sizes.
+               Full mmap of experts will be finished in the next step. */
+            m->expert_map_size = remaining;
+            printf("[rabbit] expert section size: %.2f GB (mmap coming next)\n",
+                   remaining / (1024.0 * 1024.0 * 1024.0));
+        }
+    }
+
+    if (fd >= 0) close(fd);
+
+    /* Tiny expert cache (aggressive for 4 GB target) */
+    m->cache = rabbit_cache_create(4);
+
+    printf("[rabbit] loaded header successfully\n");
+    rabbit_print_info(m);
 
     return m;
 }
@@ -51,12 +140,13 @@ void rabbit_free(RabbitModel *model) {
 rabbit_status rabbit_chat(RabbitModel *model) {
     if (!model) return RABBIT_ERR_ARGS;
 
-    printf("\n[rabbit] Chat mode is a placeholder.\n");
-    printf("[rabbit] Model name : %s\n", model->name);
-    printf("[rabbit] Version    : %s\n", rabbit_version());
-    printf("[rabbit] Next work  : implement forward pass + expert streaming.\n\n");
+    printf("\n========================================\n");
+    printf("  Rabbit %s  \ud83d\udc07\n", rabbit_version());
+    printf("========================================\n");
+    rabbit_print_info(model);
+    printf("========================================\n\n");
 
-    printf("Type a message (or 'quit'):\n");
+    printf("Chat is still a stub. Type a message (or 'quit'):\n\n");
 
     char line[1024];
     while (1) {
@@ -66,7 +156,6 @@ rabbit_status rabbit_chat(RabbitModel *model) {
         if (!fgets(line, sizeof(line), stdin))
             break;
 
-        /* strip newline */
         size_t len = strlen(line);
         if (len && line[len-1] == '\n') line[len-1] = 0;
 
@@ -76,8 +165,8 @@ rabbit_status rabbit_chat(RabbitModel *model) {
         if (line[0] == 0)
             continue;
 
-        printf("Rabbit (stub): I received \"%s\"\n", line);
-        printf("               Real generation not implemented yet.\n");
+        printf("Rabbit (stub): received \"%s\"\n", line);
+        printf("               Real generation not implemented yet.\n\n");
     }
 
     return RABBIT_OK;
