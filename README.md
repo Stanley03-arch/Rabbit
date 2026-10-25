@@ -6,7 +6,7 @@ Rabbit is a pure-C engine that keeps dense weights in RAM and streams routed exp
 
 Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) — not a clone of its product or UI.
 
-> **Status:** early development (v0.2.2). Synthetic models validate the pipeline. Original **engine dashboard** available.
+> **Status:** Phase A complete (v0.2.5). Synthetic models validate the pipeline; real HF MoE tensor map documented for OLMoE. Original **engine dashboard** available.
 
 [![Dashboard in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_dashboard.ipynb)
 
@@ -45,6 +45,12 @@ make test-model
 ./rabbit chat --model models/tiny-test.rabbit
 ```
 
+Phase A checks:
+
+```bash
+make check    # unit tests + smoke + C↔NumPy parity
+```
+
 ---
 
 ## Features
@@ -52,8 +58,10 @@ make test-model
 - Dense RAM + expert `mmap` + LRU cache  
 - Attention → dense residual → MoE  
 - int4 / int8 expert GEMV  
-- HF → `.rabbit` converter  
+- HF → `.rabbit` converter (heuristic + **exact OLMoE map**)  
 - CLI + original web dashboard  
+
+Tensor maps and packing rules: [docs/tensor-map.md](docs/tensor-map.md).
 
 ---
 
@@ -61,16 +69,25 @@ make test-model
 
 ```bash
 pip install safetensors numpy
+
+# Heuristic path (Mixtral / DeepSeek / Qwen-style)
 python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf --out models/m.rabbit --quant 4
+
+# Exact OLMoE map (Phase A)
+python tools/convert_hf_to_rabbit.py \
+  --model-dir /path/to/OLMoE-1B-7B-0924 \
+  --out models/olmoe.rabbit \
+  --arch olmoe --quant 4 --max-experts 32
 ```
 
 ---
 
 ## Limitations
 
-- Synthetic weights do not produce real language.  
+- Synthetic / square-collapsed experts do not produce real language quality yet.  
 - Dashboard is **Rabbit’s own UI**, not Colibrì’s.  
 - Large real MoEs still need aggressive quant / expert limits on 4 GB hosts.  
+- Full HF forward parity needs Phase B (real SwiGLU + RoPE attention).
 
 ## License
 
