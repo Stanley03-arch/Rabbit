@@ -2,11 +2,8 @@
 """
 Create a deterministic HF-like micro MoE directory (no download).
 
-Layout mimics Qwen3-MoE / tiny public models:
-  config.json
-  model.npz   (tensors; converter also accepts .safetensors)
-
-Used by M2 faithful conversion tests.
+Layout mimics Qwen3-MoE naming. Experts are emitted under layer 0 only
+(shared across layers) to match the current Rabbit ref-v2 engine.
 """
 
 from __future__ import annotations
@@ -53,12 +50,12 @@ def main():
         "rope_theta": 10000.0,
         "rabbit_fixture": True,
         "rabbit_seed": args.seed,
+        "rabbit_experts": "shared",
     }
     (out / "config.json").write_text(json.dumps(config, indent=2) + "\n")
 
     tensors = {}
     tensors["model.embed_tokens.weight"] = (0.02 * rng.standard_normal((vocab, hidden))).astype(np.float32)
-    # HF often stores lm_head as [V, H]; converter will transpose to [H, V]
     tensors["lm_head.weight"] = (0.02 * rng.standard_normal((vocab, hidden))).astype(np.float32)
 
     for L in range(n_layers):
@@ -68,39 +65,37 @@ def main():
             1.0 + 0.01 * rng.standard_normal(hidden)
         ).astype(np.float32)
 
-        # attention projections [out, in] = [H, H]
         for name in ("q_proj", "k_proj", "v_proj", "o_proj"):
             tensors[f"{p}.self_attn.{name}.weight"] = (
                 0.02 * rng.standard_normal((hidden, hidden))
             ).astype(np.float32)
 
-        # router [E, H]
         w_router = (0.05 * rng.standard_normal((n_experts, hidden))).astype(np.float32)
         w_router += np.arange(1, n_experts + 1, dtype=np.float32)[:, None] * 0.01
         tensors[f"{p}.mlp.gate.weight"] = w_router
 
-        for e in range(n_experts):
-            ep = f"{p}.mlp.experts.{e}"
-            gate = np.zeros((inter, hidden), dtype=np.float32)
-            up = np.zeros((inter, hidden), dtype=np.float32)
-            down = np.zeros((hidden, inter), dtype=np.float32)
-            for i in range(inter):
-                for j in range(hidden):
-                    gate[i, j] = 0.05 * np.sin(0.07 * (e + 1) * (i + 1) * (j + 1) * (L + 1))
-                    up[i, j] = 0.05 * np.cos(0.05 * (e + 1) * (i + 2) * (j + 1) * (L + 1))
-            for i in range(hidden):
-                for j in range(inter):
-                    down[i, j] = 0.04 * np.sin(0.03 * (e + 1) * (i + 1) * (j + 3) * (L + 1))
-            gate += 0.001 * rng.standard_normal((inter, hidden), dtype=np.float32)
-            up += 0.001 * rng.standard_normal((inter, hidden), dtype=np.float32)
-            down += 0.001 * rng.standard_normal((hidden, inter), dtype=np.float32)
-            tensors[f"{ep}.gate_proj.weight"] = gate
-            tensors[f"{ep}.up_proj.weight"] = up
-            tensors[f"{ep}.down_proj.weight"] = down
+    # Shared experts under layer 0 only (engine uses a global expert table)
+    for e in range(n_experts):
+        ep = f"model.layers.0.mlp.experts.{e}"
+        gate = np.zeros((inter, hidden), dtype=np.float32)
+        up = np.zeros((inter, hidden), dtype=np.float32)
+        down = np.zeros((hidden, inter), dtype=np.float32)
+        for i in range(inter):
+            for j in range(hidden):
+                gate[i, j] = 0.05 * np.sin(0.07 * (e + 1) * (i + 1) * (j + 1))
+                up[i, j] = 0.05 * np.cos(0.05 * (e + 1) * (i + 2) * (j + 1))
+        for i in range(hidden):
+            for j in range(inter):
+                down[i, j] = 0.04 * np.sin(0.03 * (e + 1) * (i + 1) * (j + 3))
+        gate += 0.001 * rng.standard_normal((inter, hidden), dtype=np.float32)
+        up += 0.001 * rng.standard_normal((inter, hidden), dtype=np.float32)
+        down += 0.001 * rng.standard_normal((hidden, inter), dtype=np.float32)
+        tensors[f"{ep}.gate_proj.weight"] = gate
+        tensors[f"{ep}.up_proj.weight"] = up
+        tensors[f"{ep}.down_proj.weight"] = down
 
     np.savez_compressed(out / "model.npz", **tensors)
 
-    # Optional safetensors if installed
     try:
         from safetensors.numpy import save_file
 
