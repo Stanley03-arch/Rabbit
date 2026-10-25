@@ -8,11 +8,11 @@
 #include <math.h>
 #include <time.h>
 
-int rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim);
+int  rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim);
+int  rabbit_layer_step(RabbitModel *m, float *hidden, int hidden_dim);
+void rabbit_attn_reset(void);
 
-/* Tokenizer API */
 int  rabbit_tokenize(const char *text, int *out_ids, int max_ids);
-void rabbit_detokenize_seq(const int *ids, int n, char *out, int out_size);
 int  rabbit_tokenizer_vocab(void);
 
 const char *rabbit_version(void) {
@@ -136,6 +136,7 @@ void rabbit_free(RabbitModel *model) {
     free(model->dense);
     rabbit_munmap_experts(model->expert_map, model->expert_map_size, model->expert_fd);
     rabbit_cache_free(model->cache);
+    rabbit_attn_reset();
     free(model);
 }
 
@@ -157,10 +158,8 @@ static void softmax(float *logits, int n) {
     }
 }
 
-static int sample_top_p(const float *probs, int n, float temperature, float top_p) {
-    /* Very simple sampling for the test model */
+static int sample_top_p(const float *probs, int n, float temperature) {
     if (temperature <= 0.0f) {
-        /* greedy */
         int best = 0;
         float best_p = probs[0];
         for (int i = 1; i < n; i++) {
@@ -172,7 +171,6 @@ static int sample_top_p(const float *probs, int n, float temperature, float top_
         return best;
     }
 
-    /* Apply temperature by re-weighting */
     float *tmp = (float *)malloc(sizeof(float) * n);
     if (!tmp) return 0;
 
@@ -185,7 +183,6 @@ static int sample_top_p(const float *probs, int n, float temperature, float top_
         for (int i = 0; i < n; i++) tmp[i] /= sum;
     }
 
-    /* Nucleus (top-p) approximation: just sample from full distribution for now */
     float r = (float)rand() / (float)RAND_MAX;
     float cdf = 0.0f;
     int chosen = n - 1;
@@ -198,15 +195,9 @@ static int sample_top_p(const float *probs, int n, float temperature, float top_
     }
 
     free(tmp);
-    (void)top_p;
     return chosen;
 }
 
-/*
- * Tiny "lm head": turn hidden state into logits over the byte vocab.
- * For the synthetic model we just use a deterministic projection
- * derived from the hidden vector. This is enough to drive the loop.
- */
 static void tiny_lm_head(const float *hidden, int hidden_dim, float *logits, int vocab) {
     for (int v = 0; v < vocab; v++) {
         float s = 0.0f;
@@ -219,7 +210,7 @@ static void tiny_lm_head(const float *hidden, int hidden_dim, float *logits, int
 static void generate(RabbitModel *m, const char *prompt, int max_new_tokens) {
     int dim = m->hidden_dim > 0 ? m->hidden_dim : 64;
     int vocab = m->vocab_size > 0 ? m->vocab_size : rabbit_tokenizer_vocab();
-    if (vocab > 256) vocab = 256;   /* byte-level for now */
+    if (vocab > 256) vocab = 256;
 
     float *hidden = (float *)calloc(dim, sizeof(float));
     float *logits = (float *)calloc(vocab, sizeof(float));
@@ -230,7 +221,8 @@ static void generate(RabbitModel *m, const char *prompt, int max_new_tokens) {
         return;
     }
 
-    /* Encode prompt */
+    rabbit_attn_reset();
+
     int n_tokens = rabbit_tokenize(prompt, tokens, 512);
     if (n_tokens <= 0) {
         printf("Rabbit: (empty prompt)\n\n");
@@ -238,40 +230,40 @@ static void generate(RabbitModel *m, const char *prompt, int max_new_tokens) {
         return;
     }
 
-    /* Seed hidden state from prompt bytes */
-    for (int i = 0; i < n_tokens && i < dim; i++)
-        hidden[i % dim] += ((float)tokens[i] - 64.0f) / 64.0f;
+    /* Prefill: feed prompt tokens through full layers */
+    for (int t = 0; t < n_tokens; t++) {
+        for (int i = 0; i < dim; i++)
+            hidden[i] *= 0.9f;
+        hidden[tokens[t] % dim] += ((float)tokens[t] - 64.0f) / 64.0f;
 
-    /* Run MoE layers on the prompt representation */
-    for (int layer = 0; layer < m->n_layers; layer++)
-        rabbit_moe_step(m, hidden, dim);
+        for (int layer = 0; layer < m->n_layers; layer++)
+            rabbit_layer_step(m, hidden, dim);
+    }
 
     printf("Rabbit: ");
     fflush(stdout);
 
-    /* Generate new tokens */
     for (int t = 0; t < max_new_tokens; t++) {
         tiny_lm_head(hidden, dim, logits, vocab);
         softmax(logits, vocab);
 
-        int next = sample_top_p(logits, vocab, 0.9f, 0.9f);
+        int next = sample_top_p(logits, vocab, 0.85f);
 
-        /* Print printable characters, skip pure control bytes */
         if (next >= 32 && next < 127)
             putchar((char)next);
         else if (next == '\n')
             putchar('\n');
         else
             putchar('.');
-
         fflush(stdout);
 
-        /* Feed token back into hidden state and run one MoE step */
+        /* Decode step */
         for (int i = 0; i < dim; i++)
-            hidden[i] *= 0.95f;   /* light decay */
+            hidden[i] *= 0.92f;
         hidden[next % dim] += ((float)next - 64.0f) / 64.0f;
 
-        rabbit_moe_step(m, hidden, dim);
+        for (int layer = 0; layer < m->n_layers; layer++)
+            rabbit_layer_step(m, hidden, dim);
 
         tokens[n_tokens++] = next;
     }
@@ -294,7 +286,7 @@ rabbit_status rabbit_chat(RabbitModel *model) {
     rabbit_print_info(model);
     printf("========================================\n\n");
 
-    printf("Generation loop is active (byte-level tokenizer + sampling).\n");
+    printf("Full layer path active: Attention → Dense FFN → MoE.\n");
     printf("Type a message (or 'quit'):\n\n");
 
     char line[1024];
@@ -314,7 +306,7 @@ rabbit_status rabbit_chat(RabbitModel *model) {
         if (line[0] == 0)
             continue;
 
-        generate(model, line, 48);   /* generate up to 48 new bytes */
+        generate(model, line, 64);
     }
 
     return RABBIT_OK;

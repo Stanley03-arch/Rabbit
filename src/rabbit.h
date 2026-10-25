@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-#define RABBIT_VERSION "0.1.3-dev"
+#define RABBIT_VERSION "0.1.4-dev"
 #define RABBIT_MAGIC   "RABBIT01"
 #define RABBIT_MAX_CACHE_SLOTS 8
 
@@ -92,11 +92,15 @@ const void  *rabbit_expert_ptr(const RabbitModel *m, int expert_id);
 const void  *rabbit_fetch_expert(RabbitModel *m, int expert_id, int promote);
 int          rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim);
 
+/* Attention + full layer */
+void         rabbit_attn_reset(void);
+int          rabbit_layer_step(RabbitModel *m, float *hidden, int hidden_dim);
+
 /* Quant helpers */
 void rabbit_dequant_int8(const int8_t *src, float *dst, int n, float scale);
 void rabbit_dequant_int4(const uint8_t *src, float *dst, int n, float scale);
 
-/* Tokenizer (byte-level for now) */
+/* Tokenizer */
 int  rabbit_tokenize(const char *text, int *out_ids, int max_ids);
 void rabbit_detokenize(int id, char *out, int out_size);
 void rabbit_detokenize_seq(const int *ids, int n, char *out, int out_size);
