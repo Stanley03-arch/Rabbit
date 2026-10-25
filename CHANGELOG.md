@@ -9,6 +9,12 @@
   - `GET /v1/models`, `/v1/stats`, `/health`
 - Dashboard metrics from `rabbit stats` + Memory panel
 
+### Added (Phase D start — quality spine)
+- `rabbit-ref-v2` frozen architecture (RMSNorm, RoPE, SwiGLU, linear router)
+- `tools/create_ref_v2.py`, `tools/ref_forward_v2.py`
+- `make ref-v2` / `make parity-v2` (NumPy oracle self-check)
+- Design doc: `docs/PHASE_D.md`
+
 ## [0.3.1] - 2026-10-25
 
 ### Added (Phase B continued)
