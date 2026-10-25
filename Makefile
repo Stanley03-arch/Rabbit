@@ -14,7 +14,7 @@ TARGET = rabbit
 TEST_TOOL = tools/create_test_model
 TEST_BIN = tests/test_quant
 
-.PHONY: all clean debug test-model demo-model ref-model ref-v2 smoke test parity parity-v2 check
+.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf smoke test parity parity-v2 m2 check
 
 all: $(TARGET)
 
@@ -45,6 +45,12 @@ ref-v2:
 	@mkdir -p models
 	python3 tools/create_ref_v2.py --out models/ref-v2.rabbit --seed 2
 
+micro-hf:
+	@mkdir -p models
+	python3 tools/create_hf_micro_moe.py --out-dir models/hf_micro_moe --seed 3
+	python3 tools/convert_hf_to_rabbit.py --model-dir models/hf_micro_moe \
+		--out models/micro-hf-v2.rabbit --layout v2 --quant 8
+
 demo-model:
 	@mkdir -p models
 	python3 tools/convert_hf_to_rabbit.py --demo --out models/demo-moe.rabbit \
@@ -56,13 +62,16 @@ parity: $(TARGET) ref-model
 parity-v2: $(TARGET) ref-v2
 	python3 tests/test_parity_ref_v2.py
 
+m2: $(TARGET) micro-hf
+	python3 tests/test_m2_micro_hf.py
+
 smoke: $(TARGET) test-model
 	@printf 'hello\nquit\n' | ./$(TARGET) chat --model models/tiny-test.rabbit \
 		--tokens 16 --temp 0.5 >/tmp/rabbit-smoke.out 2>/tmp/rabbit-smoke.err || true
 	@grep -q "Rabbit" /tmp/rabbit-smoke.out /tmp/rabbit-smoke.err
 	@echo "smoke: ok"
 
-check: test smoke parity parity-v2
+check: test smoke parity parity-v2 m2
 	@echo "check: all passed"
 
 debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
