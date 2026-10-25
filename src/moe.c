@@ -34,6 +34,13 @@ static void gemv_int4(const uint8_t *W, float scale, const float *x, float *y,
     }
 }
 
+static size_t packed_bytes(int quant, int rows, int cols) {
+    size_t n = (size_t)rows * (size_t)cols;
+    if (quant == 4)
+        return (n + 1) / 2;
+    return n; /* int8 */
+}
+
 static void select_top_k(const float *scores, int n, int k, int *out_ids, float *out_weights) {
     for (int i = 0; i < k; i++) {
         out_ids[i] = -1;
@@ -90,12 +97,9 @@ const void *rabbit_fetch_expert(RabbitModel *m, int expert_id, int promote) {
     return ptr;
 }
 
-/* Apply one expert: h := h + 0.05 * weight * scale * (W @ h)
- * Uses a temporary buffer so matmul reads the original hidden state. */
-static void apply_expert(const RabbitModel *m, const void *expert_data,
-                         float *hidden, int hidden_dim, float weight) {
-    if (!expert_data || !hidden || hidden_dim <= 0) return;
-
+/* Square legacy path (Phase A / ref-v1). */
+static void apply_expert_square(const RabbitModel *m, const void *expert_data,
+                                float *hidden, int hidden_dim, float weight) {
     float *delta = (float *)calloc((size_t)hidden_dim, sizeof(float));
     if (!delta) return;
 
@@ -127,19 +131,88 @@ static void apply_expert(const RabbitModel *m, const void *expert_data,
         else if (size >= need)
             gemv_int8((const int8_t *)bytes, 1.0f / 127.0f, hidden, delta,
                       hidden_dim, hidden_dim, w);
-        else {
-            int usable = (int)(size < (size_t)hidden_dim ? size : (size_t)hidden_dim);
-            for (int i = 0; i < usable; i++) {
-                float v = ((float)bytes[i] - 128.0f) / 128.0f;
-                delta[i] = weight * v * 0.1f;
-            }
-        }
     }
 
     for (int i = 0; i < hidden_dim; i++)
         hidden[i] += delta[i];
-
     free(delta);
+}
+
+/* Phase B SwiGLU: gate/up/down with intermediate = expert_dim. */
+static int apply_expert_swiglu(const RabbitModel *m, const void *expert_data,
+                               float *hidden, int hidden_dim, float weight) {
+    int inter = (int)m->hdr.expert_dim;
+    if (inter <= hidden_dim)
+        inter = hidden_dim * 2;
+    int quant = m->hdr.expert_quant ? (int)m->hdr.expert_quant : 8;
+
+    size_t gate_bytes = packed_bytes(quant, inter, hidden_dim);
+    size_t up_bytes = gate_bytes;
+    size_t down_bytes = packed_bytes(quant, hidden_dim, inter);
+    size_t need = 12 + gate_bytes + up_bytes + down_bytes; /* 3 × float32 scale */
+
+    if (m->expert_size < need)
+        return -1;
+
+    const uint8_t *p = (const uint8_t *)expert_data;
+    float scale_gate, scale_up, scale_down;
+    memcpy(&scale_gate, p, 4); p += 4;
+    const uint8_t *W_gate = p; p += gate_bytes;
+    memcpy(&scale_up, p, 4); p += 4;
+    const uint8_t *W_up = p; p += up_bytes;
+    memcpy(&scale_down, p, 4); p += 4;
+    const uint8_t *W_down = p;
+
+    if (!(scale_gate > 0.0f) || !isfinite(scale_gate)) scale_gate = 1.0f / 127.0f;
+    if (!(scale_up > 0.0f) || !isfinite(scale_up)) scale_up = 1.0f / 127.0f;
+    if (!(scale_down > 0.0f) || !isfinite(scale_down)) scale_down = 1.0f / 127.0f;
+
+    float *gate = (float *)calloc((size_t)inter, sizeof(float));
+    float *up = (float *)calloc((size_t)inter, sizeof(float));
+    float *mid = (float *)calloc((size_t)inter, sizeof(float));
+    float *delta = (float *)calloc((size_t)hidden_dim, sizeof(float));
+    if (!gate || !up || !mid || !delta) {
+        free(gate); free(up); free(mid); free(delta);
+        return -1;
+    }
+
+    if (quant == 4) {
+        gemv_int4(W_gate, scale_gate, hidden, gate, inter, hidden_dim, 1.0f);
+        gemv_int4(W_up, scale_up, hidden, up, inter, hidden_dim, 1.0f);
+    } else {
+        gemv_int8((const int8_t *)W_gate, scale_gate, hidden, gate, inter, hidden_dim, 1.0f);
+        gemv_int8((const int8_t *)W_up, scale_up, hidden, up, inter, hidden_dim, 1.0f);
+    }
+
+    /* silu(gate) * up */
+    for (int i = 0; i < inter; i++) {
+        float g = gate[i];
+        float silu = g / (1.0f + expf(-g));
+        mid[i] = silu * up[i];
+    }
+
+    if (quant == 4)
+        gemv_int4(W_down, scale_down, mid, delta, hidden_dim, inter, weight);
+    else
+        gemv_int8((const int8_t *)W_down, scale_down, mid, delta, hidden_dim, inter, weight);
+
+    for (int i = 0; i < hidden_dim; i++)
+        hidden[i] += delta[i];
+
+    free(gate); free(up); free(mid); free(delta);
+    return 0;
+}
+
+static void apply_expert(const RabbitModel *m, const void *expert_data,
+                         float *hidden, int hidden_dim, float weight) {
+    if (!expert_data || !hidden || hidden_dim <= 0) return;
+
+    int inter = (int)m->hdr.expert_dim;
+    if (inter > hidden_dim) {
+        if (apply_expert_swiglu(m, expert_data, hidden, hidden_dim, weight) == 0)
+            return;
+    }
+    apply_expert_square(m, expert_data, hidden, hidden_dim, weight);
 }
 
 int rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim) {
