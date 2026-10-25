@@ -2,28 +2,20 @@
 
 ## [0.4.1] - 2026-10-25
 
-### Added (Phase D — C side)
-- `src/forward_v2.c` — faithful ref-v2 forward
-- `rabbit probe-v2` + `make parity-v2` (C vs NumPy)
-- CI runs `parity-v2`
-- Chat auto-uses ref-v2 kernels when model matches (`ref-v2` / float32 dense layout)
+### Phase D M1
+- Faithful `ref-v2` C forward + `probe-v2` + `parity-v2` (CI)
+- Chat auto-selects ref-v2 path
+
+### Phase D M2
+- `--layout v2` HF conversion (exact dense + gate/up/down, no square crop)
+- `tools/create_hf_micro_moe.py` offline Qwen3-MoE-named fixture
+- `make micro-hf` / `make m2` + CI
 
 ## [0.4.0] - 2026-10-25
 
-### Added (Phase C)
-- `rabbit stats`, OpenAI API + SSE, dashboard engine metrics
+- OpenAI API + SSE, `rabbit stats`, dashboard metrics
+- Phase D design + NumPy oracle start
 
-### Added (Phase D start)
-- `rabbit-ref-v2` generator + NumPy oracle
+## [0.3.x] - 2026-10-25
 
-## [0.3.1] - 2026-10-25
-
-- Memory budget + multi-head RoPE attention
-
-## [0.3.0] - 2026-10-25
-
-- SwiGLU expert path; basic RoPE
-
-## [0.2.5] – [0.2.3] - 2026-10-25
-
-- Phase A parity, tests, CI
+- Memory budget, multi-head RoPE, SwiGLU path
