@@ -1,20 +1,10 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include "rabbit.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-
-/*
- * Tokenizer layer for Rabbit.
- *
- * Modes:
- *   1. Byte-level (default) — always available, vocab 256
- *   2. Simple whitespace + punctuation wordpiece-style
- *      (good enough for demos until a full SentencePiece loader lands)
- *
- * A real .model / vocab.json loader can be added later without changing
- * the public API.
- */
 
 #define RABBIT_BYTE_VOCAB 256
 #define RABBIT_MAX_WORD_VOCAB 4096
@@ -27,8 +17,6 @@ typedef enum {
 typedef struct {
     TokMode mode;
     int     vocab_size;
-
-    /* Optional word list for TOK_WORD mode */
     char  **words;
     int     n_words;
 } RabbitTokenizer;
@@ -40,6 +28,13 @@ static RabbitTokenizer g_tok = {
     .n_words = 0
 };
 
+static char *xstrdup(const char *s) {
+    size_t n = strlen(s) + 1;
+    char *p = (char *)malloc(n);
+    if (p) memcpy(p, s, n);
+    return p;
+}
+
 int rabbit_tokenizer_vocab(void) {
     return g_tok.vocab_size;
 }
@@ -49,23 +44,25 @@ void rabbit_tokenizer_set_byte_mode(void) {
     g_tok.vocab_size = RABBIT_BYTE_VOCAB;
 }
 
-/* Load a simple one-word-per-line vocab file (optional) */
 int rabbit_tokenizer_load_vocab(const char *path) {
     FILE *fp = fopen(path, "r");
     if (!fp) return -1;
 
-    char line[256];
-    char **words = calloc(RABBIT_MAX_WORD_VOCAB, sizeof(char *));
-    if (!words) { fclose(fp); return -1; }
+    char **words = (char **)calloc(RABBIT_MAX_WORD_VOCAB, sizeof(char *));
+    if (!words) {
+        fclose(fp);
+        return -1;
+    }
 
+    char line[256];
     int n = 0;
     while (fgets(line, sizeof(line), fp) && n < RABBIT_MAX_WORD_VOCAB) {
         size_t len = strlen(line);
-        while (len && (line[len-1] == '\n' || line[len-1] == '\r')) {
+        while (len && (line[len - 1] == '\n' || line[len - 1] == '\r'))
             line[--len] = 0;
-        }
         if (len == 0) continue;
-        words[n] = strdup(line);
+
+        words[n] = xstrdup(line);
         if (!words[n]) break;
         n++;
     }
@@ -76,15 +73,14 @@ int rabbit_tokenizer_load_vocab(const char *path) {
         return -1;
     }
 
-    /* Free previous */
-    for (int i = 0; i < g_tok.n_words; i++) free(g_tok.words[i]);
+    for (int i = 0; i < g_tok.n_words; i++)
+        free(g_tok.words[i]);
     free(g_tok.words);
 
     g_tok.words = words;
     g_tok.n_words = n;
     g_tok.mode = TOK_WORD;
-    g_tok.vocab_size = n + 4;  /* reserve a few special ids */
-    printf("[tokenizer] loaded %d words from %s\n", n, path);
+    g_tok.vocab_size = n + 4;
     return 0;
 }
 
@@ -93,7 +89,7 @@ static int find_word(const char *w) {
         if (strcmp(g_tok.words[i], w) == 0)
             return i;
     }
-    return -1;  /* unknown */
+    return -1;
 }
 
 int rabbit_tokenize(const char *text, int *out_ids, int max_ids) {
@@ -109,7 +105,6 @@ int rabbit_tokenize(const char *text, int *out_ids, int max_ids) {
         return n;
     }
 
-    /* Word mode: split on whitespace / punctuation */
     int n = 0;
     const char *p = text;
     char buf[128];
@@ -119,19 +114,17 @@ int rabbit_tokenize(const char *text, int *out_ids, int max_ids) {
         if (!*p) break;
 
         if (ispunct((unsigned char)*p)) {
-            buf[0] = *p;
+            buf[0] = *p++;
             buf[1] = 0;
-            p++;
         } else {
             int i = 0;
-            while (*p && !isspace((unsigned char)*p) && !ispunct((unsigned char)*p) && i < 126) {
+            while (*p && !isspace((unsigned char)*p) && !ispunct((unsigned char)*p) && i < 126)
                 buf[i++] = *p++;
-            }
             buf[i] = 0;
         }
 
         int id = find_word(buf);
-        if (id < 0) id = g_tok.n_words;  /* UNK */
+        if (id < 0) id = g_tok.n_words; /* UNK */
         out_ids[n++] = id;
     }
     return n;
@@ -142,7 +135,8 @@ void rabbit_detokenize(int id, char *out, int out_size) {
 
     if (g_tok.mode == TOK_BYTE) {
         if (id < 0 || id >= RABBIT_BYTE_VOCAB) {
-            out[0] = '?'; out[1] = 0;
+            out[0] = '?';
+            out[1] = 0;
             return;
         }
         out[0] = (char)id;
@@ -151,10 +145,10 @@ void rabbit_detokenize(int id, char *out, int out_size) {
     }
 
     if (id >= 0 && id < g_tok.n_words) {
-        strncpy(out, g_tok.words[id], out_size - 1);
+        strncpy(out, g_tok.words[id], (size_t)out_size - 1);
         out[out_size - 1] = 0;
     } else {
-        strncpy(out, "<unk>", out_size - 1);
+        strncpy(out, "<unk>", (size_t)out_size - 1);
         out[out_size - 1] = 0;
     }
 }
@@ -166,14 +160,14 @@ void rabbit_detokenize_seq(const int *ids, int n, char *out, int out_size) {
 
     for (int i = 0; i < n && pos < out_size - 1; i++) {
         char tmp[128];
-        rabbit_detokenize(ids[i], tmp, sizeof(tmp));
+        rabbit_detokenize(ids[i], tmp, (int)sizeof(tmp));
         int len = (int)strlen(tmp);
         if (pos + len + 1 >= out_size) break;
 
-        if (g_tok.mode == TOK_WORD && i > 0 && tmp[0] != '\0' && !ispunct((unsigned char)tmp[0])) {
+        if (g_tok.mode == TOK_WORD && i > 0 && tmp[0] && !ispunct((unsigned char)tmp[0]))
             out[pos++] = ' ';
-        }
-        memcpy(out + pos, tmp, len);
+
+        memcpy(out + pos, tmp, (size_t)len);
         pos += len;
         out[pos] = 0;
     }

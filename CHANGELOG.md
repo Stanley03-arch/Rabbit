@@ -1,34 +1,26 @@
 # Changelog
 
-## [0.2.2] - 2026-10-25
+## [0.2.3] - 2026-10-25
 
 ### Added
-- Expert cache hit/miss/insert statistics printed on shutdown
-- `make smoke` non-interactive pipeline check
-- `.gitignore` for build artifacts and local model files
+- Unit tests (`make test`) for int4/int8 quant and byte tokenizer
+- GitHub Actions CI (build, unit tests, smoke)
+- ROADMAP.md with explicit maturity and non-goals
 
-### Changed
-- More robust expert region mapping (full-file mmap)
-- Version set to 0.2.2
+### Fixed
+- Compiler warnings in quant pack path
+- `strdup` portability in tokenizer (local `xstrdup`)
+- Removed unused helpers in MoE path
+- Safer scale handling in expert apply
+
+## [0.2.2] - 2026-10-25
+
+- Cache statistics, smoke target, mmap base pointer fix, dashboard UI
 
 ## [0.2.1] - 2026-10-25
 
-### Added
-- CLI flags: `--vocab`, `--tokens`, `--temp`, `--help`
-- `rabbit_chat_ex()` for configurable generation
-- Sample word vocabulary
-- Grouped attention and gated dense residual
-- CONTRIBUTING.md, structured docs
+- CLI flags, docs polish, grouped attention
 
 ## [0.2.0] - 2026-10-25
 
-### Added
-- int4 pack/dequant and GEMV path
-- Expert layout `[scale][packed weights]`
-- Hugging Face converter with `--quant` / `--layout`
-- Byte and word tokenizer APIs
-
-## [0.1.x] - 2026-10-25
-
-### Added
-- Initial engine: load, mmap, LRU, MoE, attention, chat loop
+- int4 path, HF converter, tokenizer APIs

@@ -4,31 +4,22 @@
 #include <string.h>
 #include <math.h>
 
-/* ---------- math ---------- */
-
-static float dot_f32(const float *a, const float *b, int n) {
-    float s = 0.0f;
-    for (int i = 0; i < n; i++) s += a[i] * b[i];
-    return s;
-}
-
 static void gemv_int8(const int8_t *W, float scale, const float *x, float *y,
                       int out_dim, int in_dim, float weight) {
     for (int o = 0; o < out_dim; o++) {
         float sum = 0.0f;
-        const int8_t *row = W + o * in_dim;
+        const int8_t *row = W + (size_t)o * in_dim;
         for (int i = 0; i < in_dim; i++)
             sum += (float)row[i] * x[i];
         y[o] += weight * sum * scale;
     }
 }
 
-/* int4 GEMV: W is packed (two weights per byte), row-major */
 static void gemv_int4(const uint8_t *W, float scale, const float *x, float *y,
                       int out_dim, int in_dim, float weight) {
     int in_bytes = (in_dim + 1) / 2;
     for (int o = 0; o < out_dim; o++) {
-        const uint8_t *row = W + o * in_bytes;
+        const uint8_t *row = W + (size_t)o * in_bytes;
         float sum = 0.0f;
         for (int i = 0; i < in_dim; i += 2) {
             uint8_t b = row[i / 2];
@@ -43,13 +34,12 @@ static void gemv_int4(const uint8_t *W, float scale, const float *x, float *y,
     }
 }
 
-/* ---------- top-k ---------- */
-
 static void select_top_k(const float *scores, int n, int k, int *out_ids, float *out_weights) {
     for (int i = 0; i < k; i++) {
         out_ids[i] = -1;
         out_weights[i] = -1e30f;
     }
+
     for (int e = 0; e < n; e++) {
         float s = scores[e];
         for (int i = 0; i < k; i++) {
@@ -64,48 +54,42 @@ static void select_top_k(const float *scores, int n, int k, int *out_ids, float 
             }
         }
     }
+
     float max_w = out_weights[0];
     for (int i = 1; i < k; i++)
         if (out_weights[i] > max_w) max_w = out_weights[i];
+
     float sum = 0.0f;
     for (int i = 0; i < k; i++) {
         out_weights[i] = expf(out_weights[i] - max_w);
         sum += out_weights[i];
     }
-    if (sum > 0.0f)
-        for (int i = 0; i < k; i++) out_weights[i] /= sum;
+    if (sum > 0.0f) {
+        for (int i = 0; i < k; i++)
+            out_weights[i] /= sum;
+    }
 }
 
-/* ---------- expert fetch ---------- */
-
 const void *rabbit_fetch_expert(RabbitModel *m, int expert_id, int promote) {
-    if (!m || expert_id < 0 || expert_id >= m->num_experts) return NULL;
+    if (!m || expert_id < 0 || expert_id >= m->num_experts)
+        return NULL;
 
     void *cached = rabbit_cache_get(m->cache, expert_id);
-    if (cached) return cached;
+    if (cached)
+        return cached;
 
     const void *ptr = rabbit_expert_ptr(m, expert_id);
-    if (!ptr) return NULL;
+    if (!ptr)
+        return NULL;
 
     if (promote && m->cache) {
         void *ram = rabbit_cache_put(m->cache, expert_id, ptr);
-        if (ram) return ram;
+        if (ram)
+            return ram;
     }
     return ptr;
 }
 
-/*
- * Expert layout contract (must match the converter):
- *
- *   [float32 scale (4 bytes)]
- *   [packed weight matrix]
- *
- * quant == 8  → int8 matrix  [out_dim x in_dim]
- * quant == 4  → int4 matrix  [out_dim x ceil(in_dim/2) bytes per row]
- *
- * For the synthetic / demo models we still accept raw int8 matrices
- * without a scale header (backward compatible).
- */
 static void apply_expert(const RabbitModel *m, const void *expert_data,
                          float *hidden, int hidden_dim, float weight) {
     if (!expert_data || !hidden || hidden_dim <= 0) return;
@@ -114,21 +98,23 @@ static void apply_expert(const RabbitModel *m, const void *expert_data,
     size_t size = m->expert_size;
     int quant = m->hdr.expert_quant ? (int)m->hdr.expert_quant : 8;
 
-    /* Try layout with leading scale */
     if (size >= 4 + (size_t)hidden_dim) {
         float scale;
         memcpy(&scale, bytes, sizeof(float));
+        if (!(scale > 0.0f) || !isfinite(scale))
+            scale = 1.0f / 127.0f;
+
         const uint8_t *W = bytes + 4;
         size_t payload = size - 4;
 
         if (quant == 4) {
-            size_t need = (size_t)hidden_dim * ((hidden_dim + 1) / 2);
+            size_t need = (size_t)hidden_dim * ((size_t)(hidden_dim + 1) / 2);
             if (payload >= need) {
                 gemv_int4(W, scale, hidden, hidden, hidden_dim, hidden_dim, weight * 0.05f);
                 return;
             }
         } else {
-            size_t need = (size_t)hidden_dim * hidden_dim;
+            size_t need = (size_t)hidden_dim * (size_t)hidden_dim;
             if (payload >= need) {
                 gemv_int8((const int8_t *)W, scale, hidden, hidden,
                           hidden_dim, hidden_dim, weight * 0.05f);
@@ -137,15 +123,13 @@ static void apply_expert(const RabbitModel *m, const void *expert_data,
         }
     }
 
-    /* Backward-compatible: raw int8 matrix, no scale header */
-    size_t need = (size_t)hidden_dim * hidden_dim;
+    size_t need = (size_t)hidden_dim * (size_t)hidden_dim;
     if (size >= need) {
         gemv_int8((const int8_t *)bytes, 1.0f / 127.0f, hidden, hidden,
                   hidden_dim, hidden_dim, weight * 0.05f);
         return;
     }
 
-    /* Last resort bias-style update */
     int usable = (int)(size < (size_t)hidden_dim ? size : (size_t)hidden_dim);
     for (int i = 0; i < usable; i++) {
         float v = ((float)bytes[i] - 128.0f) / 128.0f;
@@ -162,7 +146,7 @@ int rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim) {
     if (k > m->num_experts) k = m->num_experts;
     if (k > 8) k = 8;
 
-    float *scores = (float *)malloc(sizeof(float) * m->num_experts);
+    float *scores = (float *)malloc(sizeof(float) * (size_t)m->num_experts);
     if (!scores) return -1;
 
     for (int e = 0; e < m->num_experts; e++) {
@@ -184,8 +168,4 @@ int rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim) {
         apply_expert(m, expert, hidden, hidden_dim, weights[i]);
     }
     return 0;
-}
-
-void rabbit_moe_forward_stub(RabbitModel *model) {
-    (void)model;
 }
