@@ -8,10 +8,8 @@
 #include <math.h>
 #include <time.h>
 
-int  rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim);
 int  rabbit_layer_step(RabbitModel *m, float *hidden, int hidden_dim);
 void rabbit_attn_reset(void);
-
 int  rabbit_tokenize(const char *text, int *out_ids, int max_ids);
 int  rabbit_tokenizer_vocab(void);
 void rabbit_detokenize(int id, char *out, int out_size);
@@ -41,10 +39,12 @@ static void print_cache_stats(const RabbitModel *m) {
     rabbit_cache_stats(m->cache, &hits, &misses, &inserts);
     uint64_t total = hits + misses;
     double rate = total ? (100.0 * (double)hits / (double)total) : 0.0;
+    printf("\n----------------------------------------\n");
     printf("  cache hits         %llu\n", (unsigned long long)hits);
     printf("  cache misses       %llu\n", (unsigned long long)misses);
     printf("  cache inserts      %llu\n", (unsigned long long)inserts);
     printf("  cache hit rate     %.1f%%\n", rate);
+    printf("----------------------------------------\n");
 }
 
 RabbitModel *rabbit_load(const char *path) {
@@ -109,23 +109,25 @@ RabbitModel *rabbit_load(const char *path) {
             return NULL;
         }
     }
+    close(fd);
 
-    off_t expert_offset = (off_t)(sizeof(RabbitHeader) + hdr.dense_size);
-    struct stat st;
-    if (fstat(fd, &st) == 0) {
-        size_t remaining = (size_t)(st.st_size - expert_offset);
-        if (remaining > 0 && hdr.n_experts > 0) {
-            close(fd);
-            fd = -1;
-            if (rabbit_mmap_experts_region(path, expert_offset, remaining,
-                                           &m->expert_map, &m->expert_fd) == 0) {
-                m->expert_map_size = remaining;
-            } else {
-                fprintf(stderr, "warning: could not memory-map expert region\n");
-            }
+    /* Map entire file; expert_map points at the expert region. */
+    void *base = NULL;
+    size_t map_size = 0;
+    int map_fd = -1;
+    if (rabbit_mmap_file(path, &base, &map_size, &map_fd) == 0) {
+        size_t expert_offset = sizeof(RabbitHeader) + (size_t)hdr.dense_size;
+        if (expert_offset < map_size && hdr.n_experts > 0) {
+            m->expert_map_base = base;
+            m->expert_map_size = map_size;
+            m->expert_fd = map_fd;
+            m->expert_map = (uint8_t *)base + expert_offset;
+        } else {
+            rabbit_munmap_file(base, map_size, map_fd);
         }
+    } else {
+        fprintf(stderr, "warning: could not memory-map model file\n");
     }
-    if (fd >= 0) close(fd);
 
     m->cache = rabbit_cache_create(4);
     if (m->cache)
@@ -138,7 +140,7 @@ void rabbit_free(RabbitModel *model) {
     if (!model) return;
     print_cache_stats(model);
     free(model->dense);
-    rabbit_munmap_experts(model->expert_map, model->expert_map_size, model->expert_fd);
+    rabbit_munmap_file(model->expert_map_base, model->expert_map_size, model->expert_fd);
     rabbit_cache_free(model->cache);
     rabbit_attn_reset();
     free(model);

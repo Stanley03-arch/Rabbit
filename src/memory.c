@@ -7,13 +7,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-/*
- * Memory management for Rabbit.
- *
- * Dense weights: allocated in RAM by the loader.
- * Experts: file-backed mmap; small LRU holds hot copies in RAM.
- */
-
 typedef struct {
     int   expert_id;
     void *data;
@@ -37,7 +30,6 @@ ExpertCache *rabbit_cache_create(int n_slots) {
 
     ExpertCache *c = calloc(1, sizeof(ExpertCache));
     if (!c) return NULL;
-
     c->n_slots = n_slots;
     for (int i = 0; i < n_slots; i++)
         c->slots[i].expert_id = -1;
@@ -110,34 +102,7 @@ void *rabbit_cache_put(ExpertCache *c, int expert_id, const void *src) {
     return c->slots[victim].data;
 }
 
-/*
- * Map the expert region. Implementation maps the whole file (page-safe)
- * and returns a pointer to the expert section start. The corresponding
- * munmap uses the stored base/size on the model via rabbit_munmap_experts.
- *
- * For simplicity we map [offset, offset+length) by mapping the full file
- * and handing back (base + offset). rabbit_munmap_experts is only safe if
- * map points at the mmap base — so model.c should pass the base pointer.
- *
- * Contract used by model.c:
- *   map  = start of expert region (may be interior pointer)
- *   size = length of expert region
- *   fd   = open file descriptor
- *
- * On free we munmap the full file from a stored base. To avoid extra
- * fields, map the expert region only when offset is page-aligned; otherwise
- * map the entire file and set map to base+offset while size is full file
- * size — expert_ptr still indexes from map as region start.
- *
- * Practical approach: map entire file; return base+offset as expert_map;
- * store full size in map_size; on munmap, compute base by subtracting offset
- * — requires offset. Add static pairing: keep fd and always munmap full file
- * from lseek-based size.
- */
-
-int rabbit_mmap_experts_region(const char *path, off_t offset, size_t length,
-                               void **map, int *fd) {
-    (void)length;
+int rabbit_mmap_file(const char *path, void **base, size_t *size, int *fd) {
     *fd = open(path, O_RDONLY);
     if (*fd < 0) {
         perror("open");
@@ -152,88 +117,23 @@ int rabbit_mmap_experts_region(const char *path, off_t offset, size_t length,
         return -1;
     }
 
-    if (offset < 0 || (size_t)offset > (size_t)st.st_size) {
-        fprintf(stderr, "error: invalid expert region offset\n");
-        close(*fd);
-        *fd = -1;
-        return -1;
-    }
-
-    void *base = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, *fd, 0);
-    if (base == MAP_FAILED) {
-        perror("mmap");
-        close(*fd);
-        *fd = -1;
-        *map = NULL;
-        return -1;
-    }
-
-    /* Return pointer to expert region; munmap needs the base.
-       We stash the file size in the high-level model as expert_map_size
-       for the *region length* for stats, but for munmap we need full size.
-       model.c currently does munmap(map, expert_map_size). That is wrong
-       if map is interior. Fix: return `base` and let expert_ptr add offset
-       stored on model. Cleaner: add offset field — avoid API break by
-       returning base and documenting that expert_ptr uses offset 0 from map
-       only when map is region start.
-
-       Final: return (uint8_t*)base + offset as map. On free, munmap from
-       (uint8_t*)map - offset with full file size. Store offset in a side
-       table keyed by pointer — too heavy.
-
-       Simplest correct approach for this codebase: map full file, set
-       *map = base + offset, and change munmap to always munmap full file
-       using fstat on fd before close. */
-    *map = (uint8_t *)base + (size_t)offset;
-    return 0;
-}
-
-int rabbit_mmap_experts(const char *path, void **map, size_t *size, int *fd) {
-    *fd = open(path, O_RDONLY);
-    if (*fd < 0) {
-        perror("open");
-        return -1;
-    }
-    struct stat st;
-    if (fstat(*fd, &st) != 0) {
-        close(*fd);
-        *fd = -1;
-        return -1;
-    }
     *size = (size_t)st.st_size;
-    *map = mmap(NULL, *size, PROT_READ, MAP_PRIVATE, *fd, 0);
-    if (*map == MAP_FAILED) {
+    *base = mmap(NULL, *size, PROT_READ, MAP_PRIVATE, *fd, 0);
+    if (*base == MAP_FAILED) {
         perror("mmap");
         close(*fd);
         *fd = -1;
-        *map = NULL;
+        *base = NULL;
         return -1;
     }
     return 0;
 }
 
-void rabbit_munmap_experts(void *map, size_t size, int fd) {
-    /* If we mapped the full file but exposed an interior pointer, recover base. */
-    if (fd >= 0 && map && map != MAP_FAILED) {
-        struct stat st;
-        if (fstat(fd, &st) == 0) {
-            /* Heuristic: if size < file size, map was interior; align down not knowable.
-               Always munmap from page-aligned address of map. POSIX requires addr page-aligned. */
-            uintptr_t addr = (uintptr_t)map;
-            long page = sysconf(_SC_PAGESIZE);
-            if (page < 1) page = 4096;
-            uintptr_t base = addr & ~(uintptr_t)(page - 1);
-            size_t full = (size_t)st.st_size;
-            /* unmap from base spanning enough to cover file mapping */
-            munmap((void *)base, full + (addr - base));
-            (void)size;
-        } else if (map && map != MAP_FAILED) {
-            munmap(map, size);
-        }
+void rabbit_munmap_file(void *base, size_t size, int fd) {
+    if (base && base != MAP_FAILED)
+        munmap(base, size);
+    if (fd >= 0)
         close(fd);
-    } else if (map && map != MAP_FAILED) {
-        munmap(map, size);
-    }
 }
 
 const void *rabbit_expert_ptr(const RabbitModel *m, int expert_id) {

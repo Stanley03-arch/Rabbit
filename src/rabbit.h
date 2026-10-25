@@ -54,8 +54,9 @@ struct RabbitModel {
     size_t  dense_size;
 
     int     expert_fd;
-    void   *expert_map;
-    size_t  expert_map_size;
+    void   *expert_map;       /* pointer to first expert record */
+    void   *expert_map_base;  /* mmap base (for munmap) */
+    size_t  expert_map_size;  /* full mmap length */
     size_t  expert_size;
     int     num_experts;
     int     experts_per_token;
@@ -82,10 +83,8 @@ void        *rabbit_cache_get(ExpertCache *c, int expert_id);
 void        *rabbit_cache_put(ExpertCache *c, int expert_id, const void *src);
 void         rabbit_cache_stats(const ExpertCache *c, uint64_t *hits, uint64_t *misses, uint64_t *inserts);
 
-int          rabbit_mmap_experts(const char *path, void **map, size_t *size, int *fd);
-int          rabbit_mmap_experts_region(const char *path, off_t offset, size_t length,
-                                        void **map, int *fd);
-void         rabbit_munmap_experts(void *map, size_t size, int fd);
+int          rabbit_mmap_file(const char *path, void **base, size_t *size, int *fd);
+void         rabbit_munmap_file(void *base, size_t size, int fd);
 const void  *rabbit_expert_ptr(const RabbitModel *m, int expert_id);
 
 const void *rabbit_fetch_expert(RabbitModel *m, int expert_id, int promote);
