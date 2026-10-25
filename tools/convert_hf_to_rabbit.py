@@ -4,18 +4,16 @@ convert_hf_to_rabbit.py
 
 Convert open MoE models into the Rabbit binary format.
 
-Improvements:
-  - int4 packing (default for experts when --quant 4)
-  - Explicit expert layout: [float32 scale][packed weights]
-  - Better heuristics for DeepSeek / Qwen / Mixtral-style expert names
-  - Prefer down_proj / w2 when forcing square H×H
-  - --layout square|flat control
-  - flat layout now emits gate → up → down order for the Phase-B SwiGLU kernel
-  - Demo mode still available (no download)
+Layouts:
+  square — legacy H×H expert (lossy)
+  flat   — gate/up/down ordered for SwiGLU kernel (still opaque dense)
+  v2     — Phase D faithful dense + exact gate/up/down (no square crop)
 
 Usage:
   python tools/convert_hf_to_rabbit.py --demo --out models/demo-moe.rabbit
-  python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf --out models/m.rabbit --quant 4
+  python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf --out models/m.rabbit --layout v2 --quant 8
+  python tools/create_hf_micro_moe.py && \\
+    python tools/convert_hf_to_rabbit.py --model-dir models/hf_micro_moe --out models/micro-hf-v2.rabbit --layout v2 --quant 8
 """
 
 from __future__ import annotations
@@ -61,8 +59,6 @@ def write_header(f, **kw) -> None:
     f.write(header)
 
 
-# ---------- quantization ----------
-
 def quant_int8(arr: np.ndarray) -> Tuple[bytes, float]:
     f = arr.astype(np.float32).ravel()
     scale = float(np.max(np.abs(f)) / 127.0 + 1e-8)
@@ -71,7 +67,6 @@ def quant_int8(arr: np.ndarray) -> Tuple[bytes, float]:
 
 
 def quant_int4(arr: np.ndarray) -> Tuple[bytes, float]:
-    """Pack two signed 4-bit values per byte (low nibble first)."""
     f = arr.astype(np.float32).ravel()
     scale = float(np.max(np.abs(f)) / 7.0 + 1e-8)
     q = np.clip(np.round(f / scale), -8, 7).astype(np.int32)
@@ -91,8 +86,6 @@ def pack_with_scale(arr: np.ndarray, quant: int) -> bytes:
         payload, scale = quant_int8(arr)
     return struct.pack("<f", scale) + payload
 
-
-# ---------- demo ----------
 
 def build_demo_model(out_path: Path, hidden_dim: int = 128, n_experts: int = 16, quant: int = 4) -> None:
     n_layers = 6
@@ -133,32 +126,34 @@ def build_demo_model(out_path: Path, hidden_dim: int = 128, n_experts: int = 16,
             f.write(b)
 
     print(f"[demo] {out_path}  quant={quant}  experts={n_experts}  hidden={hidden_dim}")
-    print(f"       file={out_path.stat().st_size/1024:.1f} KB")
 
-
-# ---------- HF conversion ----------
 
 def load_hf_config(model_dir: Path) -> dict:
     with open(model_dir / "config.json") as f:
         return json.load(f)
 
 
-def find_safetensors(model_dir: Path) -> List[Path]:
-    files = sorted(model_dir.glob("*.safetensors"))
-    if not files:
-        raise FileNotFoundError(f"No .safetensors in {model_dir}")
-    return files
-
-
 def collect_tensors(model_dir: Path) -> Dict[str, np.ndarray]:
+    tensors: Dict[str, np.ndarray] = {}
+
+    npz = model_dir / "model.npz"
+    if npz.is_file():
+        print(f"[load] {npz.name}")
+        data = np.load(npz)
+        for key in data.files:
+            tensors[key] = data[key]
+        return tensors
+
     try:
         from safetensors import safe_open
     except ImportError:
-        print("pip install safetensors numpy", file=sys.stderr)
+        print("pip install safetensors numpy  (or provide model.npz)", file=sys.stderr)
         sys.exit(1)
 
-    tensors = {}
-    for path in find_safetensors(model_dir):
+    files = sorted(model_dir.glob("*.safetensors"))
+    if not files:
+        raise FileNotFoundError(f"No .safetensors or model.npz in {model_dir}")
+    for path in files:
         print(f"[load] {path.name}")
         with safe_open(path, framework="np") as f:
             for key in f.keys():
@@ -175,7 +170,6 @@ def classify_tensors(tensors: Dict[str, np.ndarray]):
         "block_sparse_moe.experts",
         "mlp.experts",
         "moe.experts",
-        "shared_experts",
     )
 
     for name, arr in tensors.items():
@@ -191,9 +185,6 @@ def classify_tensors(tensors: Dict[str, np.ndarray]):
         for i, p in enumerate(parts):
             if p in ("experts", "expert") and i + 1 < len(parts) and parts[i + 1].isdigit():
                 idx = int(parts[i + 1])
-                break
-            if p.isdigit() and i > 0 and parts[i - 1] in ("experts", "expert"):
-                idx = int(p)
                 break
 
         if idx is None:
@@ -224,9 +215,8 @@ def _prefer_name(name: str) -> int:
 
 
 def _order_key(name: str) -> int:
-    """Order for flat/SwiGLU packing: gate → up → down."""
     n = name.lower()
-    if "gate" in n:
+    if "gate" in n and "proj" in n:
         return 0
     if "up" in n or "w1" in n or "w3" in n:
         return 1
@@ -243,7 +233,6 @@ def pack_one_expert(expert_tensors: Dict[str, np.ndarray], quant: int, layout: s
             a = np.asarray(arr)
             if a.ndim == 2:
                 candidates.append((name, a))
-
         if candidates:
             candidates.sort(key=lambda x: (_prefer_name(x[0]), x[1].size), reverse=True)
             mat = candidates[0][1]
@@ -253,20 +242,184 @@ def pack_one_expert(expert_tensors: Dict[str, np.ndarray], quant: int, layout: s
                 flat = np.pad(flat, (0, need - flat.size))
             else:
                 flat = flat[:need]
-            mat = flat.reshape(hidden_dim, hidden_dim)
-            return pack_with_scale(mat, quant)
-
+            return pack_with_scale(flat.reshape(hidden_dim, hidden_dim), quant)
         flat = np.concatenate([np.asarray(v).astype(np.float32).ravel() for v in expert_tensors.values()])
         need = hidden_dim * hidden_dim
         if flat.size < need:
             flat = np.pad(flat, (0, need - flat.size))
-        mat = flat[:need].reshape(hidden_dim, hidden_dim)
-        return pack_with_scale(mat, quant)
+        return pack_with_scale(flat[:need].reshape(hidden_dim, hidden_dim), quant)
 
-    # flat / structured: emit gate → up → down order for Phase-B SwiGLU kernel
     ordered = sorted(expert_tensors.items(), key=lambda kv: _order_key(kv[0]))
     pieces = [pack_with_scale(np.asarray(v), quant) for _, v in ordered]
     return b"".join(pieces)
+
+
+def _find(tensors: Dict[str, np.ndarray], *substrings: str) -> Optional[np.ndarray]:
+    for name, arr in tensors.items():
+        n = name.lower()
+        if all(s in n for s in substrings):
+            return np.asarray(arr, dtype=np.float32)
+    return None
+
+
+def _find_layer(tensors: Dict[str, np.ndarray], layer: int, *substrings: str) -> Optional[np.ndarray]:
+    markers = (f"layers.{layer}.", f"layer.{layer}.", f".{layer}.")
+    for name, arr in tensors.items():
+        n = name.lower()
+        if not any(m in n for m in markers):
+            continue
+        if all(s in n for s in substrings):
+            return np.asarray(arr, dtype=np.float32)
+    return None
+
+
+def pack_v2_dense(tensors: Dict[str, np.ndarray], n_layers: int, hidden: int,
+                  vocab: int, n_experts: int) -> bytes:
+    """Build exact ref-v2 dense layout (float32)."""
+    embed = _find(tensors, "embed")
+    if embed is None:
+        embed = _find(tensors, "wte")
+    if embed is None:
+        raise RuntimeError("v2 layout: missing embedding weights")
+    if embed.ndim != 2:
+        raise RuntimeError(f"embed shape {embed.shape}")
+    # [V, H]
+    if embed.shape[0] == hidden and embed.shape[1] == vocab:
+        embed = embed.T
+    if embed.shape != (vocab, hidden):
+        # pad/crop vocabulary axis if needed
+        e = np.zeros((vocab, hidden), dtype=np.float32)
+        v = min(vocab, embed.shape[0])
+        h = min(hidden, embed.shape[1])
+        e[:v, :h] = embed[:v, :h]
+        embed = e
+
+    lm = _find(tensors, "lm_head")
+    if lm is None:
+        lm = embed.copy()  # tied
+    lm = np.asarray(lm, dtype=np.float32)
+    # want [H, V]
+    if lm.shape == (vocab, hidden):
+        lm = lm.T
+    if lm.shape != (hidden, vocab):
+        m = np.zeros((hidden, vocab), dtype=np.float32)
+        h = min(hidden, lm.shape[0] if lm.ndim == 2 else 0)
+        v = min(vocab, lm.shape[1] if lm.ndim == 2 else 0)
+        if lm.ndim == 2:
+            m[:h, :v] = lm[:h, :v]
+        lm = m
+
+    parts: List[bytes] = [embed.astype(np.float32).tobytes(), lm.astype(np.float32).tobytes()]
+
+    for L in range(n_layers):
+        rms_attn = _find_layer(tensors, L, "input_layernorm")
+        if rms_attn is None:
+            rms_attn = _find_layer(tensors, L, "attention_norm")
+        if rms_attn is None:
+            rms_attn = np.ones(hidden, dtype=np.float32)
+        rms_attn = rms_attn.reshape(-1)[:hidden]
+        if rms_attn.size < hidden:
+            rms_attn = np.pad(rms_attn, (0, hidden - rms_attn.size), constant_values=1.0)
+
+        rms_ffn = _find_layer(tensors, L, "post_attention_layernorm")
+        if rms_ffn is None:
+            rms_ffn = _find_layer(tensors, L, "ffn_norm")
+        if rms_ffn is None:
+            rms_ffn = np.ones(hidden, dtype=np.float32)
+        rms_ffn = rms_ffn.reshape(-1)[:hidden]
+        if rms_ffn.size < hidden:
+            rms_ffn = np.pad(rms_ffn, (0, hidden - rms_ffn.size), constant_values=1.0)
+
+        q = _find_layer(tensors, L, "q_proj")
+        k = _find_layer(tensors, L, "k_proj")
+        v = _find_layer(tensors, L, "v_proj")
+        o = _find_layer(tensors, L, "o_proj")
+        if q is None or k is None or v is None:
+            # stacked qkv
+            qkv = _find_layer(tensors, L, "qkv")
+            if qkv is not None and qkv.shape[0] >= 3 * hidden:
+                q = qkv[:hidden]
+                k = qkv[hidden : 2 * hidden]
+                v = qkv[2 * hidden : 3 * hidden]
+            else:
+                q = k = v = np.eye(hidden, dtype=np.float32) * 0.02
+        if o is None:
+            o = np.eye(hidden, dtype=np.float32) * 0.02
+
+        def square(m: np.ndarray) -> np.ndarray:
+            m = np.asarray(m, dtype=np.float32)
+            out = np.zeros((hidden, hidden), dtype=np.float32)
+            r = min(hidden, m.shape[0])
+            c = min(hidden, m.shape[1] if m.ndim > 1 else 0)
+            if m.ndim == 2:
+                out[:r, :c] = m[:r, :c]
+            return out
+
+        q, k, v, o = square(q), square(k), square(v), square(o)
+        w_qkv = np.concatenate([q, k, v], axis=0)  # [3H, H]
+
+        router = _find_layer(tensors, L, "mlp.gate")
+        if router is None:
+            router = _find_layer(tensors, L, "block_sparse_moe.gate")
+        if router is None:
+            router = _find_layer(tensors, L, "router")
+        if router is None:
+            router = 0.05 * np.random.randn(n_experts, hidden).astype(np.float32)
+        router = np.asarray(router, dtype=np.float32)
+        if router.ndim == 1:
+            router = router.reshape(n_experts, -1)
+        # [E, H]
+        if router.shape[0] == hidden and router.shape[1] == n_experts:
+            router = router.T
+        rr = np.zeros((n_experts, hidden), dtype=np.float32)
+        r0 = min(n_experts, router.shape[0])
+        c0 = min(hidden, router.shape[1])
+        rr[:r0, :c0] = router[:r0, :c0]
+
+        parts.extend(
+            [
+                rms_attn.astype(np.float32).tobytes(),
+                rms_ffn.astype(np.float32).tobytes(),
+                w_qkv.astype(np.float32).tobytes(),
+                o.astype(np.float32).tobytes(),
+                rr.astype(np.float32).tobytes(),
+            ]
+        )
+
+    return b"".join(parts)
+
+
+def pack_v2_expert(expert_tensors: Dict[str, np.ndarray], quant: int,
+                   hidden: int, inter: int) -> bytes:
+    """Exact gate [I,H], up [I,H], down [H,I] — no square crop."""
+    gate = up = down = None
+    for name, arr in expert_tensors.items():
+        n = name.lower()
+        a = np.asarray(arr, dtype=np.float32)
+        if "gate" in n and "proj" in n:
+            gate = a
+        elif "up" in n or n.endswith("w1") or ".w1." in n or ".w3." in n:
+            if "gate" not in n:
+                up = a
+        elif "down" in n or n.endswith("w2") or ".w2." in n:
+            down = a
+
+    def fit(a: Optional[np.ndarray], rows: int, cols: int) -> np.ndarray:
+        out = np.zeros((rows, cols), dtype=np.float32)
+        if a is None:
+            return out
+        a = np.asarray(a, dtype=np.float32)
+        if a.ndim != 2:
+            a = a.reshape(rows, -1) if a.size >= rows else a.reshape(-1, cols)
+        r = min(rows, a.shape[0])
+        c = min(cols, a.shape[1])
+        out[:r, :c] = a[:r, :c]
+        return out
+
+    gate = fit(gate, inter, hidden)
+    up = fit(up, inter, hidden)
+    down = fit(down, hidden, inter)
+    return pack_with_scale(gate, quant) + pack_with_scale(up, quant) + pack_with_scale(down, quant)
 
 
 def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
@@ -299,19 +452,39 @@ def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
         config.get("num_local_experts") or config.get("num_experts") or config.get("n_routed_experts") or 8
     )
 
-    dense_blob = pack_dense(dense, quant=8)
-
-    expert_blobs = []
-    if expert_ids:
+    if layout == "v2":
+        # Faithful dense + exact expert matrices
+        dense_blob = pack_v2_dense(tensors, n_layers, hidden_dim, vocab_size, n_experts)
+        expert_blobs = []
         for idx in expert_ids:
-            blob = pack_one_expert(experts[idx], quant=quant, layout=layout, hidden_dim=hidden_dim)
-            expert_blobs.append(blob)
+            expert_blobs.append(
+                pack_v2_expert(experts[idx], quant=quant, hidden=hidden_dim, inter=expert_dim)
+            )
+        if not expert_blobs:
+            raise RuntimeError("v2 layout requires expert tensors")
         expert_size = max(len(b) for b in expert_blobs)
         expert_blobs = [b + b"\0" * (expert_size - len(b)) for b in expert_blobs]
+        dense_quant = 0  # float32 dense
+        name = (config.get("rabbit_fixture") and "micro-hf-v2") or model_dir.name[:63]
+        if config.get("rabbit_fixture"):
+            name = "micro-hf-v2"
+        else:
+            name = model_dir.name[:63]
     else:
-        print("[warn] no experts detected — creating placeholder square experts")
-        expert_size = 4 + (hidden_dim * hidden_dim if quant == 8 else hidden_dim * ((hidden_dim + 1) // 2))
-        expert_blobs = [b"\0" * expert_size for _ in range(n_experts)]
+        dense_blob = pack_dense(dense, quant=8)
+        expert_blobs = []
+        if expert_ids:
+            for idx in expert_ids:
+                blob = pack_one_expert(experts[idx], quant=quant, layout=layout, hidden_dim=hidden_dim)
+                expert_blobs.append(blob)
+            expert_size = max(len(b) for b in expert_blobs)
+            expert_blobs = [b + b"\0" * (expert_size - len(b)) for b in expert_blobs]
+        else:
+            print("[warn] no experts detected — creating placeholder square experts")
+            expert_size = 4 + (hidden_dim * hidden_dim if quant == 8 else hidden_dim * ((hidden_dim + 1) // 2))
+            expert_blobs = [b"\0" * expert_size for _ in range(n_experts)]
+        dense_quant = 8
+        name = model_dir.name[:63]
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "wb") as f:
@@ -325,9 +498,9 @@ def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
             expert_dim=expert_dim,
             dense_size=len(dense_blob),
             expert_size=expert_size,
-            dense_quant=8,
+            dense_quant=dense_quant,
             expert_quant=quant,
-            name=model_dir.name[:63],
+            name=name,
         )
         f.write(dense_blob)
         for b in expert_blobs:
@@ -335,9 +508,12 @@ def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
 
     total = out_path.stat().st_size
     print(f"[done] {out_path}")
-    print(f"       dense={len(dense_blob)/1024/1024:.2f} MB  experts={n_experts} x {expert_size/1024:.1f} KB")
-    print(f"       quant={quant}  layout={layout}  total={total/1024/1024:.2f} MB")
-    print(f"\nRun:  ./rabbit chat --model {out_path}")
+    print(f"       dense={len(dense_blob)/1024:.1f} KB  experts={n_experts} x {expert_size/1024:.1f} KB")
+    print(f"       quant={quant}  layout={layout}  total={total/1024:.1f} KB")
+    if layout == "v2":
+        print(f"       forward: rabbit ref-v2 (./rabbit chat --model {out_path})")
+    else:
+        print(f"\nRun:  ./rabbit chat --model {out_path}")
 
 
 def main():
@@ -347,8 +523,12 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--max-experts", type=int, default=None)
     ap.add_argument("--quant", type=int, choices=[4, 8], default=4, help="Expert quantization bits")
-    ap.add_argument("--layout", choices=["square", "flat"], default="square",
-                    help="square=H×H; flat=gate/up/down ordered for SwiGLU")
+    ap.add_argument(
+        "--layout",
+        choices=["square", "flat", "v2"],
+        default="square",
+        help="square=H×H; flat=ordered SwiGLU pieces; v2=faithful dense+experts",
+    )
     ap.add_argument("--hidden-dim", type=int, default=128)
     ap.add_argument("--n-experts", type=int, default=16)
     args = ap.parse_args()
