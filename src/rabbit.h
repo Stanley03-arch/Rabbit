@@ -6,9 +6,10 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-#define RABBIT_VERSION "0.4.4"
+#define RABBIT_VERSION "0.4.5"
 #define RABBIT_MAGIC   "RABBIT01"
 #define RABBIT_MAX_CACHE_SLOTS 8
+#define RABBIT_INT4_GROUP 32
 
 #define RABBIT_DEFAULT_MEM_BUDGET_MB 1536
 
@@ -42,7 +43,7 @@ typedef struct {
     uint64_t total_experts_size; /* n_expert_records * expert_size */
 
     uint32_t dense_quant;
-    uint32_t expert_quant;
+    uint32_t expert_quant;       /* 0=f32, 4=group-int4, 8=int8 */
 
     char     name[64];
     uint8_t  reserved[128];
@@ -135,6 +136,14 @@ int rabbit_ref_v2_greedy(RabbitModel *m, const char *prompt, int n_new,
 void rabbit_dequant_int8(const int8_t *src, float *dst, int n, float scale);
 void rabbit_dequant_int4(const uint8_t *src, float *dst, int n, float scale);
 int  rabbit_pack_int4(const float *src, int n, uint8_t *dst, float *out_scale);
+
+/* Group-scaled int4 (expert_quant == 4) */
+int  rabbit_pack_int4_grouped(const float *src, int n, int group_size,
+                              uint8_t *dst, int dst_cap);
+int  rabbit_dequant_int4_grouped(const uint8_t *src, float *dst, int n);
+void rabbit_gemv_int4_grouped(const uint8_t *W, const float *x, float *y,
+                              int out_dim, int in_dim);
+int  rabbit_int4_grouped_nbytes(int n, int group_size);
 
 /* Tokenizer */
 int  rabbit_tokenize(const char *text, int *out_ids, int max_ids);
