@@ -10,11 +10,13 @@ Layouts:
   v2     — Phase D faithful dense + exact gate/up/down (no square crop)
            packs per-layer experts: n_expert_records = n_layers × n_experts
 
+Expert quant:
+  0 — pure float32 (exact parity vs unquantized weights)
+  4 / 8 — scaled int4 / int8
+
 Usage:
   python tools/convert_hf_to_rabbit.py --demo --out models/demo-moe.rabbit
-  python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf --out models/m.rabbit --layout v2 --quant 8
-  python tools/create_hf_micro_moe.py && \\
-    python tools/convert_hf_to_rabbit.py --model-dir models/hf_micro_moe --out models/micro-hf-v2.rabbit --layout v2 --quant 8
+  python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf --out models/m.rabbit --layout v2 --quant 0
 """
 
 from __future__ import annotations
@@ -102,7 +104,7 @@ def build_demo_model(out_path: Path, hidden_dim: int = 128, n_experts: int = 16,
     for e in range(n_experts):
         mat = np.random.randn(hidden_dim, hidden_dim).astype(np.float32)
         mat += e * 0.01
-        expert_blobs.append(pack_with_scale(mat, quant))
+        expert_blobs.append(pack_with_scale(mat, quant if quant else 8))
 
     expert_size = max(len(b) for b in expert_blobs)
     expert_blobs = [b + b"\0" * (expert_size - len(b)) for b in expert_blobs]
@@ -120,7 +122,7 @@ def build_demo_model(out_path: Path, hidden_dim: int = 128, n_experts: int = 16,
             dense_size=len(dense_blob),
             expert_size=expert_size,
             dense_quant=8,
-            expert_quant=quant,
+            expert_quant=quant if quant else 8,
             name="demo-moe",
         )
         f.write(dense_blob)
@@ -203,18 +205,6 @@ def collect_experts_per_layer(
     n_layers: int,
     n_experts: int,
 ) -> List[List[Dict[str, np.ndarray]]]:
-    """
-    Build [n_layers][n_experts] maps of {tensor_name: array} for per-layer experts.
-
-    Supports common HF naming:
-      model.layers.{L}.mlp.experts.{E}.gate_proj.weight
-      model.layers.{L}.block_sparse_moe.experts.{E}.w1
-      layers.{L}.moe.experts.{E}.up_proj.weight
-
-    When a checkpoint shares one expert pool across layers, the same tensors are
-    referenced for every layer so n_expert_records still equals L×E and the C
-    runtime can use global_id = L * n_experts + E.
-    """
     per_layer: List[List[Dict[str, np.ndarray]]] = [
         [{} for _ in range(n_experts)] for _ in range(n_layers)
     ]
@@ -307,6 +297,7 @@ def _order_key(name: str) -> int:
 
 def pack_one_expert(expert_tensors: Dict[str, np.ndarray], quant: int, layout: str,
                     hidden_dim: int) -> bytes:
+    q = quant if quant else 8
     if layout == "square":
         candidates = []
         for name, arr in expert_tensors.items():
@@ -322,15 +313,15 @@ def pack_one_expert(expert_tensors: Dict[str, np.ndarray], quant: int, layout: s
                 flat = np.pad(flat, (0, need - flat.size))
             else:
                 flat = flat[:need]
-            return pack_with_scale(flat.reshape(hidden_dim, hidden_dim), quant)
+            return pack_with_scale(flat.reshape(hidden_dim, hidden_dim), q)
         flat = np.concatenate([np.asarray(v).astype(np.float32).ravel() for v in expert_tensors.values()])
         need = hidden_dim * hidden_dim
         if flat.size < need:
             flat = np.pad(flat, (0, need - flat.size))
-        return pack_with_scale(flat[:need].reshape(hidden_dim, hidden_dim), quant)
+        return pack_with_scale(flat[:need].reshape(hidden_dim, hidden_dim), q)
 
     ordered = sorted(expert_tensors.items(), key=lambda kv: _order_key(kv[0]))
-    pieces = [pack_with_scale(np.asarray(v), quant) for _, v in ordered]
+    pieces = [pack_with_scale(np.asarray(v), q) for _, v in ordered]
     return b"".join(pieces)
 
 
@@ -355,7 +346,6 @@ def _find_layer(tensors: Dict[str, np.ndarray], layer: int, *substrings: str) ->
 
 def pack_v2_dense(tensors: Dict[str, np.ndarray], n_layers: int, hidden: int,
                   vocab: int, n_experts: int) -> bytes:
-    """Build exact ref-v2 dense layout (float32)."""
     embed = _find(tensors, "embed")
     if embed is None:
         embed = _find(tensors, "wte")
@@ -466,7 +456,7 @@ def pack_v2_dense(tensors: Dict[str, np.ndarray], n_layers: int, hidden: int,
 
 def pack_v2_expert(expert_tensors: Dict[str, np.ndarray], quant: int,
                    hidden: int, inter: int) -> bytes:
-    """Exact gate [I,H], up [I,H], down [H,I] — no square crop."""
+    """Exact gate [I,H], up [I,H], down [H,I]. quant=0 → pure f32."""
     gate = up = down = None
     for name, arr in expert_tensors.items():
         n = name.lower()
@@ -494,6 +484,12 @@ def pack_v2_expert(expert_tensors: Dict[str, np.ndarray], quant: int,
     gate = fit(gate, inter, hidden)
     up = fit(up, inter, hidden)
     down = fit(down, hidden, inter)
+    if quant == 0:
+        return (
+            gate.astype(np.float32).tobytes()
+            + up.astype(np.float32).tobytes()
+            + down.astype(np.float32).tobytes()
+        )
     return pack_with_scale(gate, quant) + pack_with_scale(up, quant) + pack_with_scale(down, quant)
 
 
@@ -563,7 +559,7 @@ def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
             expert_blobs = [b + b"\0" * (expert_size - len(b)) for b in expert_blobs]
         else:
             print("[warn] no experts detected — creating placeholder square experts")
-            expert_size = 4 + (hidden_dim * hidden_dim if quant == 8 else hidden_dim * ((hidden_dim + 1) // 2))
+            expert_size = 4 + (hidden_dim * hidden_dim if quant != 4 else hidden_dim * ((hidden_dim + 1) // 2))
             expert_blobs = [b"\0" * expert_size for _ in range(n_experts)]
         dense_quant = 8
         name = model_dir.name[:63]
@@ -606,7 +602,8 @@ def main():
     ap.add_argument("--model-dir")
     ap.add_argument("--out", required=True)
     ap.add_argument("--max-experts", type=int, default=None)
-    ap.add_argument("--quant", type=int, choices=[4, 8], default=4, help="Expert quantization bits")
+    ap.add_argument("--quant", type=int, choices=[0, 4, 8], default=4,
+                    help="Expert quant: 0=float32 exact, 4/8=int")
     ap.add_argument(
         "--layout",
         choices=["square", "flat", "v2"],
