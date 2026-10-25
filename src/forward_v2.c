@@ -9,7 +9,7 @@
  *
  * Experts on disk: either shared (E records) or per-layer (L*E records
  * ordered L0E0..L0E{n-1}, L1E0, ...).
- * expert_quant 0 = pure f32 gate/up/down; 8 = scale+int8 each.
+ * expert_quant 0 = pure f32; 4 = group-scaled int4; 8 = scale+int8.
  */
 
 #define V2_EPS 1e-5f
@@ -267,6 +267,26 @@ static void expert_swiglu(const RabbitModel *m, int layer, int local_expert_id,
             mid[i] = (g * sig) * up[i];
         }
         gemv_f32(p, mid, down_out, H, inter);
+    } else if (quant == 4) {
+        /* group-scaled int4: gate + up + down */
+        const uint8_t *p = bytes;
+        int nbytes_g = rabbit_int4_grouped_nbytes((int)mat, RABBIT_INT4_GROUP);
+        int nbytes_u = nbytes_g;
+        int nbytes_d = rabbit_int4_grouped_nbytes(H * inter, RABBIT_INT4_GROUP);
+        if (m->expert_size < (size_t)(nbytes_g + nbytes_u + nbytes_d)) {
+            free(gate); free(up); free(mid); free(down_out);
+            return;
+        }
+        rabbit_gemv_int4_grouped(p, xn, gate, inter, H);
+        p += nbytes_g;
+        rabbit_gemv_int4_grouped(p, xn, up, inter, H);
+        p += nbytes_u;
+        for (int i = 0; i < inter; i++) {
+            float g = gate[i];
+            float sig = 1.0f / (1.0f + expf(-g));
+            mid[i] = (g * sig) * up[i];
+        }
+        rabbit_gemv_int4_grouped(p, mid, down_out, H, inter);
     } else {
         size_t one = 4 + mat;
         if (m->expert_size < one * 3) {
