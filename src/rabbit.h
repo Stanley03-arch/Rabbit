@@ -11,13 +11,11 @@
  * Tiny engine for large MoE models on constrained hardware.
  * ============================================================ */
 
-#define RABBIT_VERSION "0.1.1-dev"
+#define RABBIT_VERSION "0.1.2-dev"
 #define RABBIT_MAGIC   "RABBIT01"
 
-/* Maximum number of experts we keep hot in RAM (keep tiny for 4GB) */
 #define RABBIT_MAX_CACHE_SLOTS 8
 
-/* Error codes */
 typedef enum {
     RABBIT_OK = 0,
     RABBIT_ERR_IO,
@@ -27,16 +25,12 @@ typedef enum {
     RABBIT_ERR_ARGS
 } rabbit_status;
 
-/* Forward declarations */
 typedef struct RabbitModel RabbitModel;
 typedef struct ExpertCache ExpertCache;
 
-/* ------------------------------------------------------------
- * On-disk header (must stay packed / little-endian)
- * ------------------------------------------------------------ */
 #pragma pack(push, 1)
 typedef struct {
-    char     magic[8];          /* "RABBIT01" */
+    char     magic[8];
     uint32_t version;
     uint32_t header_size;
 
@@ -48,10 +42,10 @@ typedef struct {
     uint32_t expert_dim;
 
     uint64_t dense_size;
-    uint64_t expert_size;         /* size of one expert */
+    uint64_t expert_size;
     uint64_t total_experts_size;
 
-    uint32_t dense_quant;         /* 0=f16, 4=int4, ... */
+    uint32_t dense_quant;
     uint32_t expert_quant;
 
     char     name[64];
@@ -59,45 +53,35 @@ typedef struct {
 } RabbitHeader;
 #pragma pack(pop)
 
-/* ------------------------------------------------------------
- * Model handle (in-memory)
- * ------------------------------------------------------------ */
 struct RabbitModel {
     RabbitHeader hdr;
 
-    /* Always-resident dense / shared part */
     void   *dense;
     size_t  dense_size;
 
-    /* Expert storage (memory-mapped file) */
     int     expert_fd;
     void   *expert_map;
     size_t  expert_map_size;
-    size_t  expert_size;          /* size of one expert in bytes */
+    size_t  expert_size;
     int     num_experts;
     int     experts_per_token;
 
-    /* Tiny LRU cache of hot experts in RAM */
     ExpertCache *cache;
 
-    /* Architecture metadata (convenience) */
     int     n_layers;
     int     hidden_dim;
     int     vocab_size;
     char    name[128];
 };
 
-/* ------------------------------------------------------------
- * Public API
- * ------------------------------------------------------------ */
-
+/* Public API */
 RabbitModel *rabbit_load(const char *path);
 void         rabbit_free(RabbitModel *model);
 rabbit_status rabbit_chat(RabbitModel *model);
 const char  *rabbit_version(void);
 void         rabbit_print_info(const RabbitModel *model);
 
-/* Memory / cache helpers */
+/* Memory / cache */
 ExpertCache *rabbit_cache_create(int n_slots);
 void         rabbit_cache_free(ExpertCache *c);
 void         rabbit_cache_set_expert_size(ExpertCache *c, size_t size);
@@ -113,5 +97,9 @@ const void  *rabbit_expert_ptr(const RabbitModel *m, int expert_id);
 /* MoE */
 const void  *rabbit_fetch_expert(RabbitModel *m, int expert_id, int promote);
 int          rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim);
+
+/* Quant helpers */
+void rabbit_dequant_int8(const int8_t *src, float *dst, int n, float scale);
+void rabbit_dequant_int4(const uint8_t *src, float *dst, int n, float scale);
 
 #endif /* RABBIT_H */
