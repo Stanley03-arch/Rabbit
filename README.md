@@ -2,52 +2,36 @@
 
 **Local MoE inference for constrained hardware.**
 
-Rabbit is a small pure-C engine that runs Mixture-of-Experts models by keeping dense weights in RAM and streaming routed experts from disk. The design target is machines with limited memory (including ~4 GB class laptops).
+Rabbit is a pure-C engine that keeps dense weights in RAM and streams routed experts from disk. Target: limited-memory machines (including ~4 GB class laptops).
 
-Inspired by [Colibrì](https://github.com/JustVugg/colibri).
+Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) — not a clone of its product or UI.
 
-> **Status:** early development (v0.2.2). Pipeline works on synthetic models. Browser UI available via Gradio.
+> **Status:** early development (v0.2.2). Synthetic models validate the pipeline. Original **engine dashboard** available.
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_ui.ipynb)
+[![Dashboard in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_dashboard.ipynb)
 
 ---
 
-## Two ways to interact
+## Interfaces
 
-| Mode | What you get |
-|------|----------------|
-| **CLI** | Terminal chat (`./rabbit chat --model ...`) |
-| **Web UI** | Browser chat panel (Gradio) — closer to a Colibrì-style demo |
+| Interface | Description |
+|-----------|-------------|
+| **CLI** | `./rabbit chat --model …` |
+| **Dashboard** | Dark cockpit: chat, model stats, expert cache, activity grid |
+| **Gradio** | Simple browser chat (`tools/rabbit_ui.py`) |
 
-### Colab (recommended to see the UI)
+### Engine dashboard (recommended UI)
 
-**Web UI notebook:**  
-https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_ui.ipynb
+**Colab:**  
+https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_dashboard.ipynb
 
-**Terminal smoke test only:**  
-https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_smoke.ipynb
-
-### Local web UI
-
+**Local:**
 ```bash
 make && make test-model
-pip install gradio
-python tools/rabbit_ui.py --model models/tiny-test.rabbit
+pip install flask
+python tools/rabbit_dashboard.py --model models/tiny-test.rabbit
+# open http://127.0.0.1:7860/
 ```
-
-Add `--share` if you need a public Gradio link.
-
----
-
-## Features
-
-| Area | Capability |
-|------|------------|
-| Memory | Dense in RAM; experts mmap + small LRU |
-| Compute | Attention → dense residual → MoE |
-| Quantization | int8 / int4 expert GEMV |
-| Conversion | Hugging Face safetensors → `.rabbit` |
-| UI | CLI + Gradio browser chat |
 
 ---
 
@@ -63,11 +47,13 @@ make test-model
 
 ---
 
-## CLI
+## Features
 
-```
-rabbit chat --model <path> [--tokens N] [--temp F] [--vocab path]
-```
+- Dense RAM + expert `mmap` + LRU cache  
+- Attention → dense residual → MoE  
+- int4 / int8 expert GEMV  
+- HF → `.rabbit` converter  
+- CLI + original web dashboard  
 
 ---
 
@@ -78,17 +64,13 @@ pip install safetensors numpy
 python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf --out models/m.rabbit --quant 4
 ```
 
-See [docs/conversion.md](docs/conversion.md).
-
 ---
 
 ## Limitations
 
-- Synthetic weights do **not** produce real language; they prove the engine runs.
-- Colibrì-like **UI** is provided via Gradio; model quality is a separate track.
-- Large real MoEs still need aggressive quant / expert limits on 4 GB machines.
-
----
+- Synthetic weights do not produce real language.  
+- Dashboard is **Rabbit’s own UI**, not Colibrì’s.  
+- Large real MoEs still need aggressive quant / expert limits on 4 GB hosts.  
 
 ## License
 
