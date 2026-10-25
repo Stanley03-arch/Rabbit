@@ -14,7 +14,7 @@ TARGET = rabbit
 TEST_TOOL = tools/create_test_model
 TEST_BIN = tests/test_quant
 
-.PHONY: all clean debug test-model demo-model smoke test check
+.PHONY: all clean debug test-model demo-model ref-model smoke test parity check
 
 all: $(TARGET)
 
@@ -37,10 +37,17 @@ test-model: $(TEST_TOOL)
 	@mkdir -p models
 	./$(TEST_TOOL) models/tiny-test.rabbit
 
+ref-model:
+	@mkdir -p models
+	python3 tools/create_ref_model.py --out models/ref-v1.rabbit --seed 1
+
 demo-model:
 	@mkdir -p models
 	python3 tools/convert_hf_to_rabbit.py --demo --out models/demo-moe.rabbit \
 		--hidden-dim 128 --n-experts 16 --quant 4
+
+parity: $(TARGET) ref-model
+	python3 tests/test_parity_ref.py
 
 smoke: $(TARGET) test-model
 	@printf 'hello\nquit\n' | ./$(TARGET) chat --model models/tiny-test.rabbit \
@@ -48,7 +55,7 @@ smoke: $(TARGET) test-model
 	@grep -q "Rabbit" /tmp/rabbit-smoke.out /tmp/rabbit-smoke.err
 	@echo "smoke: ok"
 
-check: test smoke
+check: test smoke parity
 	@echo "check: all passed"
 
 debug: CFLAGS += -g -O0 -DRABBIT_DEBUG

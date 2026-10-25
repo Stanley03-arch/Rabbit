@@ -1,48 +1,28 @@
-# Roadmap — making Rabbit serious
+# Roadmap
 
-Rabbit is an early systems project. This document tracks what “serious” means here
-and what is deliberately out of scope for now.
+## Phase A — Correctness spine (in progress)
 
-## Current maturity
+See [docs/PHASE_A.md](docs/PHASE_A.md).
 
-| Layer | Status |
-|-------|--------|
-| File format + loader | Usable |
-| Expert mmap + LRU | Usable |
-| int4/int8 expert GEMV | Basic |
-| Attention / FFN | Toy |
-| Tokenizer | Byte / simple word |
-| HF converter | Heuristic |
-| Dashboard UI | Basic |
-| Real LM quality | **Not claimed** |
+- [x] Frozen `rabbit-ref-v1` architecture
+- [x] Deterministic model generator (`make ref-model`)
+- [x] NumPy reference forward
+- [x] `make parity` + CI hook
+- [ ] Exact C vs NumPy tensor dump compare
+- [ ] One real small HF MoE with documented tensor map
 
-## Near-term (engineering)
+## Phase B — Engine depth
 
-1. **Tests** — quant round-trip, cache behavior, header parse (started: `make test`)
-2. **CI** — build + unit + smoke on every push
-3. **Warnings-clean builds** under `-Wall -Wextra`
-4. **Stable public API** in `rabbit.h` with documented ownership rules
-5. **Deterministic smoke** fixtures (fixed seed)
+- Real expert MLP (SwiGLU or family-correct)
+- Real attention (RoPE + proper KV)
+- Memory budget report + caps
 
-## Medium-term (capability)
+## Phase C — Product surface
 
-1. Faithful layout for **one** small open MoE (document exact tensor map)
-2. Real tokenizer backend (SentencePiece or HF tokenizer JSON)
-3. Measured memory budget report at load time
-4. Optional OpenAI-compatible `/v1/chat/completions` shim for the dashboard
+- OpenAI-compatible HTTP API
+- Dashboard metrics from engine (not only log scrape)
 
-## Explicit non-goals (for now)
+## Non-goals
 
-- Matching Colibrì feature-for-feature
-- GPU kernels
-- Multi-hundred-GB frontier checkpoints on 4 GB laptops without severe limits
-- Bit-exact parity with every upstream architecture
-
-## Definition of “serious v1”
-
-Rabbit v1 is serious when:
-
-- `make check` is green in CI
-- One documented real model converts and runs greedily with **known** limitations
-- Memory use at load is reported and bounded by flags
-- Public C API is stable enough for external tools
+- Claiming Colibrì parity without Phase A+B complete
+- Frontier MoEs on 4 GB without severe limits

@@ -1,26 +1,18 @@
 # Changelog
 
+## [0.2.4] - 2026-10-25
+
+### Added (Phase A)
+- `docs/PHASE_A.md` — frozen `rabbit-ref-v1` contract
+- `tools/create_ref_model.py` — deterministic ref checkpoint (seed=1)
+- `tools/ref_forward.py` — NumPy MoE-only reference forward
+- `tests/test_parity_ref.py` + `make parity`
+- CI runs parity with NumPy
+
 ## [0.2.3] - 2026-10-25
 
-### Added
-- Unit tests (`make test`) for int4/int8 quant and byte tokenizer
-- GitHub Actions CI (build, unit tests, smoke)
-- ROADMAP.md with explicit maturity and non-goals
-
-### Fixed
-- Compiler warnings in quant pack path
-- `strdup` portability in tokenizer (local `xstrdup`)
-- Removed unused helpers in MoE path
-- Safer scale handling in expert apply
+- Unit tests, CI, warning cleanup, ROADMAP
 
 ## [0.2.2] - 2026-10-25
 
-- Cache statistics, smoke target, mmap base pointer fix, dashboard UI
-
-## [0.2.1] - 2026-10-25
-
-- CLI flags, docs polish, grouped attention
-
-## [0.2.0] - 2026-10-25
-
-- int4 path, HF converter, tokenizer APIs
+- Cache stats, dashboard, mmap fix

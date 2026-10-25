@@ -12,6 +12,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python deps
+        run: pip install numpy
+
       - name: Build
         run: make clean && make
 
@@ -20,6 +28,9 @@ jobs:
 
       - name: Smoke test
         run: make smoke
+
+      - name: Phase A parity
+        run: make parity
 
       - name: Version
         run: ./rabbit version
