@@ -24,7 +24,7 @@ Fixed struct (`RabbitHeader` in `src/rabbit.h`):
 | vocab_size | `u32` | Vocabulary size (metadata) |
 | n_experts | `u32` | Number of routed experts |
 | experts_per_token | `u32` | Top-k |
-| expert_dim | `u32` | Intermediate size (metadata) |
+| expert_dim | `u32` | Intermediate size (SwiGLU); equals `hidden_dim` for square/legacy |
 | dense_size | `u64` | Bytes in dense blob |
 | expert_size | `u64` | Bytes **per** expert record |
 | total_experts_size | `u64` | `n_experts * expert_size` |
@@ -39,15 +39,28 @@ Opaque to the generic loader: entire region is read into RAM. Internal layout is
 
 ## Expert record
 
-Preferred layout written by the converter:
+### Legacy / square (Phase A)
 
 ```
 float32 scale
-packed weights   # int8 or int4 according to expert_quant
+packed weights   # int8 or int4, treated as [hidden, hidden]
+```
+
+Used when `expert_dim <= hidden_dim` or the payload is too small for three matrices.
+
+### SwiGLU (Phase B)
+
+```
+float32 scale_gate
+packed gate_proj    # [intermediate, hidden], intermediate = expert_dim
+float32 scale_up
+packed up_proj      # [intermediate, hidden]
+float32 scale_down
+packed down_proj    # [hidden, intermediate]
 ```
 
 Records are padded to a uniform `expert_size` so indexing is `base + id * expert_size`.
 
 ## Compatibility
 
-Older synthetic test models may omit the scale header and store a raw int8 matrix. The engine still accepts that path for development.
+Older synthetic test models may omit the scale header and store a raw int8 matrix. The engine still accepts that path for development. Ref-v1 and parity tests stay on the square path.
