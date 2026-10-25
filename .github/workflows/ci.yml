@@ -35,5 +35,8 @@ jobs:
       - name: Phase D parity-v2
         run: make parity-v2
 
+      - name: Phase D M2 micro-HF
+        run: make m2
+
       - name: Version
         run: ./rabbit version
