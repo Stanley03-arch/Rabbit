@@ -14,7 +14,7 @@ TARGET = rabbit
 TEST_TOOL = tools/create_test_model
 TEST_BIN = tests/test_quant
 
-.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf smoke test parity parity-v2 m2 exact-f32 check
+.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf smoke test parity parity-v2 m2 exact-f32 live-moe check
 
 all: $(TARGET)
 
@@ -82,3 +82,12 @@ debug: clean $(TARGET)
 
 clean:
 	rm -f $(OBJ) $(TARGET) $(TEST_TOOL) $(TEST_BIN)
+
+# Live Mixtral-style MoE (TinyBrainBot 360M). Requires: pip install huggingface_hub safetensors
+live-moe: $(TARGET)
+	@mkdir -p models/tinybrainbot
+	python3 -c "from huggingface_hub import snapshot_download; snapshot_download('nkthebass/tinybrainbot-360m-a75m-v4.1-moe-base', local_dir='models/tinybrainbot')"
+	python3 tools/convert_hf_to_rabbit.py --model-dir models/tinybrainbot \
+		--out models/tinybrainbot-v2.rabbit --layout v2 --quant 4
+	python3 tools/export_hf_tokenizer.py --model models/tinybrainbot --out models/tinybrainbot.tok || true
+	./$(TARGET) probe-v2 --model models/tinybrainbot-v2.rabbit --prompt Hello --tokens 16
