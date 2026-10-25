@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rabbit — Engine Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">R</div>
+        <div>
+          <div class="brand-name">Rabbit</div>
+          <div class="brand-sub" id="version">engine</div>
+        </div>
+      </div>
+
+      <section class="panel">
+        <h3>Model</h3>
+        <div class="stat" id="model-name">—</div>
+        <div class="kv"><span>layers</span><b id="s-layers">—</b></div>
+        <div class="kv"><span>hidden</span><b id="s-hidden">—</b></div>
+        <div class="kv"><span>experts</span><b id="s-experts">—</b></div>
+        <div class="kv"><span>quant</span><b id="s-quant">—</b></div>
+        <div class="kv"><span>dense</span><b id="s-dense">—</b></div>
+        <div class="kv"><span>map</span><b id="s-map">—</b></div>
+      </section>
+
+      <section class="panel">
+        <h3>Expert cache</h3>
+        <div class="kv"><span>hits</span><b id="c-hits">0</b></div>
+        <div class="kv"><span>misses</span><b id="c-misses">0</b></div>
+        <div class="kv"><span>inserts</span><b id="c-inserts">0</b></div>
+        <div class="kv"><span>hit rate</span><b id="c-rate">—</b></div>
+        <div class="bar"><div class="bar-fill" id="c-bar" style="width:0%"></div></div>
+      </section>
+
+      <section class="panel">
+        <h3>Expert activity</h3>
+        <div class="expert-grid" id="expert-grid"></div>
+        <p class="hint">Warm = recently routed (simulated from cache traffic)</p>
+      </section>
+
+      <section class="panel controls">
+        <h3>Generation</h3>
+        <label>Tokens <input type="number" id="tokens" value="48" min="8" max="256" /></label>
+        <label>Temp <input type="number" id="temp" value="0.8" min="0" max="1.5" step="0.05" /></label>
+      </section>
+    </aside>
+
+    <main class="main">
+      <header class="top">
+        <div>
+          <h1>Chat</h1>
+          <p class="muted">Dense in RAM · experts streamed from disk</p>
+        </div>
+        <div class="status-pill" id="status-pill">idle</div>
+      </header>
+
+      <div class="chat" id="chat"></div>
+
+      <form class="composer" id="form">
+        <input id="prompt" autocomplete="off" placeholder="Message Rabbit…" />
+        <button type="submit" id="send">Send</button>
+      </form>
+      <p class="footer-note">Synthetic weights produce non-linguistic output — this dashboard validates the engine path.</p>
+    </main>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
