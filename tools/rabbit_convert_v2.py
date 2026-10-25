@@ -59,7 +59,27 @@ def pack_v2_dense(tensors: Dict[str, np.ndarray], n_layers: int, hidden: int,
             m[:h, :v] = lm[:h, :v]
         lm = m
 
-    parts: List[bytes] = [embed.astype(np.float32).tobytes(), lm.astype(np.float32).tobytes()]
+    # Final RMSNorm (HF: model.norm)
+    final_norm = _find(tensors, "model.norm")
+    if final_norm is None:
+        final_norm = _find(tensors, "model.model.norm")
+    if final_norm is None:
+        for name, arr in tensors.items():
+            n = name.lower().replace("/", ".")
+            if n in ("model.norm.weight", "transformer.norm.weight", "norm.weight"):
+                final_norm = np.asarray(arr, dtype=np.float32)
+                break
+    if final_norm is None:
+        final_norm = np.ones(hidden, dtype=np.float32)
+    final_norm = np.asarray(final_norm, dtype=np.float32).reshape(-1)[:hidden]
+    if final_norm.size < hidden:
+        final_norm = np.pad(final_norm, (0, hidden - final_norm.size), constant_values=1.0)
+
+    parts: List[bytes] = [
+        embed.astype(np.float32).tobytes(),
+        lm.astype(np.float32).tobytes(),
+        final_norm.astype(np.float32).tobytes(),
+    ]
 
     for L in range(n_layers):
         rms_attn = _find_layer(tensors, L, "input_layernorm")
