@@ -23,39 +23,44 @@ This is significantly more aggressive than Colibrì (which targets ~10–25 GB r
 
 Anything larger must come from disk.
 
-## Planned Components
-
-- `memory.c`   — mmap + LRU expert cache
-- `moe.c`      — router + expert fetch/compute
-- `quant.c`    — int4 / more aggressive kernels
-- `model.c`    — loader for Rabbit file format
-- `tokenizer.c`— model-specific tokenizers
-
-## File Format (to be defined)
-
-A simple custom format is planned:
+## Expert Fetch Path (implemented)
 
 ```
-[header]
-  magic
-  version
-  architecture metadata
-  dense size
-  expert size
-  num experts
-  ...
-[dense blob]          // always loaded into RAM
-[expert blob]         // memory-mapped, streamed
+rabbit_fetch_expert(model, expert_id, promote)
+    │
+    ├─ 1. Check tiny RAM LRU cache  → hit? return pointer
+    │
+    ├─ 2. Zero-copy pointer from mmap region
+    │
+    └─ 3. Optionally promote into LRU cache
 ```
+
+## MoE Step (implemented for test model)
+
+```
+rabbit_moe_step(model, hidden, hidden_dim)
+    │
+    ├─ Run simple router → scores
+    ├─ Select top-k experts
+    ├─ For each selected expert:
+    │       fetch (cache or mmap)
+    │       apply_expert_stub()
+    └─ Return
+```
+
+The current `apply_expert_stub` is only a placeholder linear transform so we can prove the plumbing. Real matmul kernels come next.
+
+## File Format
+
+See `docs/file-format.md`.
 
 ## Current Status
 
 - Project skeleton and public API exist
-- Loader, chat loop, and expert streaming are still stubs
-- Next concrete steps:
-  1. Define the Rabbit model file format
-  2. Implement dense loader + mmap of experts
-  3. Implement a minimal forward pass on a tiny test MoE
+- Loader + dense RAM + expert mmap working
+- Expert fetch + LRU cache working
+- Minimal forward pass on synthetic model working
+- Real generation, quantization, and model conversion still to do
 
 ## Honesty
 

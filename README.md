@@ -5,7 +5,7 @@ Run large Mixture-of-Experts (MoE) models on extremely constrained hardware (tar
 
 Inspired by [Colibrì](https://github.com/JustVugg/colibri).
 
-> **Status**: Early foundation. Loader + expert mmap + tiny LRU cache working. Generation still a stub.
+> **Status**: Foundation working. Expert fetch + minimal forward pass on synthetic model is live.
 
 ## Goal
 
@@ -15,65 +15,71 @@ Inspired by [Colibrì](https://github.com/JustVugg/colibri).
 - Pure C core, minimal dependencies
 - Target machines with as little as **4 GB total RAM**
 
-## Current Reality Check
-
-Full trillion-scale models (Kimi K3 2.8T, large DeepSeek variants) are extremely challenging on 4 GB.  
-Rabbit starts with the same architecture as Colibrì and aims for the densest possible resident set + aggressive expert streaming.
-
 ## Quick Start
 
 ```bash
 git clone https://github.com/Stanley03-arch/Rabbit.git
 cd Rabbit
 
-# Build the engine
+# Build
 make
 
 # Create a tiny synthetic test model
 make test-model
 
-# Run it
+# Run
 ./rabbit chat --model models/tiny-test.rabbit
 ```
 
-You should see the model header information and a simple chat stub.
+Type any message. Rabbit will run a real (tiny) MoE forward pass:
+- router selects top-k experts
+- experts are fetched from mmap (and promoted into a small LRU cache)
+- a simple transformation is applied
+
+This proves the core plumbing works on low-memory machines.
+
+## What works today
+
+| Feature                        | Status      |
+|--------------------------------|-------------|
+| Rabbit file format             | ✅          |
+| Dense weights → RAM            | ✅          |
+| Experts memory-mapped          | ✅          |
+| Tiny LRU expert cache          | ✅          |
+| Expert fetch (cache + mmap)    | ✅          |
+| Minimal MoE forward (test model)| ✅         |
+| Real generation / tokenizer    | ❌ stub     |
+| Quantization kernels           | ❌ stub     |
+| Real model conversion          | ❌ planned  |
 
 ## Project Structure
 
 ```
 rabbit/
-├── src/                 # Core engine (C)
-│   ├── rabbit.h         # Public API + file format
+├── src/
+│   ├── rabbit.h
 │   ├── main.c
-│   ├── model.c          # Loader
-│   ├── memory.c         # mmap + LRU expert cache
-│   ├── moe.c            # Router + expert streaming (stub)
+│   ├── model.c          # Loader + chat + tiny forward
+│   ├── memory.c         # mmap + LRU cache
+│   ├── moe.c            # Router + expert fetch + step
 │   ├── quant.c
 │   ├── tokenizer.c
 │   └── utils.c
 ├── tools/
 │   └── create_test_model.c
-├── models/              # Place .rabbit files here
+├── models/
 ├── docs/
 │   ├── architecture.md
 │   └── file-format.md
 └── Makefile
 ```
 
-## What works today
-
-- Rabbit file format (header + dense + experts)
-- Loading dense weights into RAM
-- Memory-mapping the expert section
-- Tiny LRU expert cache (API ready)
-- Synthetic test model generator
-
 ## Next steps
 
-1. Implement actual expert fetch + matmul path
-2. Add a minimal forward pass on the tiny test model
-3. Aggressive quantization kernels
-4. Support for real open MoE checkpoints
+1. Better expert compute kernels (real matmuls)
+2. Quantization (int4 / lower)
+3. Tokenizer + real sampling loop
+4. Converter for open MoE checkpoints (DeepSeek Flash, Kimi, etc.)
 
 ## License
 
