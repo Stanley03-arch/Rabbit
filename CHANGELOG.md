@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.2] - 2026-10-25
+
+### Per-layer expert tables
+- C: `experts_shared` / `n_expert_records` / `rabbit_expert_global_id` / `rabbit_expert_ptr_layer`
+- Converter `--layout v2` packs **L×E** records (not a shared pool)
+- `create_ref_v2` / HF micro fixture emit distinct experts per layer
+- NumPy oracle + `forward_v2.c` use layer-local expert ids
+
 ## [0.4.1] - 2026-10-25
 
 ### Phase D M1
