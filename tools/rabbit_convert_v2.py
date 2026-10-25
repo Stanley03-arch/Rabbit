@@ -27,7 +27,8 @@ from rabbit_convert_pack import (
 
 
 def pack_v2_dense(tensors: Dict[str, np.ndarray], n_layers: int, hidden: int,
-                  vocab: int, n_experts: int) -> bytes:
+                  vocab: int, n_experts: int,
+                  n_heads: int = 0, n_kv_heads: int = 0, head_dim: int = 0) -> bytes:
     embed = _find(tensors, "embed")
     if embed is None:
         embed = _find(tensors, "wte")
@@ -94,17 +95,29 @@ def pack_v2_dense(tensors: Dict[str, np.ndarray], n_layers: int, hidden: int,
         if o is None:
             o = np.eye(hidden, dtype=np.float32) * 0.02
 
-        def square(m: np.ndarray) -> np.ndarray:
+        if n_heads <= 0:
+            n_heads = 4 if hidden % 4 == 0 else 1
+        if head_dim <= 0:
+            head_dim = hidden // n_heads
+        if n_kv_heads <= 0:
+            n_kv_heads = n_heads
+        q_dim = n_heads * head_dim
+        kv_dim = n_kv_heads * head_dim
+
+        def fit2d(m: np.ndarray, rows: int, cols: int) -> np.ndarray:
             m = np.asarray(m, dtype=np.float32)
-            out = np.zeros((hidden, hidden), dtype=np.float32)
-            r = min(hidden, m.shape[0])
-            c = min(hidden, m.shape[1] if m.ndim > 1 else 0)
-            if m.ndim == 2:
-                out[:r, :c] = m[:r, :c]
+            out = np.zeros((rows, cols), dtype=np.float32)
+            if m.ndim != 2:
+                return out
+            r = min(rows, m.shape[0])
+            c = min(cols, m.shape[1])
+            out[:r, :c] = m[:r, :c]
             return out
 
-        q, k, v, o = square(q), square(k), square(v), square(o)
-        w_qkv = np.concatenate([q, k, v], axis=0)
+        q = fit2d(q, q_dim, hidden)
+        k = fit2d(k, kv_dim, hidden)
+        v = fit2d(v, kv_dim, hidden)
+        o = fit2d(o, hidden, q_dim)
 
         router = _find_layer(tensors, L, "mlp.gate")
         if router is None:
@@ -127,7 +140,9 @@ def pack_v2_dense(tensors: Dict[str, np.ndarray], n_layers: int, hidden: int,
             [
                 rms_attn.astype(np.float32).tobytes(),
                 rms_ffn.astype(np.float32).tobytes(),
-                w_qkv.astype(np.float32).tobytes(),
+                q.astype(np.float32).tobytes(),
+                k.astype(np.float32).tobytes(),
+                v.astype(np.float32).tobytes(),
                 o.astype(np.float32).tobytes(),
                 rr.astype(np.float32).tobytes(),
             ]
@@ -173,9 +188,13 @@ def pack_v2_expert(expert_tensors: Dict[str, np.ndarray], quant: int,
             + down.astype(np.float32).tobytes()
         )
     if quant == 4:
-        # Group-scaled int4 (default group=32) for each of gate/up/down
         return pack_int4_grouped(gate) + pack_int4_grouped(up) + pack_int4_grouped(down)
     return pack_with_scale(gate, quant) + pack_with_scale(up, quant) + pack_with_scale(down, quant)
+
+
+def load_hf_config_local(model_dir: Path) -> dict:
+    with open(model_dir / "config.json") as f:
+        return json.load(f)
 
 
 def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
@@ -184,7 +203,8 @@ def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
     print("[config]", {k: config.get(k) for k in (
         "model_type", "hidden_size", "num_hidden_layers", "num_local_experts",
         "num_experts_per_tok", "vocab_size", "moe_intermediate_size",
-        "n_routed_experts", "num_experts",
+        "n_routed_experts", "num_experts", "num_attention_heads",
+        "num_key_value_heads", "head_dim",
     ) if k in config})
 
     tensors = collect_tensors(model_dir)
@@ -199,6 +219,10 @@ def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
     experts_per_token = int(config.get("num_experts_per_tok") or config.get("moe_top_k") or 2)
     expert_dim = int(config.get("moe_intermediate_size") or config.get("intermediate_size") or hidden_dim * 2)
 
+    n_heads = int(config.get("num_attention_heads") or 0)
+    n_kv_heads = int(config.get("num_key_value_heads") or n_heads or 0)
+    head_dim = int(config.get("head_dim") or (hidden_dim // n_heads if n_heads else 0))
+
     expert_ids = sorted(experts.keys())
     if max_experts is not None and len(expert_ids) > max_experts:
         print(f"[info] limiting experts {len(expert_ids)} → {max_experts}")
@@ -209,7 +233,10 @@ def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
     )
 
     if layout == "v2":
-        dense_blob = pack_v2_dense(tensors, n_layers, hidden_dim, vocab_size, n_experts)
+        dense_blob = pack_v2_dense(
+            tensors, n_layers, hidden_dim, vocab_size, n_experts,
+            n_heads=n_heads, n_kv_heads=n_kv_heads, head_dim=head_dim,
+        )
         per_layer = collect_experts_per_layer(tensors, n_layers, n_experts)
         expert_blobs = []
         for L in range(n_layers):
@@ -243,7 +270,6 @@ def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
         dense_quant = 8
         name = model_dir.name[:60]
         n_records = n_experts
-        n_layers = n_layers  # keep config
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "wb") as f:
@@ -261,6 +287,9 @@ def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
             expert_quant=quant,
             name=name,
             n_expert_records=n_records,
+            n_heads=n_heads,
+            n_kv_heads=n_kv_heads,
+            head_dim=head_dim,
         )
         f.write(dense_blob)
         for b in expert_blobs:
@@ -270,13 +299,10 @@ def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
     print(f"[done] {out_path}")
     print(f"       dense={len(dense_blob)/1024:.1f} KB  experts={n_experts} x {expert_size/1024:.1f} KB")
     print(f"       quant={quant}  layout={layout}  total={total/1024:.1f} KB")
+    if n_heads:
+        print(f"       GQA: heads={n_heads} kv_heads={n_kv_heads} head_dim={head_dim}")
     if layout == "v2":
         print(f"       forward: rabbit ref-v2 (./rabbit chat --model {out_path})")
         print(f"       expert records: {n_layers * n_experts} (per-layer)")
     else:
         print(f"\nRun:  ./rabbit chat --model {out_path}")
-
-
-def load_hf_config_local(model_dir: Path) -> dict:
-    with open(model_dir / "config.json") as f:
-        return json.load(f)
