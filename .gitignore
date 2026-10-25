@@ -1,27 +1,26 @@
-# Build artifacts
-*.o
-*.a
-*.so
-*.dylib
+# Build
 rabbit
-rabbit.exe
+*.o
+src/*.o
+tools/create_test_model
 
-# Model weights (large files)
-models/*
-!models/.gitkeep
+# Models (keep only samples tracked if desired)
+models/*.rabbit
+!models/sample_vocab.txt
 
-# IDE / editor
-.vscode/
-.idea/
-*.swp
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Python (tools)
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
 .venv/
 venv/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# Local experiment dirs
+hf-models/
+checkpoints/
