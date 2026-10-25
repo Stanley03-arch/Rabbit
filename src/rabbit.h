@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-#define RABBIT_VERSION "0.2.0-dev"
+#define RABBIT_VERSION "0.2.1-dev"
 #define RABBIT_MAGIC   "RABBIT01"
 #define RABBIT_MAX_CACHE_SLOTS 8
 
@@ -72,6 +72,7 @@ struct RabbitModel {
 RabbitModel *rabbit_load(const char *path);
 void         rabbit_free(RabbitModel *model);
 rabbit_status rabbit_chat(RabbitModel *model);
+rabbit_status rabbit_chat_ex(RabbitModel *model, int max_tokens, float temperature);
 const char  *rabbit_version(void);
 void         rabbit_print_info(const RabbitModel *model);
 

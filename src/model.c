@@ -140,7 +140,7 @@ void rabbit_free(RabbitModel *model) {
     free(model);
 }
 
-/* ---------- generation helpers ---------- */
+/* ---------- generation ---------- */
 
 static void softmax(float *logits, int n) {
     float max_v = logits[0];
@@ -152,10 +152,9 @@ static void softmax(float *logits, int n) {
         logits[i] = expf(logits[i] - max_v);
         sum += logits[i];
     }
-    if (sum > 0.0f) {
+    if (sum > 0.0f)
         for (int i = 0; i < n; i++)
             logits[i] /= sum;
-    }
 }
 
 static int sample_top_p(const float *probs, int n, float temperature) {
@@ -179,9 +178,8 @@ static int sample_top_p(const float *probs, int n, float temperature) {
 
     float sum = 0.0f;
     for (int i = 0; i < n; i++) sum += tmp[i];
-    if (sum > 0.0f) {
+    if (sum > 0.0f)
         for (int i = 0; i < n; i++) tmp[i] /= sum;
-    }
 
     float r = (float)rand() / (float)RAND_MAX;
     float cdf = 0.0f;
@@ -193,7 +191,6 @@ static int sample_top_p(const float *probs, int n, float temperature) {
             break;
         }
     }
-
     free(tmp);
     return chosen;
 }
@@ -207,14 +204,14 @@ static void tiny_lm_head(const float *hidden, int hidden_dim, float *logits, int
     }
 }
 
-static void generate(RabbitModel *m, const char *prompt, int max_new_tokens) {
+static void generate(RabbitModel *m, const char *prompt, int max_new_tokens, float temperature) {
     int dim = m->hidden_dim > 0 ? m->hidden_dim : 64;
-    int vocab = m->vocab_size > 0 ? m->vocab_size : rabbit_tokenizer_vocab();
-    if (vocab > 256) vocab = 256;
+    int vocab = rabbit_tokenizer_vocab();
+    if (vocab > 4096) vocab = 4096;
 
     float *hidden = (float *)calloc(dim, sizeof(float));
     float *logits = (float *)calloc(vocab, sizeof(float));
-    int   *tokens = (int *)malloc(sizeof(int) * (strlen(prompt) + max_new_tokens + 8));
+    int   *tokens = (int *)malloc(sizeof(int) * ((int)strlen(prompt) + max_new_tokens + 16));
 
     if (!hidden || !logits || !tokens) {
         free(hidden); free(logits); free(tokens);
@@ -230,11 +227,11 @@ static void generate(RabbitModel *m, const char *prompt, int max_new_tokens) {
         return;
     }
 
-    /* Prefill: feed prompt tokens through full layers */
+    /* Prefill */
     for (int t = 0; t < n_tokens; t++) {
         for (int i = 0; i < dim; i++)
             hidden[i] *= 0.9f;
-        hidden[tokens[t] % dim] += ((float)tokens[t] - 64.0f) / 64.0f;
+        hidden[tokens[t] % dim] += ((float)(tokens[t] % 256) - 64.0f) / 64.0f;
 
         for (int layer = 0; layer < m->n_layers; layer++)
             rabbit_layer_step(m, hidden, dim);
@@ -243,24 +240,20 @@ static void generate(RabbitModel *m, const char *prompt, int max_new_tokens) {
     printf("Rabbit: ");
     fflush(stdout);
 
+    char piece[128];
     for (int t = 0; t < max_new_tokens; t++) {
         tiny_lm_head(hidden, dim, logits, vocab);
         softmax(logits, vocab);
 
-        int next = sample_top_p(logits, vocab, 0.85f);
+        int next = sample_top_p(logits, vocab, temperature);
 
-        if (next >= 32 && next < 127)
-            putchar((char)next);
-        else if (next == '\n')
-            putchar('\n');
-        else
-            putchar('.');
+        rabbit_detokenize(next, piece, sizeof(piece));
+        fputs(piece, stdout);
         fflush(stdout);
 
-        /* Decode step */
         for (int i = 0; i < dim; i++)
             hidden[i] *= 0.92f;
-        hidden[next % dim] += ((float)next - 64.0f) / 64.0f;
+        hidden[next % dim] += ((float)(next % 256) - 64.0f) / 64.0f;
 
         for (int layer = 0; layer < m->n_layers; layer++)
             rabbit_layer_step(m, hidden, dim);
@@ -269,13 +262,16 @@ static void generate(RabbitModel *m, const char *prompt, int max_new_tokens) {
     }
 
     printf("\n\n");
-
     free(hidden);
     free(logits);
     free(tokens);
 }
 
 rabbit_status rabbit_chat(RabbitModel *model) {
+    return rabbit_chat_ex(model, 64, 0.85f);
+}
+
+rabbit_status rabbit_chat_ex(RabbitModel *model, int max_tokens, float temperature) {
     if (!model) return RABBIT_ERR_ARGS;
 
     srand((unsigned)time(NULL));
@@ -284,9 +280,10 @@ rabbit_status rabbit_chat(RabbitModel *model) {
     printf("  Rabbit %s  \ud83d\udc07\n", rabbit_version());
     printf("========================================\n");
     rabbit_print_info(model);
+    printf("========================================\n");
+    printf("tokens=%d  temp=%.2f  vocab=%d\n", max_tokens, temperature, rabbit_tokenizer_vocab());
     printf("========================================\n\n");
 
-    printf("Full layer path active: Attention → Dense FFN → MoE.\n");
     printf("Type a message (or 'quit'):\n\n");
 
     char line[1024];
@@ -298,7 +295,7 @@ rabbit_status rabbit_chat(RabbitModel *model) {
             break;
 
         size_t len = strlen(line);
-        if (len && line[len-1] == '\n') line[len-1] = 0;
+        if (len && line[len - 1] == '\n') line[len - 1] = 0;
 
         if (strcmp(line, "quit") == 0 || strcmp(line, "exit") == 0)
             break;
@@ -306,7 +303,7 @@ rabbit_status rabbit_chat(RabbitModel *model) {
         if (line[0] == 0)
             continue;
 
-        generate(model, line, 64);
+        generate(model, line, max_tokens, temperature);
     }
 
     return RABBIT_OK;
