@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.4] - 2026-10-25
+
+### Real BPE tokenizer
+- `rabbit_tokenizer_load_bpe()` loads compact RBTTOK01 `.tok` files
+- Byte-level BPE encode/decode with pair-rank merges
+- CLI: `--tokenizer path.tok` for `chat` and `probe-v2`
+- `tools/export_hf_tokenizer.py` exports HF tokenizers to `.tok`
+- `rabbit_ref_v2_greedy` uses `rabbit_tokenize` (no longer raw bytes)
+
 ## [0.4.3] - 2026-10-25
 
 ### Exact parity path
