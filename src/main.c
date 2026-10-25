@@ -12,17 +12,35 @@ static void print_usage(const char *prog) {
         "  %s version\n"
         "  %s chat     --model <path> [options]\n"
         "  %s probe    --model <path> [--prompt text]\n"
-        "  %s probe-v2 --model <path> [--prompt text] [--tokens n]\n"
+        "  %s probe-v2 --model <path> [--prompt text] [--tokens n] [--tokenizer path]\n"
         "  %s stats    --model <path>\n"
         "\n"
         "Options:\n"
-        "  --model <path>   Path to .rabbit model\n"
-        "  --vocab <path>   Word vocabulary file\n"
-        "  --tokens <n>     Maximum new tokens (default: 64)\n"
-        "  --temp <f>       Sampling temperature (default: 0.85)\n"
-        "  --prompt <text>  Prompt for probe (default: hi)\n"
-        "  -h, --help       Show this help\n",
+        "  --model <path>       Path to .rabbit model\n"
+        "  --tokenizer <path>   BPE tokenizer (.tok / RBTTOK01)\n"
+        "  --vocab <path>       Simple word vocabulary file\n"
+        "  --tokens <n>         Maximum new tokens (default: 64)\n"
+        "  --temp <f>           Sampling temperature (default: 0.85)\n"
+        "  --prompt <text>      Prompt for probe (default: hi)\n"
+        "  -h, --help           Show this help\n",
         rabbit_version(), prog, prog, prog, prog, prog);
+}
+
+static void try_load_tokenizer(const char *tok_path, const char *vocab_path) {
+    if (tok_path) {
+        if (rabbit_tokenizer_load_bpe(tok_path) == 0) {
+            fprintf(stderr, "tokenizer: BPE loaded (%d tokens)\n", rabbit_tokenizer_vocab());
+            return;
+        }
+        fprintf(stderr, "warning: could not load BPE %s\n", tok_path);
+    }
+    if (vocab_path) {
+        if (rabbit_tokenizer_load_vocab(vocab_path) == 0) {
+            fprintf(stderr, "tokenizer: word vocab loaded (%d)\n", rabbit_tokenizer_vocab());
+            return;
+        }
+        fprintf(stderr, "warning: could not load vocab %s (byte mode)\n", vocab_path);
+    }
 }
 
 static int cmd_probe(int argc, char **argv) {
@@ -84,10 +102,10 @@ static int cmd_probe(int argc, char **argv) {
     return 0;
 }
 
-/* Phase D: greedy tokens from faithful ref-v2 path (machine-readable). */
 static int cmd_probe_v2(int argc, char **argv) {
     const char *model_path = NULL;
     const char *prompt = "hi";
+    const char *tok_path = NULL;
     int n_new = 32;
 
     for (int i = 2; i < argc; i++) {
@@ -95,6 +113,8 @@ static int cmd_probe_v2(int argc, char **argv) {
             model_path = argv[++i];
         else if ((strcmp(argv[i], "--prompt") == 0) && i + 1 < argc)
             prompt = argv[++i];
+        else if ((strcmp(argv[i], "--tokenizer") == 0) && i + 1 < argc)
+            tok_path = argv[++i];
         else if ((strcmp(argv[i], "--tokens") == 0) && i + 1 < argc) {
             n_new = atoi(argv[++i]);
             if (n_new < 1) n_new = 1;
@@ -112,10 +132,12 @@ static int cmd_probe_v2(int argc, char **argv) {
         return 1;
     }
 
+    try_load_tokenizer(tok_path, NULL);
+
     RabbitModel *m = rabbit_load(model_path);
     if (!m) return 1;
 
-    int max_ids = (int)strlen(prompt) + n_new + 8;
+    int max_ids = 512 + n_new;
     int *ids = (int *)malloc(sizeof(int) * (size_t)max_ids);
     if (!ids) {
         rabbit_free(m);
@@ -130,7 +152,6 @@ static int cmd_probe_v2(int argc, char **argv) {
         return 1;
     }
 
-    /* Machine-readable for parity tests */
     printf("PROBE_V2 prompt=%s n=%d ids=", prompt, n);
     for (int i = 0; i < n; i++) {
         if (i) printf(",");
@@ -248,6 +269,7 @@ int main(int argc, char **argv) {
     if (strcmp(argv[1], "chat") == 0) {
         const char *model_path = NULL;
         const char *vocab_path = NULL;
+        const char *tok_path = NULL;
         int max_tokens = 64;
         float temperature = 0.85f;
 
@@ -256,6 +278,8 @@ int main(int argc, char **argv) {
                 model_path = argv[++i];
             else if ((strcmp(argv[i], "--vocab") == 0) && i + 1 < argc)
                 vocab_path = argv[++i];
+            else if ((strcmp(argv[i], "--tokenizer") == 0) && i + 1 < argc)
+                tok_path = argv[++i];
             else if ((strcmp(argv[i], "--tokens") == 0) && i + 1 < argc) {
                 max_tokens = atoi(argv[++i]);
                 if (max_tokens < 1) max_tokens = 1;
@@ -283,15 +307,12 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Rabbit %s\n", rabbit_version());
         fprintf(stderr, "loading %s\n", model_path);
 
+        try_load_tokenizer(tok_path, vocab_path);
+
         RabbitModel *model = rabbit_load(model_path);
         if (!model) {
             fprintf(stderr, "error: failed to load model\n");
             return 1;
-        }
-
-        if (vocab_path) {
-            if (rabbit_tokenizer_load_vocab(vocab_path) != 0)
-                fprintf(stderr, "warning: could not load vocab %s (using byte mode)\n", vocab_path);
         }
 
         rabbit_status st = rabbit_chat_ex(model, max_tokens, temperature);
