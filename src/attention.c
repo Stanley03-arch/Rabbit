@@ -5,23 +5,27 @@
 #include <math.h>
 
 /*
- * Attention + residual dense path (Phase B improvements).
+ * Multi-head attention + residual dense path (Phase B).
  *
- * - Short KV window with multi-group attention
- * - Basic RoPE on the query/key vectors
+ * - Configurable number of heads derived from hidden_dim
+ * - Per-head RoPE
+ * - Short KV window (max 128)
  * - Residual dense FFN using the dense blob
  */
 
 #define RABBIT_MAX_CTX 128
-#define RABBIT_N_GROUPS 4
+#define RABBIT_MAX_HEADS 16
+#define RABBIT_MIN_HEAD_DIM 8
 
 typedef struct {
-    float *k_cache;
+    float *k_cache;   /* [max_len * dim] */
     float *v_cache;
     int    len;
     int    dim;
     int    max_len;
-    int    pos;          /* global position for RoPE */
+    int    pos;
+    int    n_heads;
+    int    head_dim;
 } TinyKVCache;
 
 static TinyKVCache g_kv = {0};
@@ -32,12 +36,27 @@ void rabbit_attn_reset(void) {
     memset(&g_kv, 0, sizeof(g_kv));
 }
 
+static void derive_heads(int dim, int *n_heads, int *head_dim) {
+    int h = 1;
+    if (dim >= 64) h = 4;
+    if (dim >= 128) h = 8;
+    if (dim >= 256) h = 16;
+    if (h > RABBIT_MAX_HEADS) h = RABBIT_MAX_HEADS;
+    while (h > 1 && (dim / h) < RABBIT_MIN_HEAD_DIM)
+        h /= 2;
+    if (h < 1) h = 1;
+    *n_heads = h;
+    *head_dim = dim / h;
+}
+
 static int ensure_kv(int dim) {
     if (g_kv.k_cache && g_kv.dim == dim) return 0;
 
     rabbit_attn_reset();
     g_kv.dim = dim;
     g_kv.max_len = RABBIT_MAX_CTX;
+    derive_heads(dim, &g_kv.n_heads, &g_kv.head_dim);
+
     g_kv.k_cache = calloc((size_t)g_kv.max_len * dim, sizeof(float));
     g_kv.v_cache = calloc((size_t)g_kv.max_len * dim, sizeof(float));
     if (!g_kv.k_cache || !g_kv.v_cache) {
@@ -47,13 +66,13 @@ static int ensure_kv(int dim) {
     return 0;
 }
 
-/* Simple rotary embedding applied in-place to pairs of dimensions. */
-static void apply_rope(float *x, int dim, int pos) {
-    if (dim < 2) return;
+/* RoPE on a single head (head_dim elements). */
+static void apply_rope_head(float *x, int head_dim, int pos) {
+    if (head_dim < 2) return;
     const float theta = 10000.0f;
-    int pairs = dim / 2;
+    int pairs = head_dim / 2;
     for (int i = 0; i < pairs; i++) {
-        float freq = 1.0f / powf(theta, (2.0f * i) / (float)dim);
+        float freq = 1.0f / powf(theta, (2.0f * (float)i) / (float)head_dim);
         float angle = (float)pos * freq;
         float cos_a = cosf(angle);
         float sin_a = sinf(angle);
@@ -67,32 +86,31 @@ static void apply_rope(float *x, int dim, int pos) {
 static void tiny_attention(float *x, int dim) {
     if (ensure_kv(dim) != 0) return;
 
-    /* Work on a temporary so we can rotate without destroying residual */
     float *q = (float *)malloc((size_t)dim * sizeof(float));
     if (!q) return;
     memcpy(q, x, (size_t)dim * sizeof(float));
-    apply_rope(q, dim, g_kv.pos);
+
+    /* RoPE per head on query */
+    for (int h = 0; h < g_kv.n_heads; h++)
+        apply_rope_head(q + h * g_kv.head_dim, g_kv.head_dim, g_kv.pos);
 
     if (g_kv.len < g_kv.max_len) {
+        /* Store rotated K and original V */
         memcpy(g_kv.k_cache + g_kv.len * dim, q, (size_t)dim * sizeof(float));
         memcpy(g_kv.v_cache + g_kv.len * dim, x, (size_t)dim * sizeof(float));
         g_kv.len++;
     } else {
-        memmove(g_kv.k_cache, g_kv.k_cache + dim, (size_t)(g_kv.max_len - 1) * dim * sizeof(float));
-        memmove(g_kv.v_cache, g_kv.v_cache + dim, (size_t)(g_kv.max_len - 1) * dim * sizeof(float));
+        memmove(g_kv.k_cache, g_kv.k_cache + dim,
+                (size_t)(g_kv.max_len - 1) * dim * sizeof(float));
+        memmove(g_kv.v_cache, g_kv.v_cache + dim,
+                (size_t)(g_kv.max_len - 1) * dim * sizeof(float));
         memcpy(g_kv.k_cache + (g_kv.max_len - 1) * dim, q, (size_t)dim * sizeof(float));
         memcpy(g_kv.v_cache + (g_kv.max_len - 1) * dim, x, (size_t)dim * sizeof(float));
     }
     g_kv.pos++;
 
-    int groups = RABBIT_N_GROUPS;
-    if (groups > dim) groups = 1;
-    int group_dim = dim / groups;
-    if (group_dim < 1) group_dim = dim;
-
+    float scale = 1.0f / sqrtf((float)g_kv.head_dim);
     float scores[RABBIT_MAX_CTX];
-    float scale = 1.0f / sqrtf((float)group_dim);
-
     float out[512];
     if (dim > 512) {
         free(q);
@@ -100,14 +118,14 @@ static void tiny_attention(float *x, int dim) {
     }
     memset(out, 0, (size_t)dim * sizeof(float));
 
-    for (int g = 0; g < groups; g++) {
-        int off = g * group_dim;
-        int gd = (g == groups - 1) ? (dim - off) : group_dim;
+    for (int h = 0; h < g_kv.n_heads; h++) {
+        int off = h * g_kv.head_dim;
+        int hd = g_kv.head_dim;
 
         for (int t = 0; t < g_kv.len; t++) {
             float dot = 0.0f;
             const float *k = g_kv.k_cache + t * dim + off;
-            for (int i = 0; i < gd; i++)
+            for (int i = 0; i < hd; i++)
                 dot += q[off + i] * k[i];
             scores[t] = dot * scale;
         }
@@ -127,7 +145,7 @@ static void tiny_attention(float *x, int dim) {
 
         for (int t = 0; t < g_kv.len; t++) {
             const float *v = g_kv.v_cache + t * dim + off;
-            for (int i = 0; i < gd; i++)
+            for (int i = 0; i < hd; i++)
                 out[off + i] += scores[t] * v[i];
         }
     }
