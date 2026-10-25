@@ -52,6 +52,7 @@ def main():
     tensors = {}
     tensors["model.embed_tokens.weight"] = (0.02 * rng.standard_normal((vocab, hidden))).astype(np.float32)
     tensors["lm_head.weight"] = (0.02 * rng.standard_normal((vocab, hidden))).astype(np.float32)
+    tensors["model.norm.weight"] = (1.0 + 0.01 * rng.standard_normal(hidden)).astype(np.float32)
 
     for L in range(n_layers):
         p = f"model.layers.{L}"
