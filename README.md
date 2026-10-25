@@ -6,7 +6,9 @@ Rabbit is a small pure-C engine that runs Mixture-of-Experts models by keeping d
 
 Inspired by [Colibrì](https://github.com/JustVugg/colibri).
 
-> **Status:** early development (v0.2.1). The full pipeline works on synthetic models. Real open MoE conversion is supported but still evolving.
+> **Status:** early development (v0.2.2). The full pipeline works on synthetic models. Real open MoE conversion is supported but still evolving.
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_smoke.ipynb)
 
 ---
 
@@ -26,7 +28,7 @@ Inspired by [Colibrì](https://github.com/JustVugg/colibri).
 ## Requirements
 
 - C11 compiler (`gcc` or `clang`)
-- POSIX (`mmap`, `pread`-style I/O)
+- POSIX (`mmap`)
 - Optional: Python 3 + `numpy` + `safetensors` for model conversion
 
 ---
@@ -39,29 +41,23 @@ cd Rabbit
 make
 ```
 
-Artifacts:
-
-- `./rabbit` — inference binary
-- `make test-model` — tiny synthetic checkpoint
-- `make demo-model` — larger int4 demo MoE (requires Python 3)
-
----
-
-## Quick start
-
 ```bash
 make test-model
 ./rabbit chat --model models/tiny-test.rabbit
 
-make demo-model
-./rabbit chat --model models/demo-moe.rabbit --tokens 64 --temp 0.8
+make demo-model   # optional larger int4 demo
+make smoke        # non-interactive check
 ```
 
-Optional word vocabulary:
+---
 
-```bash
-./rabbit chat --model models/demo-moe.rabbit --vocab models/sample_vocab.txt
-```
+## Colab smoke test
+
+Open the notebook:
+
+**[notebooks/rabbit_colab_smoke.ipynb](https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_smoke.ipynb)**
+
+It clones the repo, builds, creates a test model, and runs a non-interactive generation pass with cache stats.
 
 ---
 
@@ -71,12 +67,10 @@ Optional word vocabulary:
 rabbit version
 rabbit chat --model <path> [options]
 
-Options:
   --model <path>   Path to a .rabbit model (required)
   --vocab <path>   Word vocabulary file (one token per line)
-  --tokens <n>     Maximum new tokens to generate (default: 64)
+  --tokens <n>     Maximum new tokens (default: 64)
   --temp <f>       Sampling temperature (default: 0.85)
-  -h, --help       Show help
 ```
 
 ---
@@ -89,14 +83,12 @@ pip install safetensors numpy
 python tools/convert_hf_to_rabbit.py \
   --model-dir /path/to/hf-model \
   --out models/model.rabbit \
-  --quant 4 \
-  --layout square \
-  --max-experts 32
+  --quant 4 --layout square --max-experts 32
 
 ./rabbit chat --model models/model.rabbit
 ```
 
-See [docs/conversion.md](docs/conversion.md) for layout and quantization details.
+See [docs/conversion.md](docs/conversion.md).
 
 ---
 
@@ -106,19 +98,15 @@ See [docs/conversion.md](docs/conversion.md) for layout and quantization details
 input tokens
     │
     ▼
-┌──────────────────┐
-│  Attention + KV cache  │  (short context, grouped)
-├──────────────────┤
-│  Dense residual FFN    │  (always in RAM)
-├──────────────────┤
-│  MoE router + experts  │  (streamed from disk)
-└──────────────────┘
+Attention + KV cache
+Dense residual FFN      (RAM)
+MoE router + experts    (streamed from disk)
     │
     ▼
 lm_head → sample
 ```
 
-Experts are stored in a single file region and mapped with `mmap`. A small LRU keeps hot experts in RAM. See [docs/architecture.md](docs/architecture.md) and [docs/file-format.md](docs/file-format.md).
+More detail: [docs/architecture.md](docs/architecture.md), [docs/file-format.md](docs/file-format.md).
 
 ---
 
@@ -127,26 +115,25 @@ Experts are stored in a single file region and mapped with `mmap`. A small LRU k
 ```
 src/           Engine (C11)
 tools/         Test model builder + HF converter
-models/        Local checkpoints (not tracked except samples)
-docs/          Design and conversion notes
+models/        Local checkpoints
+notebooks/     Colab smoke test
+docs/          Design notes
 ```
 
 ---
 
 ## Limitations
 
-- Generation quality on synthetic weights is not meaningful language; it validates the pipeline.
-- Hugging Face conversion uses heuristics for expert tensor names; not every architecture is perfect yet.
-- Full frontier MoE models (e.g. multi-hundred-GB checkpoints) still require aggressive quantization and expert limiting on 4 GB systems.
-- Tokenizer is intentionally minimal (byte or line-based vocab), not SentencePiece/tiktoken yet.
+- Synthetic weights do not produce meaningful language; they validate the engine.
+- HF conversion uses heuristics for expert tensor names.
+- Large frontier MoEs still need aggressive quantization and expert limiting on 4 GB systems.
+- Tokenizer is minimal (byte or line-based vocab).
 
 ---
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and focused pull requests are welcome.
-
----
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
