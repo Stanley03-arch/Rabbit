@@ -1,0 +1,5 @@
+Per-layer experts:
+- header.n_experts = experts per layer
+- header.total_experts_size = n_layers * n_experts * expert_size
+- disk order: L0E0..L0E{n-1}, L1E0, ...
+- C detects per-layer when records == layers * n_experts
