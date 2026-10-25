@@ -25,7 +25,7 @@ See [docs/PHASE_D.md](docs/PHASE_D.md).
 - [x] `--layout v2` exact dense + gate/up/down (no square crop)
 - [x] Deterministic HF-like micro fixture (`make micro-hf`)
 - [x] `make m2` / CI: convert → C↔NumPy token match
-- [ ] Per-layer expert tables (today: shared experts)
+- [x] **Per-layer expert tables** (`n_expert_records = L×E`, `rabbit_expert_ptr_layer`)
 - [ ] Live public tiny MoE download + transformers token parity
 - [ ] Group-scaled int4 + real BPE tokenizer
 
