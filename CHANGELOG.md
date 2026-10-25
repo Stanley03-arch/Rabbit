@@ -1,11 +1,22 @@
 # Changelog
 
+## [0.3.0] - 2026-10-25
+
+### Added (Phase B start)
+- Structured expert apply path: when the expert blob is large enough it is treated as gate / up / down and a SwiGLU-style step is performed
+- Basic RoPE on the attention query/key path
+- Flat converter layout now emits tensors in gate → up → down order for the new kernel
+
+### Notes
+- Classic square-expert path (used by the ref model and parity tests) is unchanged and still exact
+- Full production-grade SwiGLU + proper multi-head RoPE still evolving
+
 ## [0.2.5] - 2026-10-25
 
 ### Added
 - Documented tensor map for real HF MoE families (Qwen3-MoE / Mixtral style)
 - Improved HF converter expert detection and packing heuristics
-- Explicit notes for converting tiny public MoE models (e.g. micro Qwen3-MoE)
+- Explicit notes for converting tiny public MoE models
 - ROADMAP / PHASE_A updated to close remaining Phase A items
 
 ### Changed
