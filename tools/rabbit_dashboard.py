@@ -3,7 +3,8 @@
 Rabbit engine dashboard
 
 Original dark UI: chat + model stats + expert-cache metrics.
-Inspired by the *role* of engine dashboards (not a copy of any third-party UI).
+Phase C: model/memory metrics come from `rabbit stats` (engine JSON),
+not only log scraping.
 
   pip install flask
   python tools/rabbit_dashboard.py --model models/tiny-test.rabbit
@@ -14,6 +15,7 @@ Colab: use notebooks/rabbit_colab_dashboard.ipynb
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -37,6 +39,7 @@ _state = {
     "warm_experts": [],
     "last_reply": "",
     "model_meta": {},
+    "engine_stats": {},
 }
 
 
@@ -57,30 +60,21 @@ def find_rabbit(repo: Path) -> Path:
     raise FileNotFoundError("rabbit binary not found — run `make` first")
 
 
-def parse_info_blob(text: str) -> dict:
-    meta = {}
-    patterns = {
-        "model_name": r"name\s+(\S+)",
-        "layers": r"layers\s+(\d+)",
-        "hidden_dim": r"hidden_dim\s+(\d+)",
-        "experts": r"experts\s+(\d+)",
-        "top_k": r"top-(\d+)",
-        "expert_quant": r"expert_quant\s+(\d+)",
-        "dense": r"dense\s+([0-9.]+\s*MB)",
-    }
-    for key, pat in patterns.items():
-        m = re.search(pat, text)
-        if m:
-            val = m.group(1)
-            if key in ("layers", "hidden_dim", "experts", "top_k", "expert_quant"):
-                try:
-                    meta[key] = int(val)
-                except ValueError:
-                    meta[key] = val
-            else:
-                meta[key] = val
-    meta["mapped"] = "mapped" in text or "expert_map" in text
-    return meta
+def run_engine_stats(rabbit: Path, model: Path) -> dict:
+    proc = subprocess.run(
+        [str(rabbit), "stats", "--model", str(model)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    out = (proc.stdout or "").strip()
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr or out or "stats failed")
+    start = out.find("{")
+    end = out.rfind("}")
+    if start < 0 or end < 0:
+        raise RuntimeError("no JSON in stats output")
+    return json.loads(out[start : end + 1])
 
 
 def parse_cache_stats(text: str) -> dict:
@@ -97,7 +91,6 @@ def parse_cache_stats(text: str) -> dict:
 
 
 def extract_reply(stdout: str) -> str:
-    """Best-effort strip of banners; keep generated body."""
     lines = stdout.splitlines()
     body = []
     for line in lines:
@@ -114,7 +107,6 @@ def extract_reply(stdout: str) -> str:
         body.append(line)
     text = "\n".join(body).strip()
     if not text:
-        # last non-empty chunk
         chunks = [c.strip() for c in stdout.split("\n\n") if c.strip()]
         text = chunks[-1] if chunks else stdout.strip()[-500:]
     return text or "[no generation captured]"
@@ -137,18 +129,22 @@ def run_generation(rabbit: Path, model: Path, message: str, tokens: int, temp: f
         "utf-8", errors="replace"
     )
 
-    meta = parse_info_blob(combined)
     cache = parse_cache_stats(combined)
     reply = extract_reply(proc.stdout.decode("utf-8", errors="replace"))
 
-    # synthetic warm experts from miss/insert activity
-    n = int(meta.get("experts") or 8)
+    # refresh engine stats after generation
+    try:
+        engine = run_engine_stats(rabbit, model)
+    except Exception:
+        engine = {}
+
+    n = int(engine.get("n_experts") or 8)
     warm = list(range(min(4, n)))
     if cache.get("cache_inserts", 0):
         warm = list({(i * 3 + cache["cache_inserts"]) % n for i in range(min(6, n))})
 
     with _state_lock:
-        _state["model_meta"] = meta
+        _state["engine_stats"] = engine
         _state["cache_hits"] = cache.get("cache_hits", _state["cache_hits"])
         _state["cache_misses"] = cache.get("cache_misses", _state["cache_misses"])
         _state["cache_inserts"] = cache.get("cache_inserts", _state["cache_inserts"])
@@ -168,27 +164,42 @@ def create_app(rabbit: Path, model: Path, repo: Path) -> Flask:
     @app.get("/api/info")
     def info():
         with _state_lock:
-            meta = dict(_state["model_meta"])
+            engine = dict(_state["engine_stats"])
             payload = {
-                "version": "Rabbit dashboard",
+                "version": f"Rabbit {engine.get('version', '')}".strip() or "Rabbit",
                 "model_path": str(model),
-                "model_name": meta.get("model_name", model.name),
-                "layers": meta.get("layers"),
-                "hidden_dim": meta.get("hidden_dim"),
-                "experts": meta.get("experts"),
-                "top_k": meta.get("top_k"),
-                "expert_quant": meta.get("expert_quant"),
-                "dense": meta.get("dense"),
-                "mapped": meta.get("mapped", True),
+                "model_name": engine.get("model_name", model.name),
+                "layers": engine.get("layers"),
+                "hidden_dim": engine.get("hidden_dim"),
+                "experts": engine.get("n_experts"),
+                "top_k": engine.get("experts_per_token"),
+                "expert_quant": engine.get("expert_quant"),
+                "dense": (
+                    f"{engine['dense_bytes'] / (1024*1024):.2f} MB"
+                    if engine.get("dense_bytes") is not None
+                    else None
+                ),
+                "mapped": bool(engine.get("expert_mapped", True)),
                 "cache_hits": _state["cache_hits"],
                 "cache_misses": _state["cache_misses"],
                 "cache_inserts": _state["cache_inserts"],
                 "warm_experts": list(_state["warm_experts"]),
+                # Phase C memory metrics from engine
+                "mem_budget_mb": round(engine["mem_budget_bytes"] / (1024 * 1024), 1)
+                if engine.get("mem_budget_bytes") is not None
+                else None,
+                "mem_total_est_mb": round(engine["mem_total_est_bytes"] / (1024 * 1024), 2)
+                if engine.get("mem_total_est_bytes") is not None
+                else None,
+                "cache_slots": engine.get("cache_slots"),
+                "over_budget": engine.get("over_budget"),
+                "source": "rabbit stats",
             }
-        # probe version string
         try:
             v = subprocess.run([str(rabbit), "version"], capture_output=True, text=True, timeout=5)
-            payload["version"] = (v.stdout or "").strip() or payload["version"]
+            ver = (v.stdout or "").strip()
+            if ver:
+                payload["version"] = ver
         except Exception:
             pass
         return jsonify(payload)
@@ -232,7 +243,12 @@ def main():
     if not model.is_file():
         raise SystemExit(f"model not found: {args.model}")
 
-    # seed meta with a dry run
+    # seed engine stats + a light generation probe
+    try:
+        with _state_lock:
+            _state["engine_stats"] = run_engine_stats(rabbit, model)
+    except Exception as e:
+        print("warning: initial stats failed:", e)
     try:
         run_generation(rabbit, model, "ping", 8, 0.5)
     except Exception as e:
