@@ -6,8 +6,9 @@ SRC = src/main.c src/memory.c src/model.c src/moe.c src/quant.c src/tokenizer.c 
 OBJ = $(SRC:.c=.o)
 
 TARGET = rabbit
+TEST_TOOL = tools/create_test_model
 
-.PHONY: all clean debug
+.PHONY: all clean debug test-model
 
 all: $(TARGET)
 
@@ -17,12 +18,14 @@ $(TARGET): $(OBJ)
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
+$(TEST_TOOL): tools/create_test_model.c
+	$(CC) -O2 -o $@ $<
+
+test-model: $(TEST_TOOL)
+	@mkdir -p models
+	./$(TEST_TOOL) models/tiny-test.rabbit
+	debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
 debug: clean $(TARGET)
 
 clean:
-	rm -f $(OBJ) $(TARGET)
-
-# Placeholder for future model conversion
-convert:
-	@echo "Conversion tools coming soon"
+	rm -f $(OBJ) $(TARGET) $(TEST_TOOL)
