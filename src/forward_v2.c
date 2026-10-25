@@ -7,9 +7,9 @@
 /*
  * Faithful rabbit-ref-v2 forward — must match tools/ref_forward_v2.py
  *
- * Experts on disk: either shared (E records) or per-layer (L*E records).
- * expert_quant 0 = pure f32; 4 = group-scaled int4; 8 = scale+int8.
- * Dense Q/K/V: GQA-aware (q_dim / kv_dim) when header.reserved has head meta.
+ * Dense layout: embed | lm_head | final_norm | per-layer...
+ * Experts: shared (E) or per-layer (L*E).
+ * expert_quant 0=f32; 4=group-int4; 8=int8.
  */
 
 #define V2_EPS 1e-5f
@@ -19,6 +19,7 @@
 typedef struct {
     const float *embed;
     const float *lm_head;
+    const float *final_norm;
     int n_layers;
     int hidden;
     int vocab;
@@ -28,8 +29,8 @@ typedef struct {
     int n_heads;
     int n_kv_heads;
     int head_dim;
-    int q_dim;   /* n_heads * head_dim */
-    int kv_dim;  /* n_kv_heads * head_dim */
+    int q_dim;
+    int kv_dim;
 
     const float *rms_attn[32];
     const float *rms_ffn[32];
@@ -102,7 +103,6 @@ static int parse_weights(const RabbitModel *m, RefV2Weights *w) {
     w->top_k = m->experts_per_token > 0 ? m->experts_per_token : 2;
     w->inter = m->hdr.expert_dim > 0 ? (int)m->hdr.expert_dim : m->hidden_dim * 2;
 
-    /* GQA metadata from header.reserved (u32 LE); 0 => legacy MHA square */
     {
         uint32_t nh = 0, nkv = 0, hd = 0;
         memcpy(&nh,  m->hdr.reserved + 0, 4);
@@ -127,13 +127,14 @@ static int parse_weights(const RabbitModel *m, RefV2Weights *w) {
 
     const float *p = (const float *)m->dense;
     size_t floats = m->dense_size / sizeof(float);
-    size_t need = (size_t)w->vocab * w->hidden + (size_t)w->hidden * w->vocab;
+    size_t need = (size_t)w->vocab * w->hidden + (size_t)w->hidden * w->vocab
+                + (size_t)w->hidden; /* final RMSNorm */
     for (int L = 0; L < w->n_layers; L++) {
         need += (size_t)w->hidden * 2;
-        need += (size_t)w->q_dim * w->hidden;   /* Q */
-        need += (size_t)w->kv_dim * w->hidden;  /* K */
-        need += (size_t)w->kv_dim * w->hidden;  /* V */
-        need += (size_t)w->hidden * w->q_dim;   /* O */
+        need += (size_t)w->q_dim * w->hidden;
+        need += (size_t)w->kv_dim * w->hidden;
+        need += (size_t)w->kv_dim * w->hidden;
+        need += (size_t)w->hidden * w->q_dim;
         need += (size_t)w->n_experts * w->hidden;
     }
     if (need > floats) return -1;
@@ -142,6 +143,8 @@ static int parse_weights(const RabbitModel *m, RefV2Weights *w) {
     p += (size_t)w->vocab * w->hidden;
     w->lm_head = p;
     p += (size_t)w->hidden * w->vocab;
+    w->final_norm = p;
+    p += w->hidden;
 
     for (int L = 0; L < w->n_layers; L++) {
         w->rms_attn[L] = p; p += w->hidden;
@@ -328,17 +331,14 @@ static void expert_swiglu(const RabbitModel *m, int layer, int local_expert_id,
         memcpy(&scale_g, p, 4); p += 4;
         gemv_int8_row((const int8_t *)p, scale_g, xn, gate, inter, H);
         p += mat;
-
         memcpy(&scale_u, p, 4); p += 4;
         gemv_int8_row((const int8_t *)p, scale_u, xn, up, inter, H);
         p += mat;
-
         for (int i = 0; i < inter; i++) {
             float g = gate[i];
             float sig = 1.0f / (1.0f + expf(-g));
             mid[i] = (g * sig) * up[i];
         }
-
         memcpy(&scale_d, p, 4); p += 4;
         gemv_int8_row((const int8_t *)p, scale_d, mid, down_out, H, inter);
     }
@@ -443,6 +443,16 @@ int rabbit_ref_v2_forward(RabbitModel *m, const int *token_ids, int n_tokens,
         for (int L = 0; L < w.n_layers; L++) {
             attention_step(&w, L, h, &kv[L], pos);
             moe_step(m, &w, L, h);
+        }
+    }
+
+    /* Final RMSNorm (HF model.norm) before lm_head */
+    {
+        float *hn = (float *)malloc(sizeof(float) * (size_t)H);
+        if (hn) {
+            rmsnorm(h, w.final_norm, hn, H);
+            memcpy(h, hn, sizeof(float) * (size_t)H);
+            free(hn);
         }
     }
 
