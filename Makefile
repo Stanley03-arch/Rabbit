@@ -3,18 +3,19 @@ CFLAGS ?= -O2 -Wall -Wextra -std=c11 -I./src
 LDFLAGS ?= -lm
 
 SRC = src/main.c src/memory.c src/model.c src/moe.c src/quant.c \
-      src/tokenizer.c src/utils.c src/attention.c src/forward_v2.c
+      src/tokenizer.c src/utils.c src/attention.c src/forward_v2.c src/validate.c
 OBJ = $(SRC:.c=.o)
 
 LIB_SRC = src/memory.c src/model.c src/moe.c src/quant.c \
-          src/tokenizer.c src/utils.c src/attention.c src/forward_v2.c
+          src/tokenizer.c src/utils.c src/attention.c src/forward_v2.c src/validate.c
 LIB_OBJ = $(LIB_SRC:.c=.o)
 
 TARGET = rabbit
 TEST_TOOL = tools/create_test_model
 TEST_BIN = tests/test_quant
+VALIDATE_TEST_BIN = tests/validate_test
 
-.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro smoke test parity parity-v2 m2 exact-f32 live-moe check
+.PHONY: all clean debug test test-model ref-model ref-v2 micro-hf mixtral-micro smoke test parity parity-v2 m2 exact-f32 live-moe check validate-test
 
 all: $(TARGET)
 
@@ -30,8 +31,14 @@ $(TEST_TOOL): tools/create_test_model.c
 $(TEST_BIN): tests/test_quant.c $(LIB_OBJ)
 	$(CC) $(CFLAGS) tests/test_quant.c $(LIB_OBJ) -o $@ $(LDFLAGS)
 
+$(VALIDATE_TEST_BIN): tests/validate_test.c $(LIB_OBJ)
+	$(CC) $(CFLAGS) tests/validate_test.c $(LIB_OBJ) -o $@ $(LDFLAGS)
+
 test: $(TEST_BIN)
 	./$(TEST_BIN)
+
+validate-test: $(VALIDATE_TEST_BIN)
+	./$(VALIDATE_TEST_BIN)
 
 test-model: $(TEST_TOOL)
 	@mkdir -p models
@@ -82,14 +89,14 @@ smoke: $(TARGET) test-model
 	@grep -q "Rabbit" /tmp/rabbit-smoke.out /tmp/rabbit-smoke.err
 	@echo "smoke: ok"
 
-check: test smoke parity parity-v2 m2 exact-f32 mixtral-micro
+check: test validate-test smoke parity parity-v2 m2 exact-f32 mixtral-micro
 	@echo "check: all passed"
 
 debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
 debug: clean $(TARGET)
 
 clean:
-	rm -f $(OBJ) $(TARGET) $(TEST_TOOL) $(TEST_BIN)
+	rm -f $(OBJ) $(TARGET) $(TEST_TOOL) $(TEST_BIN) $(VALIDATE_TEST_BIN)
 
 # Live Mixtral-style MoE (TinyBrainBot 360M). Requires: pip install huggingface_hub safetensors
 live-moe: $(TARGET)
