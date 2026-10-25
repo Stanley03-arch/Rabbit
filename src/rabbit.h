@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-#define RABBIT_VERSION "0.2.5"
+#define RABBIT_VERSION "0.3.0"
 #define RABBIT_MAGIC   "RABBIT01"
 #define RABBIT_MAX_CACHE_SLOTS 8
 
@@ -69,6 +69,17 @@ struct RabbitModel {
     char    name[128];
 };
 
+typedef struct {
+    size_t dense_bytes;
+    size_t expert_record_bytes;
+    size_t cache_slots;
+    size_t cache_bytes;
+    size_t kv_bytes;
+    size_t resident_estimate;
+    size_t total_experts_on_disk;
+    int    suggested_max_experts_4gb;
+} RabbitMemBudget;
+
 /* Lifecycle */
 RabbitModel  *rabbit_load(const char *path);
 void          rabbit_free(RabbitModel *model);
@@ -76,6 +87,8 @@ rabbit_status rabbit_chat(RabbitModel *model);
 rabbit_status rabbit_chat_ex(RabbitModel *model, int max_tokens, float temperature);
 const char   *rabbit_version(void);
 void          rabbit_print_info(const RabbitModel *model);
+void          rabbit_mem_budget(const RabbitModel *model, RabbitMemBudget *out);
+void          rabbit_print_mem_budget(const RabbitModel *model);
 
 /* Cache */
 ExpertCache *rabbit_cache_create(int n_slots);
@@ -96,6 +109,7 @@ int         rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim);
 int         rabbit_ref_forward(RabbitModel *m, const char *prompt, float *out_hidden);
 void        rabbit_attn_reset(void);
 int         rabbit_layer_step(RabbitModel *m, float *hidden, int hidden_dim);
+size_t      rabbit_kv_bytes_estimate(int hidden_dim, int max_ctx);
 
 /* Quantization */
 void rabbit_dequant_int8(const int8_t *src, float *dst, int n, float scale);
