@@ -8,8 +8,9 @@ Improvements:
   - int4 packing (default for experts when --quant 4)
   - Explicit expert layout: [float32 scale][packed weights]
   - Better heuristics for DeepSeek / Qwen / Mixtral-style expert names
-  - Prefer down_proj / w2 when forcing square H×H for current kernels
+  - Prefer down_proj / w2 when forcing square H×H
   - --layout square|flat control
+  - flat layout now emits gate → up → down order for the Phase-B SwiGLU kernel
   - Demo mode still available (no download)
 
 Usage:
@@ -100,7 +101,7 @@ def build_demo_model(out_path: Path, hidden_dim: int = 128, n_experts: int = 16,
     expert_dim = hidden_dim * 2
 
     dense = np.random.randn(hidden_dim * 256).astype(np.float32)
-    dense_blob = pack_with_scale(dense, 8)  # dense stays int8 for simplicity
+    dense_blob = pack_with_scale(dense, 8)
 
     expert_blobs = []
     for e in range(n_experts):
@@ -166,7 +167,6 @@ def collect_tensors(model_dir: Path) -> Dict[str, np.ndarray]:
 
 
 def classify_tensors(tensors: Dict[str, np.ndarray]):
-    """Improved heuristics for DeepSeek / Qwen / Mixtral / similar."""
     dense = {}
     experts: Dict[int, Dict[str, np.ndarray]] = {}
 
@@ -213,7 +213,6 @@ def pack_dense(dense: Dict[str, np.ndarray], quant: int = 8) -> bytes:
 
 
 def _prefer_name(name: str) -> int:
-    """Higher score = preferred when forcing square layout."""
     n = name.lower()
     if "down_proj" in n or "w2" in n:
         return 100
@@ -224,15 +223,21 @@ def _prefer_name(name: str) -> int:
     return 10
 
 
+def _order_key(name: str) -> int:
+    """Order for flat/SwiGLU packing: gate → up → down."""
+    n = name.lower()
+    if "gate" in n:
+        return 0
+    if "up" in n or "w1" in n or "w3" in n:
+        return 1
+    if "down" in n or "w2" in n:
+        return 2
+    return 3
+
+
 def pack_one_expert(expert_tensors: Dict[str, np.ndarray], quant: int, layout: str,
                     hidden_dim: int) -> bytes:
-    """
-    layout:
-      square — force a single [hidden, hidden] matrix (pad/truncate)
-      flat   — concatenate all expert tensors as-is (with scale headers)
-    """
     if layout == "square":
-        # Prefer down_proj / w2, then largest matrix
         candidates = []
         for name, arr in expert_tensors.items():
             a = np.asarray(arr)
@@ -251,7 +256,6 @@ def pack_one_expert(expert_tensors: Dict[str, np.ndarray], quant: int, layout: s
             mat = flat.reshape(hidden_dim, hidden_dim)
             return pack_with_scale(mat, quant)
 
-        # Fallback: concatenate then reshape
         flat = np.concatenate([np.asarray(v).astype(np.float32).ravel() for v in expert_tensors.values()])
         need = hidden_dim * hidden_dim
         if flat.size < need:
@@ -259,8 +263,9 @@ def pack_one_expert(expert_tensors: Dict[str, np.ndarray], quant: int, layout: s
         mat = flat[:need].reshape(hidden_dim, hidden_dim)
         return pack_with_scale(mat, quant)
 
-    # flat layout
-    pieces = [pack_with_scale(np.asarray(v), quant) for _, v in sorted(expert_tensors.items())]
+    # flat / structured: emit gate → up → down order for Phase-B SwiGLU kernel
+    ordered = sorted(expert_tensors.items(), key=lambda kv: _order_key(kv[0]))
+    pieces = [pack_with_scale(np.asarray(v), quant) for _, v in ordered]
     return b"".join(pieces)
 
 
@@ -343,7 +348,7 @@ def main():
     ap.add_argument("--max-experts", type=int, default=None)
     ap.add_argument("--quant", type=int, choices=[4, 8], default=4, help="Expert quantization bits")
     ap.add_argument("--layout", choices=["square", "flat"], default="square",
-                    help="square=force HxH matrix per expert (best for current kernels)")
+                    help="square=H×H; flat=gate/up/down ordered for SwiGLU")
     ap.add_argument("--hidden-dim", type=int, default=128)
     ap.add_argument("--n-experts", type=int, default=16)
     args = ap.parse_args()
