@@ -9,6 +9,7 @@
  *
  * Experts on disk: either shared (E records) or per-layer (L*E records
  * ordered L0E0..L0E{n-1}, L1E0, ...).
+ * expert_quant 0 = pure f32 gate/up/down; 8 = scale+int8 each.
  */
 
 #define V2_EPS 1e-5f
@@ -237,9 +238,8 @@ static void expert_swiglu(const RabbitModel *m, int layer, int local_expert_id,
     const uint8_t *bytes = (const uint8_t *)rabbit_expert_ptr_layer(m, layer, local_expert_id);
     if (!bytes) return;
 
+    int quant = m->hdr.expert_quant ? (int)m->hdr.expert_quant : 8;
     size_t mat = (size_t)inter * (size_t)H;
-    size_t one = 4 + mat;
-    if (m->expert_size < one * 3) return;
 
     float *gate = (float *)calloc((size_t)inter, sizeof(float));
     float *up = (float *)calloc((size_t)inter, sizeof(float));
@@ -250,24 +250,49 @@ static void expert_swiglu(const RabbitModel *m, int layer, int local_expert_id,
         return;
     }
 
-    const uint8_t *p = bytes;
-    float scale_g, scale_u, scale_d;
-    memcpy(&scale_g, p, 4); p += 4;
-    gemv_int8_row((const int8_t *)p, scale_g, xn, gate, inter, H);
-    p += mat;
+    if (quant == 0) {
+        /* pure f32: gate[I,H] + up[I,H] + down[H,I] */
+        size_t need = (mat * 2 + (size_t)H * (size_t)inter) * sizeof(float);
+        if (m->expert_size < need) {
+            free(gate); free(up); free(mid); free(down_out);
+            return;
+        }
+        const float *p = (const float *)bytes;
+        gemv_f32(p, xn, gate, inter, H);
+        p += mat;
+        gemv_f32(p, xn, up, inter, H);
+        p += mat;
+        for (int i = 0; i < inter; i++) {
+            float g = gate[i];
+            float sig = 1.0f / (1.0f + expf(-g));
+            mid[i] = (g * sig) * up[i];
+        }
+        gemv_f32(p, mid, down_out, H, inter);
+    } else {
+        size_t one = 4 + mat;
+        if (m->expert_size < one * 3) {
+            free(gate); free(up); free(mid); free(down_out);
+            return;
+        }
+        const uint8_t *p = bytes;
+        float scale_g, scale_u, scale_d;
+        memcpy(&scale_g, p, 4); p += 4;
+        gemv_int8_row((const int8_t *)p, scale_g, xn, gate, inter, H);
+        p += mat;
 
-    memcpy(&scale_u, p, 4); p += 4;
-    gemv_int8_row((const int8_t *)p, scale_u, xn, up, inter, H);
-    p += mat;
+        memcpy(&scale_u, p, 4); p += 4;
+        gemv_int8_row((const int8_t *)p, scale_u, xn, up, inter, H);
+        p += mat;
 
-    for (int i = 0; i < inter; i++) {
-        float g = gate[i];
-        float sig = 1.0f / (1.0f + expf(-g));
-        mid[i] = (g * sig) * up[i];
+        for (int i = 0; i < inter; i++) {
+            float g = gate[i];
+            float sig = 1.0f / (1.0f + expf(-g));
+            mid[i] = (g * sig) * up[i];
+        }
+
+        memcpy(&scale_d, p, 4); p += 4;
+        gemv_int8_row((const int8_t *)p, scale_d, mid, down_out, H, inter);
     }
-
-    memcpy(&scale_d, p, 4); p += 4;
-    gemv_int8_row((const int8_t *)p, scale_d, mid, down_out, H, inter);
 
     for (int i = 0; i < H; i++)
         delta[i] += weight * down_out[i];
