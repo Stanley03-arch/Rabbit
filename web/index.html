@@ -29,6 +29,14 @@
       </section>
 
       <section class="panel">
+        <h3>Memory</h3>
+        <div class="kv"><span>budget</span><b id="m-budget">—</b></div>
+        <div class="kv"><span>estimate</span><b id="m-est">—</b></div>
+        <div class="kv"><span>cache slots</span><b id="m-slots">—</b></div>
+        <div class="kv"><span>status</span><b id="m-status">—</b></div>
+      </section>
+
+      <section class="panel">
         <h3>Expert cache</h3>
         <div class="kv"><span>hits</span><b id="c-hits">0</b></div>
         <div class="kv"><span>misses</span><b id="c-misses">0</b></div>
@@ -40,7 +48,7 @@
       <section class="panel">
         <h3>Expert activity</h3>
         <div class="expert-grid" id="expert-grid"></div>
-        <p class="hint">Warm = recently routed (simulated from cache traffic)</p>
+        <p class="hint">Warm = recently routed</p>
       </section>
 
       <section class="panel controls">
@@ -65,7 +73,7 @@
         <input id="prompt" autocomplete="off" placeholder="Message Rabbit…" />
         <button type="submit" id="send">Send</button>
       </form>
-      <p class="footer-note">Synthetic weights produce non-linguistic output — this dashboard validates the engine path.</p>
+      <p class="footer-note">Synthetic weights produce non-linguistic output — this dashboard validates the engine path. Metrics from <code>rabbit stats</code>.</p>
     </main>
   </div>
   <script src="/static/app.js"></script>
