@@ -3,6 +3,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #ifndef RABBIT_INT4_GROUP
 #define RABBIT_INT4_GROUP 32
