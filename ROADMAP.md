@@ -19,10 +19,13 @@ See [docs/PHASE_A.md](docs/PHASE_A.md).
 - [x] Memory budget report + hard caps (`RABBIT_MEM_BUDGET_MB`)
 - [ ] Full per-layer tensor dump parity (optional deep debug)
 
-## Phase C — Product surface
+## Phase C — Product surface (in progress)
 
-- OpenAI-compatible HTTP API
-- Dashboard metrics from engine (not only log scrape)
+- [x] OpenAI-compatible HTTP API (`tools/rabbit_server.py`)
+- [x] Engine metrics command (`rabbit stats` JSON)
+- [x] Dashboard metrics from engine (not only log scrape)
+- [ ] Streaming completions (SSE)
+- [ ] Auth / rate limits (optional)
 
 ## Non-goals
 
