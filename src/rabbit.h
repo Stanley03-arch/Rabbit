@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-#define RABBIT_VERSION "0.4.3"
+#define RABBIT_VERSION "0.4.4"
 #define RABBIT_MAGIC   "RABBIT01"
 #define RABBIT_MAX_CACHE_SLOTS 8
 
@@ -143,5 +143,6 @@ void rabbit_detokenize_seq(const int *ids, int n, char *out, int out_size);
 int  rabbit_tokenizer_vocab(void);
 void rabbit_tokenizer_set_byte_mode(void);
 int  rabbit_tokenizer_load_vocab(const char *path);
+int  rabbit_tokenizer_load_bpe(const char *path);  /* RBTTOK01 .tok file */
 
 #endif /* RABBIT_H */
