@@ -1,36 +1,40 @@
 # Changelog
 
+## [0.3.1] - 2026-10-25
+
+### Added (Phase B continued)
+- Memory budget report and hard caps at load time
+  - Default 1536 MB; override with `RABBIT_MEM_BUDGET_MB`
+  - Dense blob that exceeds budget is refused
+  - Expert cache slot count chosen from remaining budget
+- Multi-head attention with derived `n_heads` / `head_dim` and per-head RoPE
+
+### API
+- `rabbit_memory_report()`, `rabbit_print_memory()`, `rabbit_default_mem_budget()`
+
 ## [0.3.0] - 2026-10-25
 
 ### Added (Phase B start)
-- Structured expert apply path: when the expert blob is large enough it is treated as gate / up / down and a SwiGLU-style step is performed
-- Basic RoPE on the attention query/key path
-- Flat converter layout now emits tensors in gate → up → down order for the new kernel
-
-### Notes
-- Classic square-expert path (used by the ref model and parity tests) is unchanged and still exact
-- Full production-grade SwiGLU + proper multi-head RoPE still evolving
+- Structured expert apply path: gate / up / down → SwiGLU-style step
+- Basic RoPE on the attention path
+- Flat converter layout emits gate → up → down order
 
 ## [0.2.5] - 2026-10-25
 
 ### Added
-- Documented tensor map for real HF MoE families (Qwen3-MoE / Mixtral style)
+- Documented tensor map for real HF MoE families
 - Improved HF converter expert detection and packing heuristics
-- Explicit notes for converting tiny public MoE models
-- ROADMAP / PHASE_A updated to close remaining Phase A items
-
-### Changed
-- Version bump to 0.2.5
+- Phase A closed
 
 ## [0.2.4] - 2026-10-25
 
 ### Added
 - Phase A ref model, NumPy forward, parity tests
-- `rabbit probe` for machine-readable MoE-only fingerprints
+- `rabbit probe` machine-readable fingerprints
 - Exact C vs NumPy parity within 1e-4
 
 ### Fixed
-- Expert GEMV read/write alias (matmul now uses temp delta buffer)
+- Expert GEMV read/write alias
 
 ## [0.2.3] - 2026-10-25
 
