@@ -14,6 +14,7 @@ void rabbit_attn_reset(void);
 
 int  rabbit_tokenize(const char *text, int *out_ids, int max_ids);
 int  rabbit_tokenizer_vocab(void);
+void rabbit_detokenize(int id, char *out, int out_size);
 
 const char *rabbit_version(void) {
     return RABBIT_VERSION;
@@ -21,18 +22,17 @@ const char *rabbit_version(void) {
 
 void rabbit_print_info(const RabbitModel *m) {
     if (!m) return;
-    printf("Model name          : %s\n", m->name);
-    printf("Layers              : %u\n", m->hdr.n_layers);
-    printf("Hidden dim          : %u\n", m->hdr.hidden_dim);
-    printf("Vocab size          : %u\n", m->hdr.vocab_size);
-    printf("Experts             : %u\n", m->hdr.n_experts);
-    printf("Experts per token   : %u\n", m->hdr.experts_per_token);
-    printf("Dense size          : %.2f MB\n", m->dense_size / (1024.0 * 1024.0));
-    printf("One expert size     : %.2f KB\n", m->expert_size / 1024.0);
-    printf("Total experts size  : %.2f MB\n", m->hdr.total_experts_size / (1024.0 * 1024.0));
-    printf("Dense quant         : %u-bit\n", m->hdr.dense_quant ? m->hdr.dense_quant : 16);
-    printf("Expert quant        : %u-bit\n", m->hdr.expert_quant ? m->hdr.expert_quant : 16);
-    printf("Expert map          : %s\n", m->expert_map ? "active" : "none");
+    printf("  name               %s\n", m->name);
+    printf("  layers             %u\n", m->hdr.n_layers);
+    printf("  hidden_dim         %u\n", m->hdr.hidden_dim);
+    printf("  vocab_size         %u\n", m->hdr.vocab_size);
+    printf("  experts            %u (top-%u)\n", m->hdr.n_experts, m->hdr.experts_per_token);
+    printf("  dense              %.2f MB\n", m->dense_size / (1024.0 * 1024.0));
+    printf("  expert record      %.2f KB\n", m->expert_size / 1024.0);
+    printf("  experts total      %.2f MB\n", m->hdr.total_experts_size / (1024.0 * 1024.0));
+    printf("  dense_quant        %u-bit\n", m->hdr.dense_quant ? m->hdr.dense_quant : 16);
+    printf("  expert_quant       %u-bit\n", m->hdr.expert_quant ? m->hdr.expert_quant : 16);
+    printf("  expert_map         %s\n", m->expert_map ? "mapped" : "unavailable");
 }
 
 RabbitModel *rabbit_load(const char *path) {
@@ -40,26 +40,26 @@ RabbitModel *rabbit_load(const char *path) {
 
     int fd = open(path, O_RDONLY);
     if (fd < 0) {
-        perror("open model");
+        perror("open");
         return NULL;
     }
 
     RabbitHeader hdr;
     ssize_t n = read(fd, &hdr, sizeof(hdr));
     if (n != (ssize_t)sizeof(hdr)) {
-        fprintf(stderr, "[rabbit] failed to read header\n");
+        fprintf(stderr, "error: incomplete header\n");
         close(fd);
         return NULL;
     }
 
     if (memcmp(hdr.magic, RABBIT_MAGIC, 8) != 0) {
-        fprintf(stderr, "[rabbit] bad magic (not a Rabbit model)\n");
+        fprintf(stderr, "error: invalid magic (not a Rabbit model)\n");
         close(fd);
         return NULL;
     }
 
     if (hdr.version != 1) {
-        fprintf(stderr, "[rabbit] unsupported version: %u\n", hdr.version);
+        fprintf(stderr, "error: unsupported format version %u\n", hdr.version);
         close(fd);
         return NULL;
     }
@@ -85,14 +85,15 @@ RabbitModel *rabbit_load(const char *path) {
     if (hdr.dense_size > 0) {
         m->dense = malloc(hdr.dense_size);
         if (!m->dense) {
-            fprintf(stderr, "[rabbit] out of memory for dense weights\n");
+            fprintf(stderr, "error: out of memory allocating dense weights (%.1f MB)\n",
+                    hdr.dense_size / (1024.0 * 1024.0));
             free(m);
             close(fd);
             return NULL;
         }
         n = read(fd, m->dense, hdr.dense_size);
         if (n != (ssize_t)hdr.dense_size) {
-            fprintf(stderr, "[rabbit] failed to read dense blob\n");
+            fprintf(stderr, "error: failed to read dense blob\n");
             free(m->dense);
             free(m);
             close(fd);
@@ -107,14 +108,11 @@ RabbitModel *rabbit_load(const char *path) {
         if (remaining > 0 && hdr.n_experts > 0) {
             close(fd);
             fd = -1;
-
             if (rabbit_mmap_experts_region(path, expert_offset, remaining,
                                            &m->expert_map, &m->expert_fd) == 0) {
                 m->expert_map_size = remaining;
-                printf("[rabbit] experts memory-mapped (%.2f MB)\n",
-                       remaining / (1024.0 * 1024.0));
             } else {
-                fprintf(stderr, "[rabbit] warning: could not mmap experts\n");
+                fprintf(stderr, "warning: could not memory-map expert region\n");
             }
         }
     }
@@ -124,9 +122,6 @@ RabbitModel *rabbit_load(const char *path) {
     m->cache = rabbit_cache_create(4);
     if (m->cache)
         rabbit_cache_set_expert_size(m->cache, m->expert_size);
-
-    printf("[rabbit] model loaded\n");
-    rabbit_print_info(m);
 
     return m;
 }
@@ -139,8 +134,6 @@ void rabbit_free(RabbitModel *model) {
     rabbit_attn_reset();
     free(model);
 }
-
-/* ---------- generation ---------- */
 
 static void softmax(float *logits, int n) {
     float max_v = logits[0];
@@ -157,7 +150,7 @@ static void softmax(float *logits, int n) {
             logits[i] /= sum;
 }
 
-static int sample_top_p(const float *probs, int n, float temperature) {
+static int sample_token(const float *probs, int n, float temperature) {
     if (temperature <= 0.0f) {
         int best = 0;
         float best_p = probs[0];
@@ -170,7 +163,7 @@ static int sample_top_p(const float *probs, int n, float temperature) {
         return best;
     }
 
-    float *tmp = (float *)malloc(sizeof(float) * n);
+    float *tmp = (float *)malloc(sizeof(float) * (size_t)n);
     if (!tmp) return 0;
 
     for (int i = 0; i < n; i++)
@@ -195,7 +188,7 @@ static int sample_top_p(const float *probs, int n, float temperature) {
     return chosen;
 }
 
-static void tiny_lm_head(const float *hidden, int hidden_dim, float *logits, int vocab) {
+static void lm_head(const float *hidden, int hidden_dim, float *logits, int vocab) {
     for (int v = 0; v < vocab; v++) {
         float s = 0.0f;
         for (int i = 0; i < hidden_dim && i < 32; i++)
@@ -209,12 +202,15 @@ static void generate(RabbitModel *m, const char *prompt, int max_new_tokens, flo
     int vocab = rabbit_tokenizer_vocab();
     if (vocab > 4096) vocab = 4096;
 
-    float *hidden = (float *)calloc(dim, sizeof(float));
-    float *logits = (float *)calloc(vocab, sizeof(float));
-    int   *tokens = (int *)malloc(sizeof(int) * ((int)strlen(prompt) + max_new_tokens + 16));
+    float *hidden = (float *)calloc((size_t)dim, sizeof(float));
+    float *logits = (float *)calloc((size_t)vocab, sizeof(float));
+    int *tokens = (int *)malloc(sizeof(int) * ((size_t)strlen(prompt) + (size_t)max_new_tokens + 16));
 
     if (!hidden || !logits || !tokens) {
-        free(hidden); free(logits); free(tokens);
+        free(hidden);
+        free(logits);
+        free(tokens);
+        fprintf(stderr, "error: out of memory during generation\n");
         return;
     }
 
@@ -222,12 +218,13 @@ static void generate(RabbitModel *m, const char *prompt, int max_new_tokens, flo
 
     int n_tokens = rabbit_tokenize(prompt, tokens, 512);
     if (n_tokens <= 0) {
-        printf("Rabbit: (empty prompt)\n\n");
-        free(hidden); free(logits); free(tokens);
+        printf("(empty prompt)\n\n");
+        free(hidden);
+        free(logits);
+        free(tokens);
         return;
     }
 
-    /* Prefill */
     for (int t = 0; t < n_tokens; t++) {
         for (int i = 0; i < dim; i++)
             hidden[i] *= 0.9f;
@@ -237,16 +234,12 @@ static void generate(RabbitModel *m, const char *prompt, int max_new_tokens, flo
             rabbit_layer_step(m, hidden, dim);
     }
 
-    printf("Rabbit: ");
-    fflush(stdout);
-
     char piece[128];
     for (int t = 0; t < max_new_tokens; t++) {
-        tiny_lm_head(hidden, dim, logits, vocab);
+        lm_head(hidden, dim, logits, vocab);
         softmax(logits, vocab);
 
-        int next = sample_top_p(logits, vocab, temperature);
-
+        int next = sample_token(logits, vocab, temperature);
         rabbit_detokenize(next, piece, sizeof(piece));
         fputs(piece, stdout);
         fflush(stdout);
@@ -276,15 +269,16 @@ rabbit_status rabbit_chat_ex(RabbitModel *model, int max_tokens, float temperatu
 
     srand((unsigned)time(NULL));
 
-    printf("\n========================================\n");
-    printf("  Rabbit %s  \ud83d\udc07\n", rabbit_version());
-    printf("========================================\n");
+    printf("\n");
+    printf("Rabbit %s\n", rabbit_version());
+    printf("----------------------------------------\n");
     rabbit_print_info(model);
-    printf("========================================\n");
-    printf("tokens=%d  temp=%.2f  vocab=%d\n", max_tokens, temperature, rabbit_tokenizer_vocab());
-    printf("========================================\n\n");
-
-    printf("Type a message (or 'quit'):\n\n");
+    printf("----------------------------------------\n");
+    printf("  max_tokens         %d\n", max_tokens);
+    printf("  temperature        %.2f\n", temperature);
+    printf("  tokenizer_vocab    %d\n", rabbit_tokenizer_vocab());
+    printf("----------------------------------------\n\n");
+    printf("Enter text (quit to exit).\n\n");
 
     char line[1024];
     while (1) {
@@ -295,7 +289,8 @@ rabbit_status rabbit_chat_ex(RabbitModel *model, int max_tokens, float temperatu
             break;
 
         size_t len = strlen(line);
-        if (len && line[len - 1] == '\n') line[len - 1] = 0;
+        if (len && line[len - 1] == '\n')
+            line[len - 1] = 0;
 
         if (strcmp(line, "quit") == 0 || strcmp(line, "exit") == 0)
             break;

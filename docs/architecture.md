@@ -1,68 +1,56 @@
-# Rabbit Architecture Notes
+# Architecture
 
 ## Goal
 
-Run large Mixture-of-Experts models on machines with as little as **4 GB total RAM**.
+Run Mixture-of-Experts models on machines with limited RAM by treating disk as a first-class tier in the memory hierarchy.
 
-This is significantly more aggressive than Colibrì (which targets ~10–25 GB resident).
+Target: usable operation on systems with on the order of **4 GB** total memory, accepting that large frontier checkpoints will be slow and may need expert limiting.
 
-## Core Idea (same as Colibrì)
+## Memory model
 
-1. **Dense / shared weights** (attention, embeddings, shared experts, norms) stay in RAM.
-2. **Routed experts** live on disk and are streamed on demand via `mmap` + a tiny LRU cache.
-3. Extreme quantization so the dense part fits in ~1.5–2 GB.
+| Region | Location | Notes |
+|--------|----------|--------|
+| Dense / shared weights | RAM | Embeddings, attention projections, shared experts, norms |
+| Routed experts | Disk (`mmap`) | Loaded on demand |
+| Expert LRU | RAM | Small fixed number of hot experts (default 4 slots) |
+| KV cache | RAM | Short context window for the current attention implementation |
 
-## Memory Budget Target (4 GB machine)
+Placement affects **speed**, not numerical contract: the same expert weights are used whether they come from cache or mmap.
 
-| Component              | Target size     |
-|------------------------|-----------------|
-| OS + runtime overhead  | ~1.0 – 1.5 GB   |
-| Dense weights (int4+)  | ≤ 1.8 GB        |
-| Tiny expert cache      | 100 – 300 MB    |
-| KV cache + activations  | remaining       |
+## Execution path (per layer)
 
-Anything larger must come from disk.
+1. **Attention** — update KV cache; grouped scaled dot-product over recent positions  
+2. **Dense residual** — lightweight FFN-style update from the dense blob  
+3. **MoE** — router scores → top-k experts → fetch → int4/int8 GEMV  
 
-## Expert Fetch Path (implemented)
-
-```
-rabbit_fetch_expert(model, expert_id, promote)
-    │
-    ├─ 1. Check tiny RAM LRU cache  → hit? return pointer
-    │
-    ├─ 2. Zero-copy pointer from mmap region
-    │
-    └─ 3. Optionally promote into LRU cache
-```
-
-## MoE Step (implemented for test model)
+## Expert fetch
 
 ```
-rabbit_moe_step(model, hidden, hidden_dim)
-    │
-    ├─ Run simple router → scores
-    ├─ Select top-k experts
-    ├─ For each selected expert:
-    │       fetch (cache or mmap)
-    │       apply_expert_stub()
-    └─ Return
+rabbit_fetch_expert(model, id, promote)
+  1. LRU hit  → return RAM pointer
+  2. Else zero-copy pointer into mmap region
+  3. Optionally copy into LRU (promote=1)
 ```
 
-The current `apply_expert_stub` is only a placeholder linear transform so we can prove the plumbing. Real matmul kernels come next.
+## Quantization contract
 
-## File Format
+Expert blob layout:
 
-See `docs/file-format.md`.
+```
+[float32 scale][packed matrix]
+```
 
-## Current Status
+- `expert_quant == 8`: int8, row-major  
+- `expert_quant == 4`: int4, two values per byte (low nibble first)
 
-- Project skeleton and public API exist
-- Loader + dense RAM + expert mmap working
-- Expert fetch + LRU cache working
-- Minimal forward pass on synthetic model working
-- Real generation, quantization, and model conversion still to do
+The engine selects the GEMV kernel from the model header.
 
-## Honesty
+## File format
 
-Full Kimi K3 (2.8T) or large DeepSeek V4 models will be extremely slow (or currently impractical) on 4 GB.  
-Rabbit first aims to prove the architecture on smaller / heavily quantized MoE models, then scale up.
+See [file-format.md](file-format.md).
+
+## Non-goals (current)
+
+- GPU runtime (CPU/`mmap` first)
+- Bit-exact match to every upstream MoE architecture
+- Production-grade chat quality on synthetic weights
