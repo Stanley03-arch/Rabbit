@@ -6,7 +6,7 @@ Rabbit is a pure-C engine that keeps dense weights in RAM and streams routed exp
 
 Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) — not a clone of its product or UI.
 
-> **Status:** v0.3.0 — Phase A complete, Phase B started. Exact C↔NumPy parity on the ref model. SwiGLU-style expert path + basic RoPE attention when data allows. Full multi-head + memory caps still in progress.
+> **Status:** v0.3.1 — Phase A complete, Phase B mostly complete. Exact C↔NumPy parity on the ref model. SwiGLU-style experts, multi-head RoPE attention, and memory budget caps.
 
 [![Dashboard in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_dashboard.ipynb)
 
@@ -45,16 +45,23 @@ make test-model
 ./rabbit chat --model models/tiny-test.rabbit
 ```
 
+Memory budget (optional):
+```bash
+export RABBIT_MEM_BUDGET_MB=1024   # default 1536
+./rabbit chat --model models/demo-moe.rabbit
+```
+
 ---
 
 ## Features
 
-- Dense RAM + expert `mmap` + LRU cache  
-- Attention (basic RoPE) → dense residual → MoE  
+- Dense RAM + expert `mmap` + LRU cache (slot count chosen from remaining budget)  
+- Multi-head attention with per-head RoPE → dense residual → MoE  
 - int4 / int8 expert GEMV + SwiGLU-style path when gate/up/down present  
 - HF → `.rabbit` converter (Qwen / Mixtral / DeepSeek heuristics)  
 - CLI + original web dashboard  
 - Exact C vs NumPy parity on the frozen ref model  
+- Memory budget report and hard dense-size caps  
 
 ---
 
@@ -63,7 +70,7 @@ make test-model
 ```bash
 pip install safetensors numpy
 python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf --out models/m.rabbit --quant 4
-# for structured experts (Phase B SwiGLU path):
+# for structured experts (SwiGLU path):
 python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf --out models/m.rabbit --quant 4 --layout flat
 ```
 
@@ -76,7 +83,7 @@ See [docs/tensor-map.md](docs/tensor-map.md) and [docs/conversion.md](docs/conve
 - Synthetic weights do not produce real language.  
 - Dashboard is **Rabbit’s own UI**, not Colibrì’s.  
 - Large real MoEs still need aggressive quant / expert limits on 4 GB hosts.  
-- Full multi-head attention and hard memory caps are still evolving (Phase B).  
+- Optional full per-layer tensor dump parity is still open.  
 
 ## License
 
