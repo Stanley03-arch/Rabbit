@@ -70,39 +70,32 @@ static void select_top_k(const float *scores, int n, int k, int *out_ids, float 
     }
 }
 
-const void *rabbit_fetch_expert(RabbitModel *m, int expert_id, int promote) {
-    if (!m || expert_id < 0 || expert_id >= m->num_experts)
+const void *rabbit_fetch_expert(RabbitModel *m, int global_expert_id, int promote) {
+    if (!m || global_expert_id < 0)
         return NULL;
 
-    void *cached = rabbit_cache_get(m->cache, expert_id);
+    void *cached = rabbit_cache_get(m->cache, global_expert_id);
     if (cached)
         return cached;
 
-    const void *ptr = rabbit_expert_ptr(m, expert_id);
+    const void *ptr = rabbit_expert_ptr(m, global_expert_id);
     if (!ptr)
         return NULL;
 
     if (promote && m->cache) {
-        void *ram = rabbit_cache_put(m->cache, expert_id, ptr);
+        void *ram = rabbit_cache_put(m->cache, global_expert_id, ptr);
         if (ram)
             return ram;
     }
     return ptr;
 }
 
-/*
- * Apply one expert.
- *
- * Two modes (detected by payload size):
- *   1. Classic square (ref / demo):  scale + H×H  →  residual scaled matmul
- *   2. Structured (Phase B): when enough bytes exist we treat the payload as
- *      three consecutive matrices (gate / up / down) each with their own scale
- *      and apply a lightweight SwiGLU-style step:
- *          gate = silu(W_gate @ x)
- *          up   = W_up @ x
- *          y   += weight * (W_down @ (gate * up))
- *      Intermediate size is taken as min(expert_dim, hidden*2) for safety.
- */
+const void *rabbit_fetch_expert_layer(RabbitModel *m, int layer, int local_expert_id, int promote) {
+    int gid = rabbit_expert_global_id(m, layer, local_expert_id);
+    if (gid < 0) return NULL;
+    return rabbit_fetch_expert(m, gid, promote);
+}
+
 static void apply_expert(const RabbitModel *m, const void *expert_data,
                          float *hidden, int hidden_dim, float weight) {
     if (!expert_data || !hidden || hidden_dim <= 0) return;
@@ -114,19 +107,17 @@ static void apply_expert(const RabbitModel *m, const void *expert_data,
     float *delta = (float *)calloc((size_t)hidden_dim, sizeof(float));
     if (!delta) return;
 
-    /* ---- try structured SwiGLU path when payload is large enough ---- */
     int inter = m->hdr.expert_dim > 0 ? (int)m->hdr.expert_dim : hidden_dim * 2;
-    if (inter > hidden_dim * 4) inter = hidden_dim * 2;   /* safety cap */
+    if (inter > hidden_dim * 4) inter = hidden_dim * 2;
     if (inter < 1) inter = hidden_dim;
 
     size_t mat_elems = (size_t)inter * (size_t)hidden_dim;
-    size_t mat_bytes_int8 = 4 + mat_elems;                 /* scale + int8 */
+    size_t mat_bytes_int8 = 4 + mat_elems;
     size_t mat_bytes_int4 = 4 + ((mat_elems + 1) / 2);
     size_t one_mat = (quant == 4) ? mat_bytes_int4 : mat_bytes_int8;
     size_t need3 = one_mat * 3;
 
     if (size >= need3 && inter > 0) {
-        /* three consecutive [scale + packed] matrices */
         float *tmp_gate = (float *)calloc((size_t)inter, sizeof(float));
         float *tmp_up   = (float *)calloc((size_t)inter, sizeof(float));
         float *tmp_mid  = (float *)calloc((size_t)inter, sizeof(float));
@@ -144,24 +135,22 @@ static void apply_expert(const RabbitModel *m, const void *expert_data,
                 size_t payload = (quant == 4) ? ((mat_elems + 1) / 2) : mat_elems;
                 p += payload;
 
-                if (part == 0) {          /* gate */
+                if (part == 0) {
                     if (quant == 4)
                         gemv_int4(W, scale, hidden, tmp_gate, inter, hidden_dim, 1.0f);
                     else
                         gemv_int8((const int8_t *)W, scale, hidden, tmp_gate, inter, hidden_dim, 1.0f);
-                } else if (part == 1) {   /* up */
+                } else if (part == 1) {
                     if (quant == 4)
                         gemv_int4(W, scale, hidden, tmp_up, inter, hidden_dim, 1.0f);
                     else
                         gemv_int8((const int8_t *)W, scale, hidden, tmp_up, inter, hidden_dim, 1.0f);
-                } else {                  /* down: first form gated intermediate */
+                } else {
                     for (int i = 0; i < inter; i++) {
                         float g = tmp_gate[i];
-                        /* silu(g) ≈ g * sigmoid(g) */
                         float sig = 1.0f / (1.0f + expf(-g));
                         tmp_mid[i] = (g * sig) * tmp_up[i];
                     }
-                    /* down projects inter → hidden */
                     if (quant == 4)
                         gemv_int4(W, scale, tmp_mid, delta, hidden_dim, inter, weight);
                     else
@@ -177,7 +166,6 @@ static void apply_expert(const RabbitModel *m, const void *expert_data,
         free(tmp_gate); free(tmp_up); free(tmp_mid);
     }
 
-    /* ---- classic square residual path (ref / demo) ---- */
     float scale = 1.0f / 127.0f;
     const uint8_t *W = bytes;
     size_t payload = size;
@@ -230,7 +218,6 @@ int rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim) {
     float *scores = (float *)malloc(sizeof(float) * (size_t)m->num_experts);
     if (!scores) return -1;
 
-    /* Simple but stable router: linear projection of first few dims */
     for (int e = 0; e < m->num_experts; e++) {
         float s = 0.0f;
         for (int i = 0; i < hidden_dim && i < 32; i++)
@@ -243,16 +230,16 @@ int rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim) {
     select_top_k(scores, m->num_experts, k, ids, weights);
     free(scores);
 
+    /* Legacy path: treat as shared (layer 0) */
     for (int i = 0; i < k; i++) {
         if (ids[i] < 0) continue;
-        const void *expert = rabbit_fetch_expert(m, ids[i], 1);
+        const void *expert = rabbit_fetch_expert_layer(m, 0, ids[i], 1);
         if (!expert) continue;
         apply_expert(m, expert, hidden, hidden_dim, weights[i]);
     }
     return 0;
 }
 
-/* MoE-only forward matching tools/ref_forward.py (no attention / dense FFN). */
 int rabbit_ref_forward(RabbitModel *m, const char *prompt, float *out_hidden) {
     if (!m || !prompt || !out_hidden) return -1;
     int dim = m->hidden_dim;
