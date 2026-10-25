@@ -6,14 +6,8 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-/* ============================================================
- * Rabbit 🐇 — Core public API
- * Tiny engine for large MoE models on constrained hardware.
- * ============================================================ */
-
-#define RABBIT_VERSION "0.1.2-dev"
+#define RABBIT_VERSION "0.1.3-dev"
 #define RABBIT_MAGIC   "RABBIT01"
-
 #define RABBIT_MAX_CACHE_SLOTS 8
 
 typedef enum {
@@ -101,5 +95,11 @@ int          rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim);
 /* Quant helpers */
 void rabbit_dequant_int8(const int8_t *src, float *dst, int n, float scale);
 void rabbit_dequant_int4(const uint8_t *src, float *dst, int n, float scale);
+
+/* Tokenizer (byte-level for now) */
+int  rabbit_tokenize(const char *text, int *out_ids, int max_ids);
+void rabbit_detokenize(int id, char *out, int out_size);
+void rabbit_detokenize_seq(const int *ids, int n, char *out, int out_size);
+int  rabbit_tokenizer_vocab(void);
 
 #endif /* RABBIT_H */
