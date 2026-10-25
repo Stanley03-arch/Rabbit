@@ -6,9 +6,13 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-#define RABBIT_VERSION "0.3.0"
+#define RABBIT_VERSION "0.3.1"
 #define RABBIT_MAGIC   "RABBIT01"
 #define RABBIT_MAX_CACHE_SLOTS 8
+
+/* Default soft memory budget (bytes) for dense + expert cache.
+ * Override at runtime with env RABBIT_MEM_BUDGET_MB. */
+#define RABBIT_DEFAULT_MEM_BUDGET_MB 1536
 
 typedef enum {
     RABBIT_OK = 0,
@@ -47,6 +51,16 @@ typedef struct {
 } RabbitHeader;
 #pragma pack(pop)
 
+typedef struct {
+    size_t dense_bytes;
+    size_t cache_bytes;
+    size_t kv_bytes;
+    size_t total_estimate;
+    size_t budget_bytes;
+    int    cache_slots;
+    int    over_budget;
+} RabbitMemoryReport;
+
 struct RabbitModel {
     RabbitHeader hdr;
 
@@ -67,6 +81,10 @@ struct RabbitModel {
     int     hidden_dim;
     int     vocab_size;
     char    name[128];
+
+    /* Phase B memory controls */
+    size_t  mem_budget;
+    int     cache_slots;
 };
 
 /* Lifecycle */
@@ -76,6 +94,11 @@ rabbit_status rabbit_chat(RabbitModel *model);
 rabbit_status rabbit_chat_ex(RabbitModel *model, int max_tokens, float temperature);
 const char   *rabbit_version(void);
 void          rabbit_print_info(const RabbitModel *model);
+
+/* Memory */
+void          rabbit_memory_report(const RabbitModel *m, RabbitMemoryReport *out);
+void          rabbit_print_memory(const RabbitModel *m);
+size_t        rabbit_default_mem_budget(void);
 
 /* Cache */
 ExpertCache *rabbit_cache_create(int n_slots);
