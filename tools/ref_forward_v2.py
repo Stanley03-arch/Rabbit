@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""NumPy oracle for rabbit-ref-v2 (faithful micro MoE)."""
+"""NumPy oracle for rabbit-ref-v2 (per-layer experts)."""
 
 from __future__ import annotations
 
@@ -81,11 +81,11 @@ def load_ref_v2(path: Path) -> Dict[str, Any]:
             }
         )
 
-    experts = []
+    n_records = int(total_experts_size // expert_size) if expert_size else n_experts
+    shared = n_records == n_experts
     inter = expert_dim
-    for e in range(n_experts):
-        blob = data[off : off + expert_size]
-        off += expert_size
+
+    def read_expert(blob: bytes):
         e_off = 0
         gate, _, e_off = _dequant_int8(blob, e_off, inter * hidden)
         gate = gate.reshape(inter, hidden)
@@ -93,7 +93,25 @@ def load_ref_v2(path: Path) -> Dict[str, Any]:
         up = up.reshape(inter, hidden)
         down, _, e_off = _dequant_int8(blob, e_off, hidden * inter)
         down = down.reshape(hidden, inter)
-        experts.append({"gate": gate, "up": up, "down": down})
+        return {"gate": gate, "up": up, "down": down}
+
+    experts_by_layer: List[List[Dict]] = []
+    if shared:
+        shared_list = []
+        for e in range(n_experts):
+            blob = data[off : off + expert_size]
+            off += expert_size
+            shared_list.append(read_expert(blob))
+        for _ in range(n_layers):
+            experts_by_layer.append(shared_list)
+    else:
+        for L in range(n_layers):
+            layer_ex = []
+            for e in range(n_experts):
+                blob = data[off : off + expert_size]
+                off += expert_size
+                layer_ex.append(read_expert(blob))
+            experts_by_layer.append(layer_ex)
 
     return {
         "n_layers": n_layers,
@@ -107,7 +125,8 @@ def load_ref_v2(path: Path) -> Dict[str, Any]:
         "embed": embed,
         "lm_head": lm_head,
         "layers": layers,
-        "experts": experts,
+        "experts_by_layer": experts_by_layer,
+        "experts_shared": shared,
         "name": name.split(b"\0", 1)[0].decode(),
     }
 
@@ -202,7 +221,6 @@ def forward_logits(model: Dict[str, Any], token_ids: List[int]) -> np.ndarray:
     H = model["hidden"]
     n_heads = model["n_heads"]
     head_dim = model["head_dim"]
-    # one KV cache per layer (matches C)
     kv_layers = [{"k": [], "v": []} for _ in model["layers"]]
 
     h = np.zeros(H, dtype=np.float32)
@@ -211,7 +229,7 @@ def forward_logits(model: Dict[str, Any], token_ids: List[int]) -> np.ndarray:
         h = model["embed"][tid].copy()
         for li, layer in enumerate(model["layers"]):
             h = attention(h, layer, kv_layers[li], n_heads, head_dim, pos)
-            h = moe_swiglu(h, layer, model["experts"], model["top_k"])
+            h = moe_swiglu(h, layer, model["experts_by_layer"][li], model["top_k"])
 
     logits = model["lm_head"].T @ h
     return logits
@@ -237,10 +255,7 @@ def main():
 
     model = load_ref_v2(Path(args.model))
     ids = greedy_generate(model, args.prompt, args.tokens)
-    print("REF_V2", args.prompt, "ids=", ids)
-    print("last8", ids[-8:])
-    logits = forward_logits(model, ids[:-1] if len(ids) > 1 else ids)
-    print("argmax", int(np.argmax(logits)), "l2", float(np.linalg.norm(logits)))
+    print("REF_V2", args.prompt, "ids=", ids, "shared=", model["experts_shared"])
 
 
 if __name__ == "__main__":
