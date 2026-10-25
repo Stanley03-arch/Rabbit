@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-#define RABBIT_VERSION "0.4.5"
+#define RABBIT_VERSION "0.4.6"
 #define RABBIT_MAGIC   "RABBIT01"
 #define RABBIT_MAX_CACHE_SLOTS 8
 #define RABBIT_INT4_GROUP 32
@@ -46,6 +46,8 @@ typedef struct {
     uint32_t expert_quant;       /* 0=f32, 4=group-int4, 8=int8 */
 
     char     name[64];
+    /* reserved[0..11]: optional GQA metadata (u32 LE each)
+     *   n_heads, n_kv_heads, head_dim  — 0 means infer (legacy square QKV) */
     uint8_t  reserved[128];
 } RabbitHeader;
 #pragma pack(pop)
