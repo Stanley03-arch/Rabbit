@@ -32,5 +32,8 @@ jobs:
       - name: Phase A parity
         run: make parity
 
+      - name: Phase D parity-v2
+        run: make parity-v2
+
       - name: Version
         run: ./rabbit version
