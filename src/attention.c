@@ -5,16 +5,15 @@
 #include <math.h>
 
 /*
- * Attention + residual dense path.
+ * Attention + residual dense path (Phase B improvements).
  *
- * Still a compact implementation aimed at low RAM:
- *   - single logical head over a short KV window
- *   - optional multi-query style by splitting the hidden dim into groups
- *   - residual FFN using the dense blob
+ * - Short KV window with multi-group attention
+ * - Basic RoPE on the query/key vectors
+ * - Residual dense FFN using the dense blob
  */
 
 #define RABBIT_MAX_CTX 128
-#define RABBIT_N_GROUPS 4   /* simple multi-query style groups */
+#define RABBIT_N_GROUPS 4
 
 typedef struct {
     float *k_cache;
@@ -22,6 +21,7 @@ typedef struct {
     int    len;
     int    dim;
     int    max_len;
+    int    pos;          /* global position for RoPE */
 } TinyKVCache;
 
 static TinyKVCache g_kv = {0};
@@ -47,19 +47,43 @@ static int ensure_kv(int dim) {
     return 0;
 }
 
+/* Simple rotary embedding applied in-place to pairs of dimensions. */
+static void apply_rope(float *x, int dim, int pos) {
+    if (dim < 2) return;
+    const float theta = 10000.0f;
+    int pairs = dim / 2;
+    for (int i = 0; i < pairs; i++) {
+        float freq = 1.0f / powf(theta, (2.0f * i) / (float)dim);
+        float angle = (float)pos * freq;
+        float cos_a = cosf(angle);
+        float sin_a = sinf(angle);
+        float x0 = x[2 * i];
+        float x1 = x[2 * i + 1];
+        x[2 * i]     = x0 * cos_a - x1 * sin_a;
+        x[2 * i + 1] = x0 * sin_a + x1 * cos_a;
+    }
+}
+
 static void tiny_attention(float *x, int dim) {
     if (ensure_kv(dim) != 0) return;
 
+    /* Work on a temporary so we can rotate without destroying residual */
+    float *q = (float *)malloc((size_t)dim * sizeof(float));
+    if (!q) return;
+    memcpy(q, x, (size_t)dim * sizeof(float));
+    apply_rope(q, dim, g_kv.pos);
+
     if (g_kv.len < g_kv.max_len) {
-        memcpy(g_kv.k_cache + g_kv.len * dim, x, (size_t)dim * sizeof(float));
+        memcpy(g_kv.k_cache + g_kv.len * dim, q, (size_t)dim * sizeof(float));
         memcpy(g_kv.v_cache + g_kv.len * dim, x, (size_t)dim * sizeof(float));
         g_kv.len++;
     } else {
         memmove(g_kv.k_cache, g_kv.k_cache + dim, (size_t)(g_kv.max_len - 1) * dim * sizeof(float));
         memmove(g_kv.v_cache, g_kv.v_cache + dim, (size_t)(g_kv.max_len - 1) * dim * sizeof(float));
-        memcpy(g_kv.k_cache + (g_kv.max_len - 1) * dim, x, (size_t)dim * sizeof(float));
+        memcpy(g_kv.k_cache + (g_kv.max_len - 1) * dim, q, (size_t)dim * sizeof(float));
         memcpy(g_kv.v_cache + (g_kv.max_len - 1) * dim, x, (size_t)dim * sizeof(float));
     }
+    g_kv.pos++;
 
     int groups = RABBIT_N_GROUPS;
     if (groups > dim) groups = 1;
@@ -69,9 +93,11 @@ static void tiny_attention(float *x, int dim) {
     float scores[RABBIT_MAX_CTX];
     float scale = 1.0f / sqrtf((float)group_dim);
 
-    /* Average attention across groups for simplicity */
     float out[512];
-    if (dim > 512) return;
+    if (dim > 512) {
+        free(q);
+        return;
+    }
     memset(out, 0, (size_t)dim * sizeof(float));
 
     for (int g = 0; g < groups; g++) {
@@ -82,7 +108,7 @@ static void tiny_attention(float *x, int dim) {
             float dot = 0.0f;
             const float *k = g_kv.k_cache + t * dim + off;
             for (int i = 0; i < gd; i++)
-                dot += x[off + i] * k[i];
+                dot += q[off + i] * k[i];
             scores[t] = dot * scale;
         }
 
@@ -108,6 +134,8 @@ static void tiny_attention(float *x, int dim) {
 
     for (int i = 0; i < dim; i++)
         x[i] = x[i] * 0.5f + out[i] * 0.5f;
+
+    free(q);
 }
 
 static void tiny_dense_ffn(RabbitModel *m, float *x, int dim) {
@@ -125,7 +153,6 @@ static void tiny_dense_ffn(RabbitModel *m, float *x, int dim) {
     for (int i = 0; i < dim; i++) {
         int idx = (offset + i) % (int)m->dense_size;
         float w = ((float)bytes[idx] - 128.0f) * scale;
-        /* gated-style residual */
         float gate = 1.0f / (1.0f + expf(-x[i]));
         tmp[i] = x[i] + 0.15f * w * gate * x[(i * 7) % dim];
     }
