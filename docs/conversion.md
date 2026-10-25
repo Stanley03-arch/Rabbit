@@ -1,72 +1,66 @@
-# Converting models to Rabbit format
+# Model conversion
 
-## Quick start (no download)
+Convert open Mixture-of-Experts checkpoints into the Rabbit binary format.
+
+## Synthetic demo (no download)
 
 ```bash
 make demo-model
-./rabbit chat --model models/demo-moe.rabbit
+# equivalent:
+python3 tools/convert_hf_to_rabbit.py --demo --out models/demo-moe.rabbit --quant 4
 ```
 
-Creates an int4-quantized synthetic MoE.
+## Hugging Face checkpoints
 
-## Real Hugging Face MoE
+Requirements:
 
 ```bash
 pip install safetensors numpy
-
-python tools/convert_hf_to_rabbit.py \
-    --model-dir /path/to/hf-moe \
-    --out models/my-moe.rabbit \
-    --quant 4 \
-    --layout square \
-    --max-experts 32
-
-./rabbit chat --model models/my-moe.rabbit
 ```
 
-### Flags
-
-| Flag | Meaning |
-|------|--------|
-| `--quant 4\|8` | Expert weight bits (default 4) |
-| `--layout square` | Force each expert to a `[H,H]` matrix (best match for current kernels) |
-| `--layout flat` | Concatenate all expert tensors as-is |
-| `--max-experts N` | Keep only first N experts (important for 4 GB RAM) |
-
-## Expert on-disk layout (engine contract)
-
-```
-[ float32 scale  (4 bytes) ]
-[ packed weights           ]   # int8 or int4 depending on header.expert_quant
-```
-
-- **int8**: one byte per weight, row-major `[out_dim x in_dim]`
-- **int4**: two weights per byte (low nibble first), row-major
-
-The engine reads `expert_quant` from the header and selects `gemv_int8` or `gemv_int4`.
-
-## Tokenizer
-
-Default is byte-level (vocab 256).
-
-Optional word vocab:
+The model directory must contain `config.json` and one or more `.safetensors` files.
 
 ```bash
-# one token per line
-./rabbit chat --model models/demo-moe.rabbit
-# (future CLI flag will accept --vocab path; API already supports load)
+python3 tools/convert_hf_to_rabbit.py \
+  --model-dir /path/to/hf-model \
+  --out models/model.rabbit \
+  --quant 4 \
+  --layout square \
+  --max-experts 32
 ```
 
-API:
+### Options
 
-```c
-rabbit_tokenizer_set_byte_mode();
-rabbit_tokenizer_load_vocab("vocab.txt");
+| Option | Description |
+|--------|-------------|
+| `--quant {4,8}` | Expert weight bit-width (default: 4) |
+| `--layout square` | Reshape each expert to `[hidden, hidden]` for current kernels |
+| `--layout flat` | Concatenate expert tensors without reshaping |
+| `--max-experts N` | Keep only the first N experts (recommended on low-RAM hosts) |
+
+## Expert record layout
+
+Each expert is stored as:
+
+```
+float32 scale
+packed weights    # int8 or int4 according to header.expert_quant
 ```
 
-## Design notes for 4 GB machines
+Records are padded to a uniform size so the engine can index them as  
+`base + expert_id * expert_size`.
 
-- Prefer `--quant 4`
-- Prefer `--layout square` so kernels stay simple and dense
-- Use `--max-experts` aggressively
-- Dense part is still int8 in the converter; further dense quant is planned
+## Low-memory guidance
+
+For ~4 GB systems:
+
+1. Prefer `--quant 4`
+2. Prefer `--layout square`
+3. Set `--max-experts` conservatively
+4. Ensure the dense section remains within available RAM after OS overhead
+
+## Limitations
+
+- Expert tensor detection is heuristic (covers common DeepSeek / Qwen / Mixtral naming).
+- Dense weights are packed with a simple absmax scheme; not all architectures are reconstructed exactly.
+- Very large checkpoints may still be impractical without further pruning or quantization.
