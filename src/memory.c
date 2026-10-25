@@ -136,8 +136,27 @@ void rabbit_munmap_file(void *base, size_t size, int fd) {
         close(fd);
 }
 
-const void *rabbit_expert_ptr(const RabbitModel *m, int expert_id) {
-    if (!m || !m->expert_map || expert_id < 0 || expert_id >= m->num_experts)
+int rabbit_expert_global_id(const RabbitModel *m, int layer, int local_expert_id) {
+    if (!m || local_expert_id < 0) return -1;
+    if (m->experts_shared)
+        return local_expert_id;
+    if (layer < 0 || layer >= m->n_layers) return -1;
+    int epl = m->experts_per_layer > 0 ? m->experts_per_layer : m->num_experts;
+    if (local_expert_id >= epl) return -1;
+    return layer * epl + local_expert_id;
+}
+
+const void *rabbit_expert_ptr(const RabbitModel *m, int global_expert_id) {
+    if (!m || !m->expert_map || global_expert_id < 0)
         return NULL;
-    return (const uint8_t *)m->expert_map + (size_t)expert_id * m->expert_size;
+    int nrec = m->n_expert_records > 0 ? m->n_expert_records : m->num_experts;
+    if (global_expert_id >= nrec)
+        return NULL;
+    return (const uint8_t *)m->expert_map + (size_t)global_expert_id * m->expert_size;
+}
+
+const void *rabbit_expert_ptr_layer(const RabbitModel *m, int layer, int local_expert_id) {
+    int gid = rabbit_expert_global_id(m, layer, local_expert_id);
+    if (gid < 0) return NULL;
+    return rabbit_expert_ptr(m, gid);
 }
