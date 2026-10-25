@@ -2,27 +2,46 @@ CC ?= gcc
 CFLAGS ?= -O2 -Wall -Wextra -std=c11 -I./src
 LDFLAGS ?= -lm
 
+# CUDA settings (optional)
+NVCC ?= nvcc
+NVCCFLAGS ?= -O2 -std=c++17 -I./src -Xcompiler -fPIC
+CUDA_LDFLAGS ?= -lcudart
+
 SRC = src/main.c src/memory.c src/model.c src/moe.c src/quant.c \
-      src/tokenizer.c src/utils.c src/attention.c src/forward_v2.c
+      src/tokenizer.c src/utils.c src/attention.c src/forward_v2.c \
+      src/validate.c src/cuda_backend.c
 OBJ = $(SRC:.c=.o)
 
+# CUDA objects
+CUDA_OBJ = src/cuda_gemv.o
+
 LIB_SRC = src/memory.c src/model.c src/moe.c src/quant.c \
-          src/tokenizer.c src/utils.c src/attention.c src/forward_v2.c
+          src/tokenizer.c src/utils.c src/attention.c src/forward_v2.c \
+          src/validate.c src/cuda_backend.c
 LIB_OBJ = $(LIB_SRC:.c=.o)
 
 TARGET = rabbit
 TEST_TOOL = tools/create_test_model
 TEST_BIN = tests/test_quant
+VALIDATE_TEST_BIN = tests/validate_test
 
-.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro smoke test parity parity-v2 m2 exact-f32 live-moe check
+.PHONY: all clean debug test test-model ref-model ref-v2 micro-hf mixtral-micro smoke test parity parity-v2 m2 exact-f32 live-moe check validate-test download-models convert-frontier frontier-all cuda-test
 
 all: $(TARGET)
 
-$(TARGET): $(OBJ)
-	$(CC) $(OBJ) -o $@ $(LDFLAGS)
+# Build with CUDA if available
+ifneq (,$(wildcard /usr/local/cuda/bin/nvcc))
+    NVCC := /usr/local/cuda/bin/nvcc
+endif
+
+$(TARGET): $(OBJ) $(CUDA_OBJ)
+	$(CC) $(OBJ) $(CUDA_OBJ) -o $@ $(LDFLAGS) $(CUDA_LDFLAGS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
+
+src/cuda_gemv.o: src/cuda_gemv.cu
+	$(NVCC) $(NVCCFLAGS) -c $< -o $@
 
 $(TEST_TOOL): tools/create_test_model.c
 	$(CC) -O2 -Wall -Wextra -o $@ $<
@@ -30,8 +49,19 @@ $(TEST_TOOL): tools/create_test_model.c
 $(TEST_BIN): tests/test_quant.c $(LIB_OBJ)
 	$(CC) $(CFLAGS) tests/test_quant.c $(LIB_OBJ) -o $@ $(LDFLAGS)
 
+$(VALIDATE_TEST_BIN): tests/validate_test.c $(LIB_OBJ)
+	$(CC) $(CFLAGS) tests/validate_test.c $(LIB_OBJ) -o $@ $(LDFLAGS)
+
 test: $(TEST_BIN)
 	./$(TEST_BIN)
+
+validate-test: $(VALIDATE_TEST_BIN)
+	./$(VALIDATE_TEST_BIN)
+
+cuda-test: $(TARGET)
+	@echo "Testing CUDA availability..."
+	@./$(TARGET) version 2>&1 | head -1
+	@./$(TARGET) probe-v2 --model models/ref-v2.rabbit --prompt hi --tokens 4 2>&1 | head -5 || true
 
 test-model: $(TEST_TOOL)
 	@mkdir -p models
@@ -82,14 +112,24 @@ smoke: $(TARGET) test-model
 	@grep -q "Rabbit" /tmp/rabbit-smoke.out /tmp/rabbit-smoke.err
 	@echo "smoke: ok"
 
-check: test smoke parity parity-v2 m2 exact-f32 mixtral-micro
+check: test validate-test smoke parity parity-v2 m2 exact-f32 mixtral-micro
 	@echo "check: all passed"
+
+# Frontier model targets
+download-models:
+	python3 tools/download_frontier_models.py --models all --models-dir models/hf_frontier --out-dir models --skip-convert --skip-verify
+
+convert-frontier: $(TARGET)
+	python3 tools/download_frontier_models.py --models all --models-dir models/hf_frontier --out-dir models --skip-download --skip-verify --rabbit-binary ./rabbit
+
+frontier-all: $(TARGET)
+	python3 tools/download_frontier_models.py --models all --models-dir models/hf_frontier --out-dir models --rabbit-binary ./rabbit
 
 debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
 debug: clean $(TARGET)
 
 clean:
-	rm -f $(OBJ) $(TARGET) $(TEST_TOOL) $(TEST_BIN)
+	rm -f $(OBJ) $(CUDA_OBJ) $(TARGET) $(TEST_TOOL) $(TEST_BIN) $(VALIDATE_TEST_BIN)
 
 # Live Mixtral-style MoE (TinyBrainBot 360M).
 # Requires: pip install huggingface_hub safetensors numpy

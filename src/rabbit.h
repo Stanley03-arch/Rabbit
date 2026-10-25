@@ -90,6 +90,11 @@ struct RabbitModel {
 
     size_t  mem_budget;
     int     cache_slots;
+
+    /* CUDA backend (optional) */
+    void   *cuda_expert_ptrs;     /* device pointers for experts */
+    int     cuda_enabled;
+    int     cuda_device_id;
 };
 
 /* Lifecycle */
@@ -147,6 +152,27 @@ void rabbit_gemv_int4_grouped(const uint8_t *W, const float *x, float *y,
                               int out_dim, int in_dim);
 int  rabbit_int4_grouped_nbytes(int n, int group_size);
 
+/* CUDA backend (optional) */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Check if CUDA is available at runtime */
+int rabbit_cuda_available(void);
+
+/* Initialize CUDA backend for a model (uploads expert weights to GPU) */
+int rabbit_cuda_init(RabbitModel *model, int device_id);
+
+/* Shutdown CUDA backend and free device memory */
+void rabbit_cuda_shutdown(RabbitModel *model);
+
+/* CUDA-accelerated MoE step (falls back to CPU if CUDA unavailable) */
+int rabbit_cuda_moe_step(RabbitModel *model, float *hidden, int hidden_dim);
+
+/* CUDA-accelerated expert GEMV (single expert) */
+int rabbit_cuda_gemv_expert(const RabbitModel *model, int global_expert_id,
+                            const float *input, float *output, int hidden_dim);
+
 /* Tokenizer */
 int  rabbit_tokenize(const char *text, int *out_ids, int max_ids);
 void rabbit_detokenize(int id, char *out, int out_size);
@@ -155,5 +181,9 @@ int  rabbit_tokenizer_vocab(void);
 void rabbit_tokenizer_set_byte_mode(void);
 int  rabbit_tokenizer_load_vocab(const char *path);
 int  rabbit_tokenizer_load_bpe(const char *path);  /* RBTTOK01 .tok file */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* RABBIT_H */
