@@ -119,9 +119,9 @@ def pack_v2_dense(tensors: Dict[str, np.ndarray], n_layers: int, hidden: int,
         v = fit2d(v, kv_dim, hidden)
         o = fit2d(o, hidden, q_dim)
 
-        router = _find_layer(tensors, L, "mlp.gate")
+        router = _find_layer(tensors, L, "block_sparse_moe.gate")
         if router is None:
-            router = _find_layer(tensors, L, "block_sparse_moe.gate")
+            router = _find_layer(tensors, L, "mlp.gate")
         if router is None:
             router = _find_layer(tensors, L, "router")
         if router is None:
@@ -153,17 +153,33 @@ def pack_v2_dense(tensors: Dict[str, np.ndarray], n_layers: int, hidden: int,
 
 def pack_v2_expert(expert_tensors: Dict[str, np.ndarray], quant: int,
                    hidden: int, inter: int) -> bytes:
-    """Exact gate [I,H], up [I,H], down [H,I]. quant=0 → pure f32."""
+    """Exact gate [I,H], up [I,H], down [H,I]. quant=0 → pure f32.
+
+    Naming:
+      HF / Qwen-style: gate_proj, up_proj, down_proj
+      Mixtral-style:   w1=gate, w3=up, w2=down
+    """
     gate = up = down = None
     for name, arr in expert_tensors.items():
-        n = name.lower()
+        n = name.lower().replace("/", ".")
         a = np.asarray(arr, dtype=np.float32)
-        if "gate" in n and "proj" in n:
+        if "gate_proj" in n or (n.endswith(".gate") and "moe" not in n):
             gate = a
-        elif "up" in n or n.endswith("w1") or ".w1." in n or ".w3." in n:
-            if "gate" not in n:
-                up = a
-        elif "down" in n or n.endswith("w2") or ".w2." in n:
+        elif "up_proj" in n:
+            up = a
+        elif "down_proj" in n:
+            down = a
+        elif n.endswith(".w1") or ".w1." in n or n.endswith("w1.weight"):
+            gate = a
+        elif n.endswith(".w3") or ".w3." in n or n.endswith("w3.weight"):
+            up = a
+        elif n.endswith(".w2") or ".w2." in n or n.endswith("w2.weight"):
+            down = a
+        elif "gate" in n and "proj" in n:
+            gate = a
+        elif "up" in n and "gate" not in n:
+            up = a
+        elif "down" in n:
             down = a
 
     def fit(a: Optional[np.ndarray], rows: int, cols: int) -> np.ndarray:
@@ -204,7 +220,7 @@ def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
         "model_type", "hidden_size", "num_hidden_layers", "num_local_experts",
         "num_experts_per_tok", "vocab_size", "moe_intermediate_size",
         "n_routed_experts", "num_experts", "num_attention_heads",
-        "num_key_value_heads", "head_dim",
+        "num_key_value_heads", "head_dim", "intermediate_size",
     ) if k in config})
 
     tensors = collect_tensors(model_dir)
