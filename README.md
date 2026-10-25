@@ -6,7 +6,7 @@ Rabbit is a pure-C engine that keeps dense weights in RAM and streams routed exp
 
 Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) — not a clone of its product or UI.
 
-> **Status:** v0.3.1 — Phase A complete, Phase B mostly complete. Exact C↔NumPy parity on the ref model. SwiGLU-style experts, multi-head RoPE attention, and memory budget caps.
+> **Status:** v0.4.0 — Phase A/B largely complete, Phase C started. OpenAI-compatible HTTP API, `rabbit stats` engine metrics, dashboard driven by engine JSON.
 
 [![Dashboard in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_dashboard.ipynb)
 
@@ -17,10 +17,24 @@ Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) �
 | Interface | Description |
 |-----------|-------------|
 | **CLI** | `./rabbit chat --model …` |
-| **Dashboard** | Dark cockpit: chat, model stats, expert cache, activity grid |
+| **Stats** | `./rabbit stats --model …` (JSON) |
+| **HTTP API** | OpenAI-compatible (`tools/rabbit_server.py`) |
+| **Dashboard** | Dark cockpit: chat, model/memory stats, expert cache |
 | **Gradio** | Simple browser chat (`tools/rabbit_ui.py`) |
 
-### Engine dashboard (recommended UI)
+### OpenAI-compatible API
+
+```bash
+make && make test-model
+pip install flask
+python tools/rabbit_server.py --model models/tiny-test.rabbit --port 8080
+
+curl http://127.0.0.1:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"rabbit","messages":[{"role":"user","content":"hello"}],"max_tokens":32}'
+```
+
+### Engine dashboard
 
 **Colab:**  
 https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_dashboard.ipynb
@@ -43,25 +57,25 @@ cd Rabbit
 make
 make test-model
 ./rabbit chat --model models/tiny-test.rabbit
+./rabbit stats --model models/tiny-test.rabbit
 ```
 
 Memory budget (optional):
 ```bash
 export RABBIT_MEM_BUDGET_MB=1024   # default 1536
-./rabbit chat --model models/demo-moe.rabbit
 ```
 
 ---
 
 ## Features
 
-- Dense RAM + expert `mmap` + LRU cache (slot count chosen from remaining budget)  
+- Dense RAM + expert `mmap` + LRU cache (slot count from remaining budget)  
 - Multi-head attention with per-head RoPE → dense residual → MoE  
 - int4 / int8 expert GEMV + SwiGLU-style path when gate/up/down present  
-- HF → `.rabbit` converter (Qwen / Mixtral / DeepSeek heuristics)  
-- CLI + original web dashboard  
+- HF → `.rabbit` converter  
+- OpenAI-compatible HTTP API  
+- Dashboard metrics from `rabbit stats`  
 - Exact C vs NumPy parity on the frozen ref model  
-- Memory budget report and hard dense-size caps  
 
 ---
 
@@ -70,7 +84,6 @@ export RABBIT_MEM_BUDGET_MB=1024   # default 1536
 ```bash
 pip install safetensors numpy
 python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf --out models/m.rabbit --quant 4
-# for structured experts (SwiGLU path):
 python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf --out models/m.rabbit --quant 4 --layout flat
 ```
 
@@ -83,7 +96,7 @@ See [docs/tensor-map.md](docs/tensor-map.md) and [docs/conversion.md](docs/conve
 - Synthetic weights do not produce real language.  
 - Dashboard is **Rabbit’s own UI**, not Colibrì’s.  
 - Large real MoEs still need aggressive quant / expert limits on 4 GB hosts.  
-- Optional full per-layer tensor dump parity is still open.  
+- HTTP API does not yet stream (SSE) completions.  
 
 ## License
 
