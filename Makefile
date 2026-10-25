@@ -14,7 +14,7 @@ TARGET = rabbit
 TEST_TOOL = tools/create_test_model
 TEST_BIN = tests/test_quant
 
-.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf smoke test parity parity-v2 m2 check
+.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf smoke test parity parity-v2 m2 exact-f32 check
 
 all: $(TARGET)
 
@@ -65,13 +65,16 @@ parity-v2: $(TARGET) ref-v2
 m2: $(TARGET) micro-hf
 	python3 tests/test_m2_micro_hf.py
 
+exact-f32: $(TARGET)
+	python3 tests/test_exact_f32.py
+
 smoke: $(TARGET) test-model
 	@printf 'hello\nquit\n' | ./$(TARGET) chat --model models/tiny-test.rabbit \
 		--tokens 16 --temp 0.5 >/tmp/rabbit-smoke.out 2>/tmp/rabbit-smoke.err || true
 	@grep -q "Rabbit" /tmp/rabbit-smoke.out /tmp/rabbit-smoke.err
 	@echo "smoke: ok"
 
-check: test smoke parity parity-v2 m2
+check: test smoke parity parity-v2 m2 exact-f32
 	@echo "check: all passed"
 
 debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
