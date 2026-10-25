@@ -5,6 +5,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <math.h>
+
+/* From moe.c */
+int rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim);
 
 const char *rabbit_version(void) {
     return RABBIT_VERSION;
@@ -136,6 +140,42 @@ void rabbit_free(RabbitModel *model) {
     free(model);
 }
 
+/*
+ * Minimal "forward" for the synthetic test model.
+ * We just run a few MoE steps so the expert fetch path is exercised.
+ */
+static void run_tiny_forward(RabbitModel *m, const char *prompt) {
+    int dim = m->hidden_dim > 0 ? m->hidden_dim : 64;
+    float *hidden = (float *)calloc(dim, sizeof(float));
+    if (!hidden) return;
+
+    /* Seed hidden state from the prompt bytes */
+    size_t len = strlen(prompt);
+    for (size_t i = 0; i < len && (int)i < dim; i++)
+        hidden[i] = ((float)(unsigned char)prompt[i] - 64.0f) / 64.0f;
+
+    printf("[forward] running %d MoE layers on hidden_dim=%d ...\n", m->n_layers, dim);
+
+    for (int layer = 0; layer < m->n_layers; layer++) {
+        if (rabbit_moe_step(m, hidden, dim) != 0) {
+            printf("[forward] moe step failed at layer %d\n", layer);
+            break;
+        }
+    }
+
+    /* Produce a simple deterministic "response" from the final hidden state */
+    float sum = 0.0f;
+    for (int i = 0; i < dim; i++)
+        sum += hidden[i];
+
+    int code = (int)(fabsf(sum) * 1000.0f) % 97;
+
+    printf("Rabbit: processed \"%s\"\n", prompt);
+    printf("        (tiny forward ok, checksum=%d)\n\n", code);
+
+    free(hidden);
+}
+
 rabbit_status rabbit_chat(RabbitModel *model) {
     if (!model) return RABBIT_ERR_ARGS;
 
@@ -145,7 +185,7 @@ rabbit_status rabbit_chat(RabbitModel *model) {
     rabbit_print_info(model);
     printf("========================================\n\n");
 
-    printf("Chat is still a stub. Type a message (or 'quit'):\n\n");
+    printf("Tiny forward pass is active. Type a message (or 'quit'):\n\n");
 
     char line[1024];
     while (1) {
@@ -164,8 +204,7 @@ rabbit_status rabbit_chat(RabbitModel *model) {
         if (line[0] == 0)
             continue;
 
-        printf("Rabbit (stub): received \"%s\"\n", line);
-        printf("               Real generation not implemented yet.\n\n");
+        run_tiny_forward(model, line);
     }
 
     return RABBIT_OK;

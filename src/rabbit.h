@@ -11,7 +11,7 @@
  * Tiny engine for large MoE models on constrained hardware.
  * ============================================================ */
 
-#define RABBIT_VERSION "0.1.0-dev"
+#define RABBIT_VERSION "0.1.1-dev"
 #define RABBIT_MAGIC   "RABBIT01"
 
 /* Maximum number of experts we keep hot in RAM (keep tiny for 4GB) */
@@ -97,7 +97,7 @@ rabbit_status rabbit_chat(RabbitModel *model);
 const char  *rabbit_version(void);
 void         rabbit_print_info(const RabbitModel *model);
 
-/* Memory / cache helpers (used internally and by moe.c) */
+/* Memory / cache helpers */
 ExpertCache *rabbit_cache_create(int n_slots);
 void         rabbit_cache_free(ExpertCache *c);
 void         rabbit_cache_set_expert_size(ExpertCache *c, size_t size);
@@ -109,5 +109,9 @@ int          rabbit_mmap_experts_region(const char *path, off_t offset, size_t l
                                         void **map, int *fd);
 void         rabbit_munmap_experts(void *map, size_t size, int fd);
 const void  *rabbit_expert_ptr(const RabbitModel *m, int expert_id);
+
+/* MoE */
+const void  *rabbit_fetch_expert(RabbitModel *m, int expert_id, int promote);
+int          rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim);
 
 #endif /* RABBIT_H */
