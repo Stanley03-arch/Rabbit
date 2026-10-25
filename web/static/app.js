@@ -51,6 +51,18 @@ async function refreshInfo() {
       j.expert_quant ? `${j.expert_quant}-bit` : "—";
     document.getElementById("s-dense").textContent = j.dense || "—";
     document.getElementById("s-map").textContent = j.mapped ? "mapped" : "—";
+
+    document.getElementById("m-budget").textContent =
+      j.mem_budget_mb != null ? `${j.mem_budget_mb} MB` : "—";
+    document.getElementById("m-est").textContent =
+      j.mem_total_est_mb != null ? `${j.mem_total_est_mb} MB` : "—";
+    document.getElementById("m-slots").textContent = j.cache_slots ?? "—";
+    document.getElementById("m-status").textContent = j.over_budget
+      ? "over budget"
+      : j.mem_budget_mb != null
+      ? "ok"
+      : "—";
+
     renderExperts(j.experts || 8, j.warm_experts || []);
 
     const hits = j.cache_hits || 0;
