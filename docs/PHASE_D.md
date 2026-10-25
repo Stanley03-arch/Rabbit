@@ -1,41 +1,44 @@
-# Phase D — Quality spine (toward Colibrì-class fidelity)
+# Phase D — Quality spine
 
-**Goal:** token-exact agreement with an oracle on a frozen architecture, then lift that path to a real public MoE.
-
-## Milestone M1 — micro oracle (done)
-
-> Rabbit `ref-v2` greedy tokens match the NumPy oracle for ≥ 32 tokens.
-
-| Field | Value |
-|-------|-------|
-| layers | 2 |
-| hidden_dim | 64 |
-| n_heads / head_dim | 4 / 16 |
-| vocab | 256 (byte) |
-| experts / top-k | 4 / 2 |
-| intermediate | 128 |
-| stack | RMSNorm → RoPE MHA → linear router → SwiGLU |
+## M1 — micro oracle (done)
 
 ```bash
-make && make parity-v2
-./rabbit probe-v2 --model models/ref-v2.rabbit --prompt hi --tokens 32
-./rabbit chat --model models/ref-v2.rabbit   # uses faithful forward
+make parity-v2
+./rabbit chat --model models/ref-v2.rabbit   # forward: ref-v2
 ```
 
-CI runs `make parity-v2` on every push.
+## M2 — HF-shaped faithful conversion (in progress)
 
-## Milestone M2 — real HF tiny MoE (next)
+### Done
 
-Target: convert a public micro MoE (e.g. Qwen3-MoE-style tiny checkpoint) into the **same structural layout** the v2 kernels expect:
+- `--layout v2` packs **exact** embed / lm_head / rms / qkv / o / router and **exact** gate·up·down expert matrices (no H×H crop).
+- Offline HF-like fixture with Qwen3-MoE tensor names (`make micro-hf`).
+- `make m2` proves: fixture → convert → C greedy tokens match NumPy oracle.
 
-1. Dense: `embed`, `lm_head`, per-layer `rms_*`, `w_qkv`, `w_o`, `w_router` (float32 or later quant)
-2. Experts: `gate` / `up` / `down` int8 (or int4-gs) with exact shapes — **no square crop**
-3. Optional: real tokenizer vocab file for byte≠vocab models
-4. Parity: greedy tokens vs HuggingFace/transformers for N tokens on a fixed prompt
+```bash
+make m2
+./rabbit chat --model models/micro-hf-v2.rabbit
+```
 
-Until M2 is green, language quality on real checkpoints remains limited.
+### Still open
 
-## Non-goals
+| Item | Notes |
+|------|--------|
+| Per-layer experts | Engine still uses a **global** expert table (shared) |
+| Live HF download | Point `--model-dir` at a real tiny MoE when you have one |
+| transformers parity | Compare greedy tokens to HuggingFace for N steps |
+| Tokenizer | Byte vocab only; real BPE later |
+| Group-scaled int4 | After shapes are locked |
 
-- Copying Colibrì engines or containers  
-- Claiming frontier quality before M1+M2  
+### Real checkpoint recipe
+
+```bash
+pip install safetensors numpy
+python tools/convert_hf_to_rabbit.py \
+  --model-dir /path/to/hf_moe \
+  --out models/real-v2.rabbit \
+  --layout v2 --quant 8 --max-experts 8
+./rabbit probe-v2 --model models/real-v2.rabbit --prompt hi --tokens 16
+```
+
+See [tensor-map.md](tensor-map.md).
