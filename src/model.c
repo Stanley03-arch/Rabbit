@@ -64,7 +64,10 @@ void rabbit_print_info(const RabbitModel *m) {
     printf("  layers             %u\n", m->hdr.n_layers);
     printf("  hidden_dim         %u\n", m->hdr.hidden_dim);
     printf("  vocab_size         %u\n", m->hdr.vocab_size);
-    printf("  experts            %u (top-%u)\n", m->hdr.n_experts, m->hdr.experts_per_token);
+    printf("  experts/layer      %d (top-%d)\n", m->num_experts, m->experts_per_token);
+    printf("  expert records     %d (%s)\n",
+           m->n_expert_records,
+           m->experts_shared ? "shared" : "per-layer");
     printf("  dense              %.2f MB\n", m->dense_size / (1024.0 * 1024.0));
     printf("  expert record      %.2f KB\n", m->expert_size / 1024.0);
     printf("  experts total      %.2f MB\n", m->hdr.total_experts_size / (1024.0 * 1024.0));
@@ -99,11 +102,38 @@ static int choose_cache_slots(size_t expert_size, size_t budget, size_t dense_si
     return slots;
 }
 
-/* Detect rabbit-ref-v2 dense layout (float32 embed+lm_head+layers). */
+static void setup_expert_table(RabbitModel *m) {
+    int epl = m->num_experts > 0 ? m->num_experts : 0;
+    int layers = m->n_layers > 0 ? m->n_layers : 1;
+    m->experts_per_layer = epl;
+
+    int nrec = 0;
+    if (m->expert_size > 0 && m->hdr.total_experts_size > 0)
+        nrec = (int)(m->hdr.total_experts_size / m->expert_size);
+
+    if (epl > 0 && nrec == epl * layers) {
+        m->n_expert_records = nrec;
+        m->experts_shared = 0; /* per-layer */
+    } else if (epl > 0 && nrec == epl) {
+        m->n_expert_records = nrec;
+        m->experts_shared = 1; /* shared table */
+    } else if (nrec > 0) {
+        m->n_expert_records = nrec;
+        m->experts_shared = (nrec <= epl || epl == 0) ? 1 : 0;
+        if (!m->experts_shared && layers > 0 && nrec % layers == 0)
+            m->experts_per_layer = nrec / layers;
+        else if (m->experts_shared)
+            m->num_experts = nrec;
+    } else {
+        m->n_expert_records = epl;
+        m->experts_shared = 1;
+    }
+}
+
 static int is_ref_v2_model(const RabbitModel *m) {
     if (!m || !m->dense) return 0;
     if (strncmp(m->name, "ref-v2", 6) == 0) return 1;
-    /* dense_quant == 0 means float32 dense in our generators */
+    if (strncmp(m->name, "micro-hf", 8) == 0) return 1;
     if (m->hdr.dense_quant != 0) return 0;
     if (m->hdr.expert_dim == 0) return 0;
     int H = m->hidden_dim;
@@ -180,6 +210,7 @@ RabbitModel *rabbit_load(const char *path) {
     m->expert_fd = -1;
     m->mem_budget = budget;
     m->cache_slots = choose_cache_slots(m->expert_size, budget, m->dense_size);
+    setup_expert_table(m);
 
     if (hdr.dense_size > 0) {
         m->dense = malloc(hdr.dense_size);
@@ -205,7 +236,7 @@ RabbitModel *rabbit_load(const char *path) {
     int map_fd = -1;
     if (rabbit_mmap_file(path, &base, &map_size, &map_fd) == 0) {
         size_t expert_offset = sizeof(RabbitHeader) + (size_t)hdr.dense_size;
-        if (expert_offset < map_size && hdr.n_experts > 0) {
+        if (expert_offset < map_size && m->n_expert_records > 0) {
             m->expert_map_base = base;
             m->expert_map_size = map_size;
             m->expert_fd = map_fd;
@@ -284,7 +315,6 @@ static void lm_head_toy(const float *hidden, int hidden_dim, float *logits, int 
     }
 }
 
-/* Phase D: generation through faithful ref-v2 kernels. */
 static void generate_v2(RabbitModel *m, const char *prompt, int max_new_tokens, float temperature) {
     int vocab = m->vocab_size > 0 ? m->vocab_size : 256;
     int max_ids = (int)strlen(prompt) + max_new_tokens + 16;
