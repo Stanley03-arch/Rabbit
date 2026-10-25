@@ -1,66 +1,57 @@
-# Tensor map — real HF MoE → Rabbit
+# Tensor map — HF MoE → Rabbit
 
-This document closes the Phase A requirement for **one real small HF MoE with a documented tensor map**.
+## Layout modes
 
-Rabbit’s current engine still treats each expert as a single square `H × H` matrix (int4/int8 + scale). Full SwiGLU / gate-up-down support is Phase B. The converter therefore reduces real expert tensors into that form while preserving a clear, reproducible mapping.
+| `--layout` | Dense | Experts | Engine path |
+|------------|-------|---------|-------------|
+| `square` (legacy) | opaque packed | single H×H (lossy crop) | legacy |
+| `flat` | opaque packed | gate→up→down ordered | SwiGLU pieces |
+| **`v2` (M2)** | **structured float32** | **exact gate/up/down shapes** | **`ref-v2` faithful** |
 
-## Supported naming families
-
-The converter (`tools/convert_hf_to_rabbit.py`) recognises these patterns:
-
-| Family | Expert path markers | Typical expert tensors |
-|--------|---------------------|------------------------|
-| Qwen3-MoE / Qwen2-MoE | `mlp.experts.`, `moe.experts.` | `gate_proj`, `up_proj`, `down_proj` (or packed `gate_up_proj`) |
-| Mixtral | `block_sparse_moe.experts.` | `w1`, `w2`, `w3` |
-| DeepSeek-style | `mlp.experts.`, `shared_experts` | `gate_proj`, `up_proj`, `down_proj` |
-| Generic | `.experts.N.` | any 2-D weight |
-
-## Mapping rules used by the converter
-
-1. **Dense region** — everything that is *not* an expert weight is packed (int8 + scale) into the dense blob. This includes embeddings, attention projections, norms, routers, and shared experts when present.
-2. **Expert index extraction** — the integer after `experts.` / `expert.` becomes the expert ID.
-3. **Per-expert packing (`--layout square`, default)**  
-   - Prefer the largest 2-D matrix that is close to square (usually `down_proj` or `w2`).  
-   - If none fits, concatenate all expert tensors for that ID, then pad/truncate to exactly `hidden_dim × hidden_dim`.  
-   - Result is quantised (int4 or int8) with a leading `float32` scale.
-4. **`--layout flat`** — each expert tensor is quantised separately and concatenated; useful for future multi-matrix kernels.
-
-## Example: micro Qwen3-MoE style (tiny public models)
-
-Models such as `shibatch/tinyqwen3moe2m` (~2 M params) follow the Qwen3-MoE layout:
+## v2 dense layout (exact)
 
 ```
-layers.{L}.mlp.experts.{E}.gate_proj.weight   # [moe_intermediate, hidden]
-layers.{L}.mlp.experts.{E}.up_proj.weight     # [moe_intermediate, hidden]
-layers.{L}.mlp.experts.{E}.down_proj.weight   # [hidden, moe_intermediate]
-layers.{L}.mlp.gate.weight                    # router (kept in dense)
+embed          [V, H] f32
+lm_head        [H, V] f32     (transposed if HF stores [V, H])
+per layer L:
+  rms_attn     [H]            ← input_layernorm
+  rms_ffn      [H]            ← post_attention_layernorm
+  w_qkv        [3H, H]        ← stack(q_proj, k_proj, v_proj)
+  w_o          [H, H]         ← o_proj
+  w_router     [E, H]         ← mlp.gate / router
 ```
 
-Rabbit conversion command (once the model is downloaded):
+## v2 expert layout (exact — no square crop)
+
+```
+gate_proj  [I, H]  int8+scale
+up_proj    [I, H]  int8+scale
+down_proj  [H, I]  int8+scale
+```
+
+Recognized HF names: Qwen3-MoE / Mixtral / DeepSeek-style `experts.N.(gate|up|down)_proj`.
+
+## Micro fixture (CI, no download)
+
+```bash
+make micro-hf    # models/hf_micro_moe + models/micro-hf-v2.rabbit
+make m2          # convert + C↔NumPy parity on the converted file
+```
+
+Experts in the fixture are **shared** (layer-0 only) to match the current global expert table in `forward_v2.c`.
+
+## Real checkpoint
 
 ```bash
 pip install safetensors numpy
+# after downloading a tiny MoE to /path/to/hf
 python tools/convert_hf_to_rabbit.py \
   --model-dir /path/to/hf \
-  --out models/tiny-qwen3-moe.rabbit \
-  --quant 4 \
-  --layout square \
-  --max-experts 8
+  --out models/real-v2.rabbit \
+  --layout v2 --quant 8
+./rabbit chat --model models/real-v2.rabbit
 ```
 
-The resulting file can be loaded with:
+Large models still need aggressive expert limits / quant; v2 is about **shape fidelity**, not RAM magic.
 
-```bash
-./rabbit chat --model models/tiny-qwen3-moe.rabbit
-```
-
-Because the current kernels only apply a single square matrix per expert, language quality will be limited until Phase B (real SwiGLU).
-
-## Why this is enough for Phase A
-
-- The mapping is deterministic and documented.
-- The converter produces valid `.rabbit` files from real HF checkpoints.
-- The synthetic `rabbit-ref-v1` path still provides bit-level numerical parity.
-- Full family-correct expert MLPs and attention are explicitly deferred to Phase B.
-
-See also [conversion.md](conversion.md) and [architecture.md](architecture.md).
+See [PHASE_D.md](PHASE_D.md) and [conversion.md](conversion.md).
