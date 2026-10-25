@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-#define RABBIT_VERSION "0.4.2"
+#define RABBIT_VERSION "0.4.3"
 #define RABBIT_MAGIC   "RABBIT01"
 #define RABBIT_MAX_CACHE_SLOTS 8
 
