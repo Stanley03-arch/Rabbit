@@ -37,7 +37,6 @@ void rabbit_memory_report(const RabbitModel *m, RabbitMemoryReport *out) {
     out->cache_slots = m->cache_slots > 0 ? m->cache_slots : 4;
     out->cache_bytes = (size_t)out->cache_slots * m->expert_size;
 
-    /* KV estimate: 2 * max_ctx * hidden * sizeof(float) */
     const int max_ctx = 128;
     out->kv_bytes = (size_t)2 * max_ctx * (size_t)m->hidden_dim * sizeof(float);
 
@@ -93,11 +92,34 @@ static int choose_cache_slots(size_t expert_size, size_t budget, size_t dense_si
     if (expert_size == 0) return 2;
     size_t remain = 0;
     if (budget > dense_size + 8 * 1024 * 1024)
-        remain = budget - dense_size - 8 * 1024 * 1024; /* leave headroom for KV + OS */
+        remain = budget - dense_size - 8 * 1024 * 1024;
     int slots = (int)(remain / expert_size);
     if (slots < 1) slots = 1;
     if (slots > RABBIT_MAX_CACHE_SLOTS) slots = RABBIT_MAX_CACHE_SLOTS;
     return slots;
+}
+
+/* Detect rabbit-ref-v2 dense layout (float32 embed+lm_head+layers). */
+static int is_ref_v2_model(const RabbitModel *m) {
+    if (!m || !m->dense) return 0;
+    if (strncmp(m->name, "ref-v2", 6) == 0) return 1;
+    /* dense_quant == 0 means float32 dense in our generators */
+    if (m->hdr.dense_quant != 0) return 0;
+    if (m->hdr.expert_dim == 0) return 0;
+    int H = m->hidden_dim;
+    int V = m->vocab_size;
+    int L = m->n_layers;
+    int E = m->num_experts;
+    if (H <= 0 || V <= 0 || L <= 0) return 0;
+    size_t need = (size_t)V * H + (size_t)H * V;
+    for (int i = 0; i < L; i++) {
+        need += (size_t)H * 2;
+        need += (size_t)3 * H * H;
+        need += (size_t)H * H;
+        need += (size_t)E * H;
+    }
+    need *= sizeof(float);
+    return m->dense_size >= need;
 }
 
 RabbitModel *rabbit_load(const char *path) {
@@ -130,7 +152,6 @@ RabbitModel *rabbit_load(const char *path) {
 
     size_t budget = rabbit_default_mem_budget();
 
-    /* Hard cap: refuse dense blob that alone exceeds the budget */
     if (hdr.dense_size > budget) {
         fprintf(stderr,
                 "error: dense section (%.1f MB) exceeds memory budget (%.1f MB).\n"
@@ -179,7 +200,6 @@ RabbitModel *rabbit_load(const char *path) {
     }
     close(fd);
 
-    /* Map entire file; expert_map points at the expert region. */
     void *base = NULL;
     size_t map_size = 0;
     int map_fd = -1;
@@ -255,7 +275,7 @@ static int sample_token(const float *probs, int n, float temperature) {
     return chosen;
 }
 
-static void lm_head(const float *hidden, int hidden_dim, float *logits, int vocab) {
+static void lm_head_toy(const float *hidden, int hidden_dim, float *logits, int vocab) {
     for (int v = 0; v < vocab; v++) {
         float s = 0.0f;
         for (int i = 0; i < hidden_dim && i < 32; i++)
@@ -264,7 +284,61 @@ static void lm_head(const float *hidden, int hidden_dim, float *logits, int voca
     }
 }
 
+/* Phase D: generation through faithful ref-v2 kernels. */
+static void generate_v2(RabbitModel *m, const char *prompt, int max_new_tokens, float temperature) {
+    int vocab = m->vocab_size > 0 ? m->vocab_size : 256;
+    int max_ids = (int)strlen(prompt) + max_new_tokens + 16;
+    int *tokens = (int *)malloc(sizeof(int) * (size_t)max_ids);
+    float *hidden = (float *)malloc(sizeof(float) * (size_t)m->hidden_dim);
+    float *logits = (float *)malloc(sizeof(float) * (size_t)vocab);
+    if (!tokens || !hidden || !logits) {
+        free(tokens); free(hidden); free(logits);
+        fprintf(stderr, "error: out of memory during v2 generation\n");
+        return;
+    }
+
+    int n = 0;
+    for (const unsigned char *p = (const unsigned char *)prompt; *p && n < max_ids - max_new_tokens - 1; p++)
+        tokens[n++] = (int)(*p % vocab);
+    if (n == 0)
+        tokens[n++] = 1;
+
+    char piece[8];
+    for (int t = 0; t < max_new_tokens && n < max_ids; t++) {
+        if (rabbit_ref_v2_forward(m, tokens, n, hidden, logits) != 0) {
+            fprintf(stderr, "error: ref-v2 forward failed\n");
+            break;
+        }
+        if (temperature <= 0.0f) {
+            int best = 0;
+            float bv = logits[0];
+            for (int i = 1; i < vocab; i++)
+                if (logits[i] > bv) { bv = logits[i]; best = i; }
+            tokens[n++] = best;
+        } else {
+            softmax(logits, vocab);
+            tokens[n++] = sample_token(logits, vocab, temperature);
+        }
+        int id = tokens[n - 1];
+        if (id >= 0 && id < 256) {
+            piece[0] = (char)id;
+            piece[1] = 0;
+            fputs(piece, stdout);
+        } else {
+            printf("?");
+        }
+        fflush(stdout);
+    }
+    printf("\n\n");
+    free(tokens); free(hidden); free(logits);
+}
+
 static void generate(RabbitModel *m, const char *prompt, int max_new_tokens, float temperature) {
+    if (is_ref_v2_model(m)) {
+        generate_v2(m, prompt, max_new_tokens, temperature);
+        return;
+    }
+
     int dim = m->hidden_dim > 0 ? m->hidden_dim : 64;
     int vocab = rabbit_tokenizer_vocab();
     if (vocab > 4096) vocab = 4096;
@@ -295,7 +369,7 @@ static void generate(RabbitModel *m, const char *prompt, int max_new_tokens, flo
 
     char piece[128];
     for (int t = 0; t < max_new_tokens; t++) {
-        lm_head(hidden, dim, logits, vocab);
+        lm_head_toy(hidden, dim, logits, vocab);
         softmax(logits, vocab);
         int next = sample_token(logits, vocab, temperature);
         rabbit_detokenize(next, piece, sizeof(piece));
@@ -323,6 +397,10 @@ rabbit_status rabbit_chat_ex(RabbitModel *model, int max_tokens, float temperatu
     printf("\nRabbit %s\n", rabbit_version());
     printf("----------------------------------------\n");
     rabbit_print_info(model);
+    if (is_ref_v2_model(model))
+        printf("  forward             ref-v2 (faithful)\n");
+    else
+        printf("  forward             legacy\n");
     printf("----------------------------------------\n");
     printf("  max_tokens         %d\n", max_tokens);
     printf("  temperature        %.2f\n", temperature);
