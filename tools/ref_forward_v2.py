@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""NumPy oracle for rabbit-ref-v2 (per-layer experts)."""
+"""NumPy oracle for rabbit-ref-v2 (per-layer experts; f32 or int8)."""
 
 from __future__ import annotations
 
@@ -86,6 +86,15 @@ def load_ref_v2(path: Path) -> Dict[str, Any]:
     inter = expert_dim
 
     def read_expert(blob: bytes):
+        if expert_quant == 0:
+            e_off = 0
+            gate, e_off = _read_f32(blob, e_off, inter * hidden)
+            gate = gate.reshape(inter, hidden)
+            up, e_off = _read_f32(blob, e_off, inter * hidden)
+            up = up.reshape(inter, hidden)
+            down, e_off = _read_f32(blob, e_off, hidden * inter)
+            down = down.reshape(hidden, inter)
+            return {"gate": gate, "up": up, "down": down}
         e_off = 0
         gate, _, e_off = _dequant_int8(blob, e_off, inter * hidden)
         gate = gate.reshape(inter, hidden)
@@ -127,6 +136,7 @@ def load_ref_v2(path: Path) -> Dict[str, Any]:
         "layers": layers,
         "experts_by_layer": experts_by_layer,
         "experts_shared": shared,
+        "expert_quant": expert_quant,
         "name": name.split(b"\0", 1)[0].decode(),
     }
 
@@ -255,7 +265,16 @@ def main():
 
     model = load_ref_v2(Path(args.model))
     ids = greedy_generate(model, args.prompt, args.tokens)
-    print("REF_V2", args.prompt, "ids=", ids, "shared=", model["experts_shared"])
+    print(
+        "REF_V2",
+        args.prompt,
+        "ids=",
+        ids,
+        "shared=",
+        model["experts_shared"],
+        "quant=",
+        model["expert_quant"],
+    )
 
 
 if __name__ == "__main__":
