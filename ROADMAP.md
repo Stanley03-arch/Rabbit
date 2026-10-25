@@ -8,15 +8,16 @@ See [docs/PHASE_A.md](docs/PHASE_A.md).
 - [x] Deterministic model generator (`make ref-model`)
 - [x] NumPy reference forward
 - [x] `make parity` + CI hook
-- [x] Exact C vs NumPy tensor fingerprint compare (sum / L1 / L2 / first-8)
-- [x] One real small HF MoE family with documented tensor map (Qwen3-MoE / Mixtral style)
+- [x] Exact C vs NumPy tensor fingerprint compare
+- [x] One real small HF MoE family with documented tensor map
 
-## Phase B — Engine depth
+## Phase B — Engine depth (in progress)
 
-- Real expert MLP (SwiGLU or family-correct gate/up/down)
-- Real attention (RoPE + proper KV)
-- Memory budget report + caps
-- Full per-layer tensor dump parity (optional deep debug)
+- [x] Real expert MLP path (SwiGLU-style when gate/up/down data present)
+- [x] Basic RoPE in attention
+- [ ] Full multi-head attention + proper KV shapes
+- [ ] Memory budget report + hard caps
+- [ ] Full per-layer tensor dump parity (optional deep debug)
 
 ## Phase C — Product surface
 
