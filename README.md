@@ -5,7 +5,7 @@ Run large Mixture-of-Experts (MoE) models on extremely constrained hardware (tar
 
 Inspired by [Colibrì](https://github.com/JustVugg/colibri).
 
-> **Status**: Full layer path working — Attention → Dense FFN → MoE → Sampling.
+> **Status**: Full engine path + HuggingFace → Rabbit converter available.
 
 ## Goal
 
@@ -22,16 +22,31 @@ git clone https://github.com/Stanley03-arch/Rabbit.git
 cd Rabbit
 
 make
-make test-model
+make test-model                    # tiny synthetic model
 ./rabbit chat --model models/tiny-test.rabbit
 ```
 
-Type a message. Rabbit runs a complete (synthetic) transformer-style step:
+### Larger demo MoE (still no download)
 
-1. **Attention** over a short KV cache
-2. **Dense residual FFN** using the dense blob
-3. **MoE** (router → fetch experts from mmap/cache → int8 matmul)
-4. **Sample** next token and continue
+```bash
+make demo-model
+./rabbit chat --model models/demo-moe.rabbit
+```
+
+### Convert a real Hugging Face MoE
+
+```bash
+pip install safetensors numpy
+
+python tools/convert_hf_to_rabbit.py \
+    --model-dir /path/to/hf-moe \
+    --out models/my-moe.rabbit \
+    --max-experts 32
+
+./rabbit chat --model models/my-moe.rabbit
+```
+
+See [docs/conversion.md](docs/conversion.md) for details.
 
 ## What works today
 
@@ -39,17 +54,17 @@ Type a message. Rabbit runs a complete (synthetic) transformer-style step:
 |---------------------------------|--------|
 | Rabbit file format              | ✅     |
 | Dense weights → RAM             | ✅     |
-| Experts memory-mapped           | ✅     |
-| Tiny LRU expert cache           | ✅     |
+| Experts memory-mapped + LRU     | ✅     |
 | Expert fetch + int8 matmul      | ✅     |
 | Attention + KV cache            | ✅     |
 | Dense residual path             | ✅     |
 | Full layer step                 | ✅     |
-| Byte-level tokenizer            | ✅     |
-| Sampling + generation loop      | ✅     |
-| Real model conversion           | ❌     |
+| Tokenizer + sampling            | ✅     |
+| HF → Rabbit converter           | ✅     |
+| Demo MoE generator              | ✅     |
+| Production-quality generation   | ❌     |
 
-## Architecture (current)
+## Architecture
 
 ```
 Token → hidden
@@ -67,12 +82,27 @@ Token → hidden
       LM head → sample
 ```
 
+Experts live on disk and are pulled in on demand. Only a tiny LRU cache stays in RAM.
+
+## Project layout
+
+```
+src/           C engine
+tools/
+  create_test_model.c
+  convert_hf_to_rabbit.py    # HF MoE → .rabbit
+docs/
+  architecture.md
+  file-format.md
+  conversion.md
+```
+
 ## Next steps
 
-1. Better quantization + fused kernels
-2. Real tokenizer (SentencePiece / tiktoken style)
-3. Converter for open MoE models (DeepSeek Flash, Kimi, …)
-4. Multi-head / MLA-style attention
+1. Better int4 packing and fused kernels
+2. More accurate expert layout for DeepSeek / Kimi / Qwen MoEs
+3. Real tokenizer support
+4. Further memory reductions for true 4 GB targets
 
 ## License
 

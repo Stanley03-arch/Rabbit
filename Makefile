@@ -8,7 +8,7 @@ OBJ = $(SRC:.c=.o)
 TARGET = rabbit
 TEST_TOOL = tools/create_test_model
 
-.PHONY: all clean debug test-model
+.PHONY: all clean debug test-model demo-model
 
 all: $(TARGET)
 
@@ -24,6 +24,11 @@ $(TEST_TOOL): tools/create_test_model.c
 test-model: $(TEST_TOOL)
 	@mkdir -p models
 	./$(TEST_TOOL) models/tiny-test.rabbit
+
+# Larger synthetic MoE via the Python converter (no HF download needed)
+demo-model:
+	@mkdir -p models
+	python3 tools/convert_hf_to_rabbit.py --demo --out models/demo-moe.rabbit --hidden-dim 128 --n-experts 16
 
 debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
 debug: clean $(TARGET)
