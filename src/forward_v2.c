@@ -251,7 +251,6 @@ static void expert_swiglu(const RabbitModel *m, int layer, int local_expert_id,
     }
 
     if (quant == 0) {
-        /* pure f32: gate[I,H] + up[I,H] + down[H,I] */
         size_t need = (mat * 2 + (size_t)H * (size_t)inter) * sizeof(float);
         if (m->expert_size < need) {
             free(gate); free(up); free(mid); free(down_out);
@@ -416,11 +415,17 @@ int rabbit_ref_v2_greedy(RabbitModel *m, const char *prompt, int n_new,
     RefV2Weights w;
     if (parse_weights(m, &w) != 0) return -1;
 
-    int n = 0;
-    for (const unsigned char *p = (const unsigned char *)prompt; *p && n < max_ids - n_new - 1; p++)
-        out_ids[n++] = (int)(*p % w.vocab);
-    if (n == 0)
-        out_ids[n++] = 1;
+    /* Use active tokenizer (BPE / word / byte) instead of raw bytes */
+    int n = rabbit_tokenize(prompt, out_ids, max_ids - n_new - 1);
+    if (n <= 0) {
+        out_ids[0] = 1;
+        n = 1;
+    }
+    /* Clamp ids into model vocab */
+    for (int i = 0; i < n; i++) {
+        if (out_ids[i] < 0) out_ids[i] = 0;
+        out_ids[i] %= w.vocab;
+    }
 
     float *hidden = (float *)malloc(sizeof(float) * (size_t)w.hidden);
     float *logits = (float *)malloc(sizeof(float) * (size_t)w.vocab);
