@@ -6,12 +6,13 @@
 
 static void print_usage(const char *prog) {
     fprintf(stderr,
-        "Rabbit %s \u2014 local MoE inference for constrained hardware\n"
+        "Rabbit %s — local MoE inference for constrained hardware\n"
         "\n"
         "Usage:\n"
         "  %s version\n"
         "  %s chat --model <path> [options]\n"
         "  %s probe --model <path> [--prompt text]\n"
+        "  %s mem --model <path>\n"
         "\n"
         "Options:\n"
         "  --model <path>   Path to .rabbit model\n"
@@ -20,7 +21,7 @@ static void print_usage(const char *prog) {
         "  --temp <f>       Sampling temperature (default: 0.85)\n"
         "  --prompt <text>  Prompt for probe (default: hi)\n"
         "  -h, --help       Show this help\n",
-        rabbit_version(), prog, prog, prog);
+        rabbit_version(), prog, prog, prog, prog);
 }
 
 static int cmd_probe(int argc, char **argv) {
@@ -70,7 +71,6 @@ static int cmd_probe(int argc, char **argv) {
     }
     l2 = sqrt(l2);
 
-    /* Machine-readable line for tests */
     printf("PROBE prompt=%s dim=%d sum=%.8f l1=%.8f l2=%.8f first8=", prompt, dim, sum, l1, l2);
     for (int i = 0; i < dim && i < 8; i++) {
         if (i) printf(",");
@@ -79,6 +79,33 @@ static int cmd_probe(int argc, char **argv) {
     printf("\n");
 
     free(h);
+    rabbit_free(m);
+    return 0;
+}
+
+static int cmd_mem(int argc, char **argv) {
+    const char *model_path = NULL;
+    for (int i = 2; i < argc; i++) {
+        if ((strcmp(argv[i], "--model") == 0) && i + 1 < argc)
+            model_path = argv[++i];
+        else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+            print_usage(argv[0]);
+            return 0;
+        } else {
+            fprintf(stderr, "Unknown option: %s\n", argv[i]);
+            return 1;
+        }
+    }
+    if (!model_path) {
+        fprintf(stderr, "error: --model required\n");
+        return 1;
+    }
+    RabbitModel *m = rabbit_load(model_path);
+    if (!m) return 1;
+    printf("Rabbit %s\n", rabbit_version());
+    rabbit_print_info(m);
+    printf("\n");
+    rabbit_print_mem_budget(m);
     rabbit_free(m);
     return 0;
 }
@@ -103,6 +130,9 @@ int main(int argc, char **argv) {
 
     if (strcmp(argv[1], "probe") == 0)
         return cmd_probe(argc, argv);
+
+    if (strcmp(argv[1], "mem") == 0)
+        return cmd_mem(argc, argv);
 
     if (strcmp(argv[1], "chat") == 0) {
         const char *model_path = NULL;
