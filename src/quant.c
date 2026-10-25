@@ -4,6 +4,10 @@
 #include <math.h>
 #include <stdint.h>
 
+#ifndef RABBIT_INT4_GROUP
+#define RABBIT_INT4_GROUP 32
+#endif
+
 void rabbit_dequant_int8(const int8_t *src, float *dst, int n, float scale) {
     if (!src || !dst || n <= 0) return;
     for (int i = 0; i < n; i++)
@@ -56,4 +60,120 @@ int rabbit_pack_int4(const float *src, int n, uint8_t *dst, float *out_scale) {
         dst[pairs] = (uint8_t)(lo + 8);
     }
     return (n + 1) / 2;
+}
+
+/*
+ * Group-scaled int4
+ *
+ * On-disk layout for one matrix (n elements):
+ *   u32  group_size
+ *   f32  scales[n_groups]     where n_groups = ceil(n / group_size)
+ *   u8   packed[(n+1)/2]      two signed nibbles per byte, bias +8
+ *
+ * Returns total bytes written into dst (must be large enough).
+ */
+int rabbit_pack_int4_grouped(const float *src, int n, int group_size,
+                             uint8_t *dst, int dst_cap) {
+    if (!src || !dst || n <= 0) return -1;
+    if (group_size <= 0) group_size = RABBIT_INT4_GROUP;
+
+    int n_groups = (n + group_size - 1) / group_size;
+    int packed_bytes = (n + 1) / 2;
+    int need = 4 + n_groups * 4 + packed_bytes;
+    if (dst_cap < need) return -1;
+
+    uint8_t *p = dst;
+    uint32_t gs = (uint32_t)group_size;
+    memcpy(p, &gs, 4);
+    p += 4;
+
+    float *scales = (float *)p;
+    p += n_groups * 4;
+
+    /* compute per-group scales */
+    for (int g = 0; g < n_groups; g++) {
+        int start = g * group_size;
+        int end = start + group_size;
+        if (end > n) end = n;
+        float max_abs = 0.0f;
+        for (int i = start; i < end; i++) {
+            float a = src[i] < 0.0f ? -src[i] : src[i];
+            if (a > max_abs) max_abs = a;
+        }
+        scales[g] = max_abs / 7.0f + 1e-8f;
+    }
+
+    /* pack nibbles with group scale */
+    for (int i = 0; i < n; i += 2) {
+        int g0 = i / group_size;
+        float s0 = scales[g0];
+        int lo = clamp_i((int)lrintf(src[i] / s0), -8, 7);
+        int hi = 0;
+        if (i + 1 < n) {
+            int g1 = (i + 1) / group_size;
+            float s1 = scales[g1];
+            hi = clamp_i((int)lrintf(src[i + 1] / s1), -8, 7);
+        }
+        p[i / 2] = (uint8_t)((lo + 8) | ((hi + 8) << 4));
+    }
+    return need;
+}
+
+int rabbit_dequant_int4_grouped(const uint8_t *src, float *dst, int n) {
+    if (!src || !dst || n <= 0) return -1;
+
+    uint32_t group_size = 0;
+    memcpy(&group_size, src, 4);
+    if (group_size == 0 || group_size > 4096) return -1;
+
+    int n_groups = (n + (int)group_size - 1) / (int)group_size;
+    const float *scales = (const float *)(src + 4);
+    const uint8_t *packed = src + 4 + n_groups * 4;
+
+    for (int i = 0; i < n; i++) {
+        int byte_i = i / 2;
+        int nibble = (i & 1) ? ((packed[byte_i] >> 4) & 0x0F) : (packed[byte_i] & 0x0F);
+        int q = nibble - 8;
+        int g = i / (int)group_size;
+        dst[i] = (float)q * scales[g];
+    }
+    return 0;
+}
+
+/*
+ * GEMV: y[out] = W[out, in] * x[in]
+ * W stored as group-scaled int4 (row-major, each row is `in_dim` elements).
+ * Layout is one big grouped blob for the whole matrix (n = out_dim * in_dim).
+ */
+void rabbit_gemv_int4_grouped(const uint8_t *W, const float *x, float *y,
+                              int out_dim, int in_dim) {
+    if (!W || !x || !y || out_dim <= 0 || in_dim <= 0) return;
+
+    int n = out_dim * in_dim;
+    /* Dequant whole matrix into temp (simple, correct). For tiny experts OK. */
+    float *full = (float *)malloc(sizeof(float) * (size_t)n);
+    if (!full) {
+        memset(y, 0, sizeof(float) * (size_t)out_dim);
+        return;
+    }
+    if (rabbit_dequant_int4_grouped(W, full, n) != 0) {
+        free(full);
+        memset(y, 0, sizeof(float) * (size_t)out_dim);
+        return;
+    }
+    for (int o = 0; o < out_dim; o++) {
+        float sum = 0.0f;
+        const float *row = full + (size_t)o * in_dim;
+        for (int i = 0; i < in_dim; i++)
+            sum += row[i] * x[i];
+        y[o] = sum;
+    }
+    free(full);
+}
+
+int rabbit_int4_grouped_nbytes(int n, int group_size) {
+    if (n <= 0) return 0;
+    if (group_size <= 0) group_size = RABBIT_INT4_GROUP;
+    int n_groups = (n + group_size - 1) / group_size;
+    return 4 + n_groups * 4 + (n + 1) / 2;
 }
