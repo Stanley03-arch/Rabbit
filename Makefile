@@ -62,7 +62,7 @@ smoke: $(TARGET) test-model
 	@grep -q "Rabbit" /tmp/rabbit-smoke.out /tmp/rabbit-smoke.err
 	@echo "smoke: ok"
 
-check: test smoke parity
+check: test smoke parity parity-v2
 	@echo "check: all passed"
 
 debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
