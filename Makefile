@@ -14,7 +14,7 @@ TARGET = rabbit
 TEST_TOOL = tools/create_test_model
 TEST_BIN = tests/test_quant
 
-.PHONY: all clean debug test-model demo-model ref-model smoke test parity check
+.PHONY: all clean debug test-model demo-model ref-model smoke test parity check olmoe-map
 
 all: $(TARGET)
 
@@ -32,6 +32,8 @@ $(TEST_BIN): tests/test_quant.c $(LIB_OBJ)
 
 test: $(TEST_BIN)
 	./$(TEST_BIN)
+	olmoe-map:
+	python3 tests/test_olmoe_map.py
 
 test-model: $(TEST_TOOL)
 	@mkdir -p models
@@ -55,7 +57,7 @@ smoke: $(TARGET) test-model
 	@grep -q "Rabbit" /tmp/rabbit-smoke.out /tmp/rabbit-smoke.err
 	@echo "smoke: ok"
 
-check: test smoke parity
+check: test smoke parity olmoe-map
 	@echo "check: all passed"
 
 debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
