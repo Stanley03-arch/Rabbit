@@ -6,7 +6,7 @@ Rabbit is a pure-C engine that keeps dense weights in RAM and streams routed exp
 
 Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) — not a clone of its product or UI.
 
-> **Status:** Phase A complete (v0.2.5). Synthetic models give exact C↔NumPy parity. Real HF MoE conversion + documented tensor map available. Full SwiGLU / RoPE still Phase B.
+> **Status:** v0.3.0 — Phase A complete, Phase B started. Exact C↔NumPy parity on the ref model. SwiGLU-style expert path + basic RoPE attention when data allows. Full multi-head + memory caps still in progress.
 
 [![Dashboard in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_dashboard.ipynb)
 
@@ -50,8 +50,8 @@ make test-model
 ## Features
 
 - Dense RAM + expert `mmap` + LRU cache  
-- Attention → dense residual → MoE  
-- int4 / int8 expert GEMV  
+- Attention (basic RoPE) → dense residual → MoE  
+- int4 / int8 expert GEMV + SwiGLU-style path when gate/up/down present  
 - HF → `.rabbit` converter (Qwen / Mixtral / DeepSeek heuristics)  
 - CLI + original web dashboard  
 - Exact C vs NumPy parity on the frozen ref model  
@@ -63,6 +63,8 @@ make test-model
 ```bash
 pip install safetensors numpy
 python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf --out models/m.rabbit --quant 4
+# for structured experts (Phase B SwiGLU path):
+python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf --out models/m.rabbit --quant 4 --layout flat
 ```
 
 See [docs/tensor-map.md](docs/tensor-map.md) and [docs/conversion.md](docs/conversion.md).
@@ -74,7 +76,7 @@ See [docs/tensor-map.md](docs/tensor-map.md) and [docs/conversion.md](docs/conve
 - Synthetic weights do not produce real language.  
 - Dashboard is **Rabbit’s own UI**, not Colibrì’s.  
 - Large real MoEs still need aggressive quant / expert limits on 4 GB hosts.  
-- Current expert kernels are square-matrix only (full SwiGLU is Phase B).  
+- Full multi-head attention and hard memory caps are still evolving (Phase B).  
 
 ## License
 
