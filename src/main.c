@@ -1,4 +1,5 @@
 #include "rabbit.h"
+#include "validate.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,18 +11,23 @@ static void print_usage(const char *prog) {
         "\n"
         "Usage:\n"
         "  %s version\n"
-        "  %s chat     --model <path> [options]\n"
-        "  %s probe    --model <path> [--prompt text]\n"
-        "  %s probe-v2 --model <path> [--prompt text] [--tokens n] [--tokenizer path]\n"
-        "  %s stats    --model <path>\n"
+        "  %s chat       --model <path> [options]\n"
+        "  %s probe      --model <path> [--prompt text]\n"
+        "  %s probe-v2   --model <path> [--prompt text] [--tokens n] [--tokenizer path]\n"
+        "  %s stats      --model <path>\n"
+        "  %s validate   --model <rabbit> --hf-model <hf_dir> [options]\n"
         "\n"
         "Options:\n"
         "  --model <path>       Path to .rabbit model\n"
+        "  --hf-model <dir>     HF model directory (for validate)\n"
         "  --tokenizer <path>   BPE tokenizer (.tok / RBTTOK01)\n"
         "  --vocab <path>       Simple word vocabulary file\n"
         "  --tokens <n>         Maximum new tokens (default: 64)\n"
         "  --temp <f>           Sampling temperature (default: 0.85)\n"
         "  --prompt <text>      Prompt for probe (default: hi)\n"
+        "  --rtol <f>           Relative tolerance for validate (default: 1e-4)\n"
+        "  --atol <f>           Absolute tolerance for validate (default: 1e-5)\n"
+        "  -q, --quiet          Suppress verbose output (validate)\n"
         "  -h, --help           Show this help\n",
         rabbit_version(), prog, prog, prog, prog, prog);
 }
@@ -265,6 +271,9 @@ int main(int argc, char **argv) {
 
     if (strcmp(argv[1], "stats") == 0)
         return cmd_stats(argc, argv);
+
+    if (strcmp(argv[1], "validate") == 0)
+        return rabbit_cmd_validate(argc, argv);
 
     if (strcmp(argv[1], "chat") == 0) {
         const char *model_path = NULL;
