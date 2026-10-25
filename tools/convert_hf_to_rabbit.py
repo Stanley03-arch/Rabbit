@@ -119,3 +119,115 @@ def pack_int4_grouped(arr: np.ndarray, group_size: int = 32) -> bytes:
         packed[i // 2] = (lo & 0x0F) | ((hi & 0x0F) << 4)
 
     return struct.pack("<I", group_size) + scales.tobytes() + bytes(packed)
+
+
+def build_demo_model(out_path: Path, hidden_dim: int = 128, n_experts: int = 16, quant: int = 4) -> None:
+    n_layers = 6
+    vocab_size = 256
+    experts_per_token = 2
+    expert_dim = hidden_dim * 2
+
+    dense = np.random.randn(hidden_dim * 256).astype(np.float32)
+    dense_blob = pack_with_scale(dense, 8)
+
+    expert_blobs = []
+    for e in range(n_experts):
+        mat = np.random.randn(hidden_dim, hidden_dim).astype(np.float32)
+        mat += e * 0.01
+        if quant == 4:
+            expert_blobs.append(pack_int4_grouped(mat))
+        else:
+            expert_blobs.append(pack_with_scale(mat, quant if quant else 8))
+
+    expert_size = max(len(b) for b in expert_blobs)
+    expert_blobs = [b + b"\0" * (expert_size - len(b)) for b in expert_blobs]
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "wb") as f:
+        write_header(
+            f,
+            n_layers=n_layers,
+            hidden_dim=hidden_dim,
+            vocab_size=vocab_size,
+            n_experts=n_experts,
+            experts_per_token=experts_per_token,
+            expert_dim=expert_dim,
+            dense_size=len(dense_blob),
+            expert_size=expert_size,
+            dense_quant=8,
+            expert_quant=quant if quant else 8,
+            name="demo-moe",
+        )
+        f.write(dense_blob)
+        for b in expert_blobs:
+            f.write(b)
+
+    print(f"[demo] {out_path}  quant={quant}  experts={n_experts}  hidden={hidden_dim}")
+
+
+def load_hf_config(model_dir: Path) -> dict:
+    with open(model_dir / "config.json") as f:
+        return json.load(f)
+
+
+def collect_tensors(model_dir: Path) -> Dict[str, np.ndarray]:
+    tensors: Dict[str, np.ndarray] = {}
+
+    npz = model_dir / "model.npz"
+    if npz.is_file():
+        print(f"[load] {npz.name}")
+        data = np.load(npz)
+        for key in data.files:
+            tensors[key] = data[key]
+        return tensors
+
+    try:
+        from safetensors import safe_open
+    except ImportError:
+        print("pip install safetensors numpy  (or provide model.npz)", file=sys.stderr)
+        sys.exit(1)
+
+    files = sorted(model_dir.glob("*.safetensors"))
+    if not files:
+        raise FileNotFoundError(f"No .safetensors or model.npz in {model_dir}")
+    for path in files:
+        print(f"[load] {path.name}")
+        with safe_open(path, framework="np") as f:
+            for key in f.keys():
+                tensors[key] = f.get_tensor(key)
+    return tensors
+
+
+def classify_tensors(tensors: Dict[str, np.ndarray]):
+    dense = {}
+    experts: Dict[int, Dict[str, np.ndarray]] = {}
+
+    expert_markers = (
+        ".experts.",
+        "block_sparse_moe.experts",
+        "mlp.experts",
+        "moe.experts",
+    )
+
+    for name, arr in tensors.items():
+        lower = name.replace("/", ".")
+        is_expert = any(m in lower for m in expert_markers)
+
+        if not is_expert:
+            dense[name] = arr
+            continue
+
+        parts = lower.split(".")
+        idx = None
+        for i, p in enumerate(parts):
+            if p in ("experts", "expert") and i + 1 < len(parts) and parts[i + 1].isdigit():
+                idx = int(parts[i + 1])
+                break
+
+        if idx is None:
+            dense[name] = arr
+            continue
+
+        experts.setdefault(idx, {})[name] = arr
+
+    return dense, experts
