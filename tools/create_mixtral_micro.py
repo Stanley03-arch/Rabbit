@@ -49,6 +49,7 @@ def main() -> None:
 
     tensors = {}
     tensors["model.embed_tokens.weight"] = rng.normal(0, 0.02, (V, H)).astype(np.float32)
+    tensors["model.norm.weight"] = np.ones(H, dtype=np.float32)
 
     for layer in range(L):
         p = f"model.layers.{layer}"
