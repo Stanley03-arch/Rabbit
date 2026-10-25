@@ -2,6 +2,8 @@
 
 Convert open Mixture-of-Experts checkpoints into the Rabbit binary format.
 
+See also the detailed [tensor map](tensor-map.md) for Qwen3-MoE / Mixtral / DeepSeek-style naming.
+
 ## Synthetic demo (no download)
 
 ```bash
@@ -34,7 +36,7 @@ python3 tools/convert_hf_to_rabbit.py \
 | Option | Description |
 |--------|-------------|
 | `--quant {4,8}` | Expert weight bit-width (default: 4) |
-| `--layout square` | Reshape each expert to `[hidden, hidden]` for current kernels |
+| `--layout square` | Reshape each expert to `[hidden, hidden]` for current kernels (prefers `down_proj` / `w2`) |
 | `--layout flat` | Concatenate expert tensors without reshaping |
 | `--max-experts N` | Keep only the first N experts (recommended on low-RAM hosts) |
 
@@ -63,4 +65,5 @@ For ~4 GB systems:
 
 - Expert tensor detection is heuristic (covers common DeepSeek / Qwen / Mixtral naming).
 - Dense weights are packed with a simple absmax scheme; not all architectures are reconstructed exactly.
+- Current kernels apply a single square matrix per expert; full gate/up/down (SwiGLU) is Phase B.
 - Very large checkpoints may still be impractical without further pruning or quantization.
