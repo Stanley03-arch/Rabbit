@@ -4,22 +4,23 @@ convert_hf_to_rabbit.py
 
 Convert open MoE models into the Rabbit binary format.
 
-Improvements in this version:
-  - int4 packing (default for experts when --quant 4)
-  - Explicit expert layout: [float32 scale][packed weights]
-  - Better heuristics for DeepSeek / Qwen / Mixtral-style expert names
-  - --layout square|flat control
-  - Demo mode still available (no download)
+- int4 packing (default for experts when --quant 4)
+- Explicit expert layout: [float32 scale][packed weights]
+- --arch auto|olmoe  (olmoe uses the frozen tensor map in docs/tensor-map.md)
+- --layout square|flat
+- Demo mode (no download)
 
 Usage:
   python tools/convert_hf_to_rabbit.py --demo --out models/demo-moe.rabbit
   python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf --out models/m.rabbit --quant 4
+  python tools/convert_hf_to_rabbit.py --model-dir /path/to/OLMoE --out models/olmoe.rabbit --arch olmoe
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import struct
 import sys
 from pathlib import Path
@@ -28,11 +29,6 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 RABBIT_MAGIC = b"RABBIT01"
-HEADER_FMT = (
-    "8sI I I I I I I I Q Q Q I I 64s 128s"
-)
-# Explicit for clarity
-HEADER_FMT = "8sIIIIIIIIQQQI I64s128s".replace(" ", "")
 HEADER_SIZE = struct.calcsize(
     "8s" + "I" * 8 + "Q" * 3 + "I" * 2 + "64s" + "128s"
 )
@@ -104,7 +100,7 @@ def build_demo_model(out_path: Path, hidden_dim: int = 128, n_experts: int = 16,
     expert_dim = hidden_dim * 2
 
     dense = np.random.randn(hidden_dim * 256).astype(np.float32)
-    dense_blob = pack_with_scale(dense, 8)  # dense stays int8 for simplicity
+    dense_blob = pack_with_scale(dense, 8)
 
     expert_blobs = []
     for e in range(n_experts):
@@ -169,8 +165,8 @@ def collect_tensors(model_dir: Path) -> Dict[str, np.ndarray]:
     return tensors
 
 
-def classify_tensors(tensors: Dict[str, np.ndarray]):
-    """Improved heuristics for DeepSeek / Qwen / Mixtral / similar."""
+def classify_tensors_auto(tensors: Dict[str, np.ndarray]):
+    """Heuristic detection for DeepSeek / Qwen / Mixtral / similar."""
     dense = {}
     experts: Dict[int, Dict[str, np.ndarray]] = {}
 
@@ -179,7 +175,7 @@ def classify_tensors(tensors: Dict[str, np.ndarray]):
         "block_sparse_moe.experts",
         "mlp.experts",
         "moe.experts",
-        "shared_experts",  # sometimes shared stays dense; we still detect index if present
+        "shared_experts",
     )
 
     for name, arr in tensors.items():
@@ -190,14 +186,12 @@ def classify_tensors(tensors: Dict[str, np.ndarray]):
             dense[name] = arr
             continue
 
-        # Extract expert index
         parts = lower.split(".")
         idx = None
         for i, p in enumerate(parts):
             if p in ("experts", "expert") and i + 1 < len(parts) and parts[i + 1].isdigit():
                 idx = int(parts[i + 1])
                 break
-            # DeepSeek style sometimes: mlp.experts.12.down_proj
             if p.isdigit() and i > 0 and parts[i - 1] in ("experts", "expert"):
                 idx = int(p)
                 break
@@ -211,6 +205,43 @@ def classify_tensors(tensors: Dict[str, np.ndarray]):
     return dense, experts
 
 
+# Exact OLMoE patterns — see docs/tensor-map.md
+_OLMOE_EXPERT_RE = re.compile(
+    r"(?:^|\.)model\.layers\.(\d+)\.mlp\.experts\.(\d+)\.(gate_proj|up_proj|down_proj)\.weight$"
+)
+_OLMOE_EXPERT_ALT = re.compile(
+    r"(?:^|\.)layers\.(\d+)\.mlp\.experts\.(\d+)\.(gate_proj|up_proj|down_proj)\.weight$"
+)
+
+
+def classify_tensors_olmoe(tensors: Dict[str, np.ndarray]):
+    """
+    Exact tensor map for OLMoE-family checkpoints.
+
+    Experts: model.layers.{L}.mlp.experts.{E}.{gate,up,down}_proj.weight
+    Everything else → dense (sorted-name concat).
+    Expert id is global {E}; first-seen tensors win if layers collide.
+    """
+    dense = {}
+    experts: Dict[int, Dict[str, np.ndarray]] = {}
+
+    for name, arr in tensors.items():
+        norm = name.replace("/", ".")
+        m = _OLMOE_EXPERT_RE.search(norm) or _OLMOE_EXPERT_ALT.search(norm)
+        if m:
+            _layer, eid_s, proj = m.group(1), m.group(2), m.group(3)
+            eid = int(eid_s)
+            # Canonical key so packing order is stable
+            key = f"{proj}.weight"
+            slot = experts.setdefault(eid, {})
+            if key not in slot:
+                slot[key] = arr
+            continue
+        dense[name] = arr
+
+    return dense, experts
+
+
 def pack_dense(dense: Dict[str, np.ndarray], quant: int = 8) -> bytes:
     pieces = []
     for name in sorted(dense.keys()):
@@ -218,22 +249,49 @@ def pack_dense(dense: Dict[str, np.ndarray], quant: int = 8) -> bytes:
     return b"".join(pieces)
 
 
+def pack_one_expert_olmoe(expert_tensors: Dict[str, np.ndarray], quant: int,
+                          hidden_dim: int) -> bytes:
+    """
+    Phase A OLMoE packing (documented in docs/tensor-map.md):
+      gate_proj → up_proj → down_proj, concat, pad/truncate to HxH, quantize.
+    """
+    order = ("gate_proj.weight", "up_proj.weight", "down_proj.weight")
+    parts = []
+    for key in order:
+        if key in expert_tensors:
+            parts.append(np.asarray(expert_tensors[key], dtype=np.float32).ravel())
+        else:
+            # missing proj → skip (still deterministic)
+            pass
+    if not parts:
+        # fallback: any tensors present
+        for _, v in sorted(expert_tensors.items()):
+            parts.append(np.asarray(v, dtype=np.float32).ravel())
+    if not parts:
+        flat = np.zeros(hidden_dim * hidden_dim, dtype=np.float32)
+    else:
+        flat = np.concatenate(parts)
+    need = hidden_dim * hidden_dim
+    if flat.size < need:
+        flat = np.pad(flat, (0, need - flat.size))
+    else:
+        flat = flat[:need]
+    mat = flat.reshape(hidden_dim, hidden_dim)
+    return pack_with_scale(mat, quant)
+
+
 def pack_one_expert(expert_tensors: Dict[str, np.ndarray], quant: int, layout: str,
-                    hidden_dim: int) -> bytes:
-    """
-    layout:
-      square — force a single [hidden, hidden] matrix (pad/truncate)
-      flat   — concatenate all expert tensors as-is (with scale headers)
-    """
+                    hidden_dim: int, arch: str) -> bytes:
+    if arch == "olmoe" and layout == "square":
+        return pack_one_expert_olmoe(expert_tensors, quant, hidden_dim)
+
     if layout == "square":
-        # Prefer a weight that looks like a 2D matrix near hidden_dim
         candidates = []
         for name, arr in expert_tensors.items():
             a = np.asarray(arr)
             if a.ndim == 2:
                 candidates.append(a)
         if candidates:
-            # Pick the largest matrix and reshape/crop toward [H, H]
             mat = max(candidates, key=lambda x: x.size)
             flat = mat.astype(np.float32).ravel()
             need = hidden_dim * hidden_dim
@@ -244,39 +302,49 @@ def pack_one_expert(expert_tensors: Dict[str, np.ndarray], quant: int, layout: s
             mat = flat.reshape(hidden_dim, hidden_dim)
             return pack_with_scale(mat, quant)
 
-        # Fallback: concatenate then reshape
-        flat = np.concatenate([np.asarray(v).astype(np.float32).ravel() for v in expert_tensors.values()])
+        flat = np.concatenate(
+            [np.asarray(v).astype(np.float32).ravel() for v in expert_tensors.values()]
+        )
         need = hidden_dim * hidden_dim
         if flat.size < need:
             flat = np.pad(flat, (0, need - flat.size))
         mat = flat[:need].reshape(hidden_dim, hidden_dim)
         return pack_with_scale(mat, quant)
 
-    # flat layout
     pieces = [pack_with_scale(np.asarray(v), quant) for _, v in sorted(expert_tensors.items())]
     return b"".join(pieces)
 
 
 def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
-               quant: int, layout: str) -> None:
+               quant: int, layout: str, arch: str) -> None:
     config = load_hf_config(model_dir)
     print("[config]", {k: config.get(k) for k in (
         "model_type", "hidden_size", "num_hidden_layers", "num_local_experts",
         "num_experts_per_tok", "vocab_size", "moe_intermediate_size",
-        "n_routed_experts", "num_experts",
+        "n_routed_experts", "num_experts", "intermediate_size",
     ) if k in config})
+    print(f"[arch] {arch}")
 
     tensors = collect_tensors(model_dir)
     print(f"[info] {len(tensors)} tensors")
 
-    dense, experts = classify_tensors(tensors)
+    if arch == "olmoe":
+        dense, experts = classify_tensors_olmoe(tensors)
+    else:
+        dense, experts = classify_tensors_auto(tensors)
     print(f"[info] dense={len(dense)}  expert_groups={len(experts)}")
 
     hidden_dim = int(config.get("hidden_size") or config.get("n_embd") or 1024)
     n_layers = int(config.get("num_hidden_layers") or config.get("n_layer") or 12)
     vocab_size = int(config.get("vocab_size") or 32000)
-    experts_per_token = int(config.get("num_experts_per_tok") or config.get("moe_top_k") or 2)
-    expert_dim = int(config.get("moe_intermediate_size") or config.get("intermediate_size") or hidden_dim * 2)
+    experts_per_token = int(
+        config.get("num_experts_per_tok") or config.get("moe_top_k") or 2
+    )
+    expert_dim = int(
+        config.get("moe_intermediate_size")
+        or config.get("intermediate_size")
+        or hidden_dim * 2
+    )
 
     expert_ids = sorted(experts.keys())
     if max_experts is not None and len(expert_ids) > max_experts:
@@ -284,7 +352,10 @@ def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
         expert_ids = expert_ids[:max_experts]
 
     n_experts = len(expert_ids) if expert_ids else int(
-        config.get("num_local_experts") or config.get("num_experts") or config.get("n_routed_experts") or 8
+        config.get("num_local_experts")
+        or config.get("num_experts")
+        or config.get("n_routed_experts")
+        or 8
     )
 
     dense_blob = pack_dense(dense, quant=8)
@@ -292,13 +363,20 @@ def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
     expert_blobs = []
     if expert_ids:
         for idx in expert_ids:
-            blob = pack_one_expert(experts[idx], quant=quant, layout=layout, hidden_dim=hidden_dim)
+            blob = pack_one_expert(
+                experts[idx], quant=quant, layout=layout,
+                hidden_dim=hidden_dim, arch=arch,
+            )
             expert_blobs.append(blob)
         expert_size = max(len(b) for b in expert_blobs)
         expert_blobs = [b + b"\0" * (expert_size - len(b)) for b in expert_blobs]
     else:
         print("[warn] no experts detected — creating placeholder square experts")
-        expert_size = 4 + (hidden_dim * hidden_dim if quant == 8 else hidden_dim * ((hidden_dim + 1) // 2))
+        expert_size = 4 + (
+            hidden_dim * hidden_dim
+            if quant == 8
+            else hidden_dim * ((hidden_dim + 1) // 2)
+        )
         expert_blobs = [b"\0" * expert_size for _ in range(n_experts)]
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -323,8 +401,11 @@ def convert_hf(model_dir: Path, out_path: Path, max_experts: Optional[int],
 
     total = out_path.stat().st_size
     print(f"[done] {out_path}")
-    print(f"       dense={len(dense_blob)/1024/1024:.2f} MB  experts={n_experts} x {expert_size/1024:.1f} KB")
-    print(f"       quant={quant}  layout={layout}  total={total/1024/1024:.2f} MB")
+    print(
+        f"       dense={len(dense_blob)/1024/1024:.2f} MB  "
+        f"experts={n_experts} x {expert_size/1024:.1f} KB"
+    )
+    print(f"       quant={quant}  layout={layout}  arch={arch}  total={total/1024/1024:.2f} MB")
     print(f"\nRun:  ./rabbit chat --model {out_path}")
 
 
@@ -335,8 +416,18 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--max-experts", type=int, default=None)
     ap.add_argument("--quant", type=int, choices=[4, 8], default=4, help="Expert quantization bits")
-    ap.add_argument("--layout", choices=["square", "flat"], default="square",
-                    help="square=force HxH matrix per expert (best for current kernels)")
+    ap.add_argument(
+        "--layout",
+        choices=["square", "flat"],
+        default="square",
+        help="square=force HxH matrix per expert (best for current kernels)",
+    )
+    ap.add_argument(
+        "--arch",
+        choices=["auto", "olmoe"],
+        default="auto",
+        help="Tensor classification: auto=heuristics, olmoe=exact map (docs/tensor-map.md)",
+    )
     ap.add_argument("--hidden-dim", type=int, default=128)
     ap.add_argument("--n-experts", type=int, default=16)
     args = ap.parse_args()
@@ -347,7 +438,9 @@ def main():
         return
     if not args.model_dir:
         ap.error("Need --demo or --model-dir")
-    convert_hf(Path(args.model_dir), out, args.max_experts, args.quant, args.layout)
+    convert_hf(
+        Path(args.model_dir), out, args.max_experts, args.quant, args.layout, args.arch
+    )
 
 
 if __name__ == "__main__":
