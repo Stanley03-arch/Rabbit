@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/Stanley03-arch/Rabbit/tree/main/docs
+    about: Architecture, file format, tensor map and conversion guides.

@@ -228,7 +228,12 @@ def create_app(rabbit: Path, model: Path, repo: Path) -> Flask:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="models/tiny-test.rabbit")
-    ap.add_argument("--host", default="0.0.0.0")
+    ap.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Bind address (default: loopback only; there is no authentication, "
+        "so use 0.0.0.0 only on a trusted network)",
+    )
     ap.add_argument("--port", type=int, default=7860)
     ap.add_argument("--share-hint", action="store_true", help="Print Colab proxy tip")
     args = ap.parse_args()

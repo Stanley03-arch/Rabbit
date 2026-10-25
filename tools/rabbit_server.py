@@ -480,7 +480,12 @@ def create_app(rabbit: Path, model: Path, model_id: str) -> Flask:
 def main():
     ap = argparse.ArgumentParser(description="Rabbit OpenAI-compatible API")
     ap.add_argument("--model", default="models/tiny-test.rabbit")
-    ap.add_argument("--host", default="0.0.0.0")
+    ap.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Bind address (default: loopback only; there is no authentication, "
+        "so use 0.0.0.0 only on a trusted network)",
+    )
     ap.add_argument("--port", type=int, default=8080)
     ap.add_argument("--model-id", default="rabbit", help="Model id exposed in /v1/models")
     args = ap.parse_args()

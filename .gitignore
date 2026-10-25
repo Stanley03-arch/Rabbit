@@ -3,9 +3,13 @@ rabbit
 *.o
 src/*.o
 tools/create_test_model
+tests/test_quant
 
-# Models (keep only samples tracked if desired)
+# Models and generated fixtures (keep only samples tracked)
 models/*.rabbit
+models/*.tok
+models/hf_*/
+models/tinybrainbot/
 !models/sample_vocab.txt
 
 # Python

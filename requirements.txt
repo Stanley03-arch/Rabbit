@@ -1,0 +1,12 @@
+# Python tooling for Rabbit. The C engine itself has no dependencies.
+# Install with: pip install -r requirements.txt
+
+# Core: converters, NumPy oracle, parity tests
+numpy>=1.24
+safetensors>=0.4
+
+# HTTP API and dashboard
+flask>=3.0
+
+# Only needed for `make live-moe` (downloads a public checkpoint)
+huggingface_hub>=0.23

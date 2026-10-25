@@ -6,37 +6,62 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
-  build-test:
-    runs-on: ubuntu-latest
+  check:
+    name: check (${{ matrix.os }}, ${{ matrix.cc }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, cc: gcc }
+          - { os: ubuntu-latest, cc: clang }
+          - { os: macos-latest, cc: clang }
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install Python deps
         run: pip install numpy
 
-      - name: Build
-        run: make clean && make
+      - name: Build (warnings are errors)
+        run: make clean && make CC=${{ matrix.cc }} CFLAGS="-O2 -Wall -Wextra -Werror -std=c11 -I./src"
 
-      - name: Unit tests
-        run: make test
-
-      - name: Smoke test
-        run: make smoke
-
-      - name: Phase A parity
-        run: make parity
-
-      - name: Phase D parity-v2
-        run: make parity-v2
-
-      - name: Phase D M2 micro-HF
-        run: make m2
+      - name: Full check
+        run: make check CC=${{ matrix.cc }}
 
       - name: Version
         run: ./rabbit version
+
+  sanitize:
+    name: ASan + UBSan
+    runs-on: ubuntu-latest
+    env:
+      SAN_CFLAGS: -O1 -g -Wall -Wextra -std=c11 -I./src -fsanitize=address,undefined -fno-omit-frame-pointer
+      SAN_LDFLAGS: -lm -fsanitize=address,undefined
+      ASAN_OPTIONS: detect_leaks=0
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python deps
+        run: pip install numpy
+
+      - name: Build and test under sanitizers
+        run: |
+          make clean
+          make check CFLAGS="$SAN_CFLAGS" LDFLAGS="$SAN_LDFLAGS"

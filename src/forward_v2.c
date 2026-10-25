@@ -272,7 +272,8 @@ static void expert_swiglu(const RabbitModel *m, int layer, int local_expert_id,
     const uint8_t *bytes = (const uint8_t *)rabbit_expert_ptr_layer(m, layer, local_expert_id);
     if (!bytes) return;
 
-    int quant = m->hdr.expert_quant ? (int)m->hdr.expert_quant : 8;
+    /* In the v2 layout 0 means raw f32 experts (see rabbit.h); do not default it to int8. */
+    int quant = (int)m->hdr.expert_quant;
     size_t mat = (size_t)inter * (size_t)H;
 
     float *gate = (float *)calloc((size_t)inter, sizeof(float));

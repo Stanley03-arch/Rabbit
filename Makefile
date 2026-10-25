@@ -14,9 +14,25 @@ TARGET = rabbit
 TEST_TOOL = tools/create_test_model
 TEST_BIN = tests/test_quant
 
-.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro smoke test parity parity-v2 m2 exact-f32 live-moe check
+.PHONY: all help clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro smoke test parity parity-v2 m2 exact-f32 live-moe check
 
 all: $(TARGET)
+
+help:
+	@echo "Rabbit build targets"
+	@echo "  make              build ./rabbit"
+	@echo "  make check        run every test (unit, smoke, C-vs-NumPy parity); what CI runs"
+	@echo "  make test         C unit tests (quantization, tokenizer)"
+	@echo "  make smoke        end-to-end chat on the synthetic test model"
+	@echo "  make parity       C vs NumPy on the v1 reference model"
+	@echo "  make parity-v2    C vs NumPy on the v2 reference model"
+	@echo "  make m2           HF-shaped micro model: convert, then C vs NumPy"
+	@echo "  make exact-f32    same, with raw f32 experts"
+	@echo "  make mixtral-micro  GQA + Mixtral tensor names, offline"
+	@echo "  make test-model   write models/tiny-test.rabbit for quick experiments"
+	@echo "  make live-moe     download and convert TinyBrainBot 360M (needs network)"
+	@echo "  make debug        -g -O0 build with RABBIT_DEBUG"
+	@echo "  make clean        remove build products"
 
 $(TARGET): $(OBJ)
 	$(CC) $(OBJ) -o $@ $(LDFLAGS)
