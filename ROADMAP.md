@@ -27,20 +27,20 @@ See [docs/PHASE_A.md](docs/PHASE_A.md).
 - [x] Streaming completions (SSE)
 - [ ] Auth / rate limits (optional)
 
-## Phase D — Quality spine (toward Colibrì-class fidelity)
+## Phase D — Quality spine (in progress)
 
 See [docs/PHASE_D.md](docs/PHASE_D.md).
 
 - [x] Frozen `rabbit-ref-v2` architecture (RMSNorm, RoPE, SwiGLU, real router)
 - [x] Deterministic generator (`make ref-v2`)
 - [x] NumPy full forward oracle (`tools/ref_forward_v2.py`)
-- [x] Oracle self-check (`make parity-v2`)
-- [ ] C forward matches NumPy argmax for ≥32 greedy tokens
-- [ ] Wire `parity-v2` into CI once C match is green
+- [x] C faithful forward (`src/forward_v2.c`) + `rabbit probe-v2`
+- [x] `make parity-v2` compares C vs NumPy greedy tokens (32 new × 3 prompts)
+- [ ] CI job for `parity-v2` once green on your machine
 - [ ] Real HF tiny MoE with exact tensor map (no square crop)
 
 ## Non-goals
 
-- Claiming Colibrì parity without Phase D M1 (token-exact micro oracle) complete
+- Claiming Colibrì parity without Phase D M1 verified on CI
 - Frontier MoEs on 4 GB without severe limits
 - Copying Colibrì engines, UI, or containers
