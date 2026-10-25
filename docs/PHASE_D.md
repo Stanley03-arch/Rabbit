@@ -11,25 +11,26 @@ make parity-v2
 
 ### Done
 
-- `--layout v2` packs **exact** embed / lm_head / rms / qkv / o / router and **exact** gate·up·down expert matrices (no H×H crop).
-- Offline HF-like fixture with Qwen3-MoE tensor names (`make micro-hf`).
-- `make m2` proves: fixture → convert → C greedy tokens match NumPy oracle.
-- **Per-layer expert tables**: disk order `L0E0..L0E{n-1}, L1E0, …`; header `total_experts_size = L×E×expert_size`; C maps `global_id = layer * n_experts + e` via `rabbit_expert_ptr_layer`.
+- `--layout v2` packs **exact** embed / lm_head / rms / qkv / o / router and **exact** gate·up·down expert matrices.
+- Offline HF-like fixture (`make micro-hf`).
+- `make m2` — int8 experts, C↔NumPy match.
+- Per-layer expert tables (`L×E` records).
+- **`--quant 0`** pure float32 experts for unquantized parity (`make exact-f32`).
+- `tools/hf_token_parity.py` — always C↔NumPy; optional `HF_MODEL=` transformers path.
 
 ```bash
 make m2
-./rabbit chat --model models/micro-hf-v2.rabbit
-# print_info shows: expert records = L×E (per-layer)
+make exact-f32
+python tools/hf_token_parity.py --model models/micro-hf-f32.rabbit --prompt hi --tokens 16
 ```
 
 ### Still open
 
 | Item | Notes |
 |------|--------|
-| Live HF download | Point `--model-dir` at a real tiny MoE when you have one |
-| transformers parity | Compare greedy tokens to HuggingFace for N steps |
-| Tokenizer | Byte vocab only; real BPE later |
-| Group-scaled int4 | After shapes are locked |
+| Live HF + matching arch | Public tiny MoEs often use MLA / custom code; need standard MHA+SwiGLU MoE |
+| Real BPE tokenizer | Byte vocab only today |
+| Group-scaled int4 | After shapes locked |
 
 ### Real checkpoint recipe
 
@@ -38,8 +39,9 @@ pip install safetensors numpy
 python tools/convert_hf_to_rabbit.py \
   --model-dir /path/to/hf_moe \
   --out models/real-v2.rabbit \
-  --layout v2 --quant 8 --max-experts 8
+  --layout v2 --quant 0
 ./rabbit probe-v2 --model models/real-v2.rabbit --prompt hi --tokens 16
+python tools/hf_token_parity.py --model models/real-v2.rabbit --hf-dir /path/to/hf_moe
 ```
 
 See [tensor-map.md](tensor-map.md).
