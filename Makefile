@@ -3,11 +3,11 @@ CFLAGS ?= -O2 -Wall -Wextra -std=c11 -I./src
 LDFLAGS ?= -lm
 
 SRC = src/main.c src/memory.c src/model.c src/moe.c src/quant.c \
-      src/tokenizer.c src/utils.c src/attention.c
+      src/tokenizer.c src/utils.c src/attention.c src/forward_v2.c
 OBJ = $(SRC:.c=.o)
 
 LIB_SRC = src/memory.c src/model.c src/moe.c src/quant.c \
-          src/tokenizer.c src/utils.c src/attention.c
+          src/tokenizer.c src/utils.c src/attention.c src/forward_v2.c
 LIB_OBJ = $(LIB_SRC:.c=.o)
 
 TARGET = rabbit
@@ -53,7 +53,7 @@ demo-model:
 parity: $(TARGET) ref-model
 	python3 tests/test_parity_ref.py
 
-parity-v2: ref-v2
+parity-v2: $(TARGET) ref-v2
 	python3 tests/test_parity_ref_v2.py
 
 smoke: $(TARGET) test-model
