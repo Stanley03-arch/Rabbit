@@ -25,10 +25,10 @@ test-model: $(TEST_TOOL)
 	@mkdir -p models
 	./$(TEST_TOOL) models/tiny-test.rabbit
 
-# Larger synthetic MoE via the Python converter (no HF download needed)
+# Larger synthetic MoE with int4 experts
 demo-model:
 	@mkdir -p models
-	python3 tools/convert_hf_to_rabbit.py --demo --out models/demo-moe.rabbit --hidden-dim 128 --n-experts 16
+	python3 tools/convert_hf_to_rabbit.py --demo --out models/demo-moe.rabbit --hidden-dim 128 --n-experts 16 --quant 4
 
 debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
 debug: clean $(TARGET)

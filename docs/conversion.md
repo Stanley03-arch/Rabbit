@@ -3,64 +3,70 @@
 ## Quick start (no download)
 
 ```bash
-# Create a larger synthetic MoE for testing
-python tools/convert_hf_to_rabbit.py --demo --out models/demo-moe.rabbit
-
+make demo-model
 ./rabbit chat --model models/demo-moe.rabbit
 ```
 
-## Real Hugging Face MoE models
+Creates an int4-quantized synthetic MoE.
 
-1. Download a model that uses safetensors (recommended):
-
-```bash
-# Example (small MoE if available)
-huggingface-cli download <org>/<model> --local-dir ./hf-models/my-moe
-```
-
-2. Convert:
+## Real Hugging Face MoE
 
 ```bash
 pip install safetensors numpy
 
 python tools/convert_hf_to_rabbit.py \
-    --model-dir ./hf-models/my-moe \
+    --model-dir /path/to/hf-moe \
     --out models/my-moe.rabbit \
-    --max-experts 32          # optional, helps on 4 GB machines
-```
+    --quant 4 \
+    --layout square \
+    --max-experts 32
 
-3. Run:
-
-```bash
 ./rabbit chat --model models/my-moe.rabbit
 ```
 
-## What the converter does
+### Flags
 
-1. Reads `config.json` for architecture metadata
-2. Loads all `.safetensors` shards
-3. Splits tensors into:
-   - **dense** (embeddings, attention, shared weights) → one RAM blob
-   - **experts** (routed expert weights) → separate blobs, later memory-mapped
-4. Quantizes floating-point weights to int8 (simple absmax)
-5. Writes a single `.rabbit` file matching the engine header format
+| Flag | Meaning |
+|------|--------|
+| `--quant 4\|8` | Expert weight bits (default 4) |
+| `--layout square` | Force each expert to a `[H,H]` matrix (best match for current kernels) |
+| `--layout flat` | Concatenate all expert tensors as-is |
+| `--max-experts N` | Keep only first N experts (important for 4 GB RAM) |
 
-## Limitations (current version)
+## Expert on-disk layout (engine contract)
 
-- Heuristic expert detection (works for common DeepSeek / Qwen / Mixtral naming)
-- Only int8 quantization for now
-- Does not yet reconstruct exact original matmul layouts for every architecture
-- Very large models (hundreds of GB) still need aggressive `--max-experts` and further quant work for 4 GB RAM
+```
+[ float32 scale  (4 bytes) ]
+[ packed weights           ]   # int8 or int4 depending on header.expert_quant
+```
 
-## Design goal for 4 GB machines
+- **int8**: one byte per weight, row-major `[out_dim x in_dim]`
+- **int4**: two weights per byte (low nibble first), row-major
 
-- Dense part should stay under ~1.5–2 GB after quantization
-- Experts are streamed from disk; only a tiny LRU stays in RAM
-- Use `--max-experts` to reduce the expert set when necessary
+The engine reads `expert_quant` from the header and selects `gemv_int8` or `gemv_int4`.
 
-## Next improvements
+## Tokenizer
 
-- Native int4 packing
-- Better expert layout matching the engine kernels
-- Direct support for more MoE families (Kimi, DeepSeek V4 Flash, …)
-- Optional expert pruning / distillation for ultra-low RAM
+Default is byte-level (vocab 256).
+
+Optional word vocab:
+
+```bash
+# one token per line
+./rabbit chat --model models/demo-moe.rabbit
+# (future CLI flag will accept --vocab path; API already supports load)
+```
+
+API:
+
+```c
+rabbit_tokenizer_set_byte_mode();
+rabbit_tokenizer_load_vocab("vocab.txt");
+```
+
+## Design notes for 4 GB machines
+
+- Prefer `--quant 4`
+- Prefer `--layout square` so kernels stay simple and dense
+- Use `--max-experts` aggressively
+- Dense part is still int8 in the converter; further dense quant is planned
