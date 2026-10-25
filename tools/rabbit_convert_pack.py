@@ -18,7 +18,13 @@ HEADER_SIZE = struct.calcsize(
 
 def write_header(f, **kw) -> None:
     name_bytes = kw["name"].encode("utf-8")[:63].ljust(64, b"\0")
-    reserved = b"\0" * 128
+    reserved = bytearray(128)
+    # Optional GQA metadata in reserved[0:12]
+    n_heads = int(kw.get("n_heads") or 0)
+    n_kv_heads = int(kw.get("n_kv_heads") or 0)
+    head_dim = int(kw.get("head_dim") or 0)
+    if n_heads and head_dim:
+        struct.pack_into("<III", reserved, 0, n_heads, n_kv_heads or n_heads, head_dim)
     n_records = kw.get("n_expert_records", kw["n_experts"])
     total_experts_size = n_records * kw["expert_size"]
     header = struct.pack(
@@ -38,7 +44,7 @@ def write_header(f, **kw) -> None:
         kw["dense_quant"],
         kw["expert_quant"],
         name_bytes,
-        reserved,
+        bytes(reserved),
     )
     f.write(header)
 
