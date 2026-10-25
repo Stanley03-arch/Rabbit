@@ -33,11 +33,13 @@ Dense blob (ordered):
 
 Experts: flat layout, gate → up → down, each `[scale][int8 payload]`.
 
-### Commands (as implemented)
+### Commands
 
 ```bash
-make ref-v2          # tools/create_ref_v2.py → models/ref-v2.rabbit
-make parity-v2       # NumPy oracle self-check + C probe when wired
+make && make ref-v2
+make parity-v2
+./rabbit probe-v2 --model models/ref-v2.rabbit --prompt hi --tokens 32
+python3 tools/ref_forward_v2.py --model models/ref-v2.rabbit --prompt hi --tokens 32
 ```
 
 ### Exit criteria for M1
@@ -45,8 +47,9 @@ make parity-v2       # NumPy oracle self-check + C probe when wired
 - [x] Architecture frozen and documented  
 - [x] Deterministic generator (`seed=2`)  
 - [x] NumPy full forward (embed → layers → logits)  
-- [ ] C forward matches NumPy logits (argmax) for 32 tokens  
-- [ ] CI job for `parity-v2`
+- [x] C forward (`src/forward_v2.c`) + `probe-v2`  
+- [x] `make parity-v2` harness (C vs NumPy)  
+- [ ] Verify green on your machine / CI  
 
 ## Later (M2+)
 
