@@ -4,10 +4,11 @@ convert_hf_to_rabbit.py
 
 Convert open MoE models into the Rabbit binary format.
 
-Improvements in this version:
+Improvements:
   - int4 packing (default for experts when --quant 4)
   - Explicit expert layout: [float32 scale][packed weights]
   - Better heuristics for DeepSeek / Qwen / Mixtral-style expert names
+  - Prefer down_proj / w2 when forcing square H×H for current kernels
   - --layout square|flat control
   - Demo mode still available (no download)
 
@@ -28,11 +29,6 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 RABBIT_MAGIC = b"RABBIT01"
-HEADER_FMT = (
-    "8sI I I I I I I I Q Q Q I I 64s 128s"
-)
-# Explicit for clarity
-HEADER_FMT = "8sIIIIIIIIQQQI I64s128s".replace(" ", "")
 HEADER_SIZE = struct.calcsize(
     "8s" + "I" * 8 + "Q" * 3 + "I" * 2 + "64s" + "128s"
 )
@@ -179,7 +175,7 @@ def classify_tensors(tensors: Dict[str, np.ndarray]):
         "block_sparse_moe.experts",
         "mlp.experts",
         "moe.experts",
-        "shared_experts",  # sometimes shared stays dense; we still detect index if present
+        "shared_experts",
     )
 
     for name, arr in tensors.items():
@@ -190,14 +186,12 @@ def classify_tensors(tensors: Dict[str, np.ndarray]):
             dense[name] = arr
             continue
 
-        # Extract expert index
         parts = lower.split(".")
         idx = None
         for i, p in enumerate(parts):
             if p in ("experts", "expert") and i + 1 < len(parts) and parts[i + 1].isdigit():
                 idx = int(parts[i + 1])
                 break
-            # DeepSeek style sometimes: mlp.experts.12.down_proj
             if p.isdigit() and i > 0 and parts[i - 1] in ("experts", "expert"):
                 idx = int(p)
                 break
@@ -218,6 +212,18 @@ def pack_dense(dense: Dict[str, np.ndarray], quant: int = 8) -> bytes:
     return b"".join(pieces)
 
 
+def _prefer_name(name: str) -> int:
+    """Higher score = preferred when forcing square layout."""
+    n = name.lower()
+    if "down_proj" in n or "w2" in n:
+        return 100
+    if "up_proj" in n or "w3" in n or "w1" in n:
+        return 50
+    if "gate_proj" in n or "gate_up" in n:
+        return 40
+    return 10
+
+
 def pack_one_expert(expert_tensors: Dict[str, np.ndarray], quant: int, layout: str,
                     hidden_dim: int) -> bytes:
     """
@@ -226,15 +232,16 @@ def pack_one_expert(expert_tensors: Dict[str, np.ndarray], quant: int, layout: s
       flat   — concatenate all expert tensors as-is (with scale headers)
     """
     if layout == "square":
-        # Prefer a weight that looks like a 2D matrix near hidden_dim
+        # Prefer down_proj / w2, then largest matrix
         candidates = []
         for name, arr in expert_tensors.items():
             a = np.asarray(arr)
             if a.ndim == 2:
-                candidates.append(a)
+                candidates.append((name, a))
+
         if candidates:
-            # Pick the largest matrix and reshape/crop toward [H, H]
-            mat = max(candidates, key=lambda x: x.size)
+            candidates.sort(key=lambda x: (_prefer_name(x[0]), x[1].size), reverse=True)
+            mat = candidates[0][1]
             flat = mat.astype(np.float32).ravel()
             need = hidden_dim * hidden_dim
             if flat.size < need:
