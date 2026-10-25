@@ -14,7 +14,7 @@ TARGET = rabbit
 TEST_TOOL = tools/create_test_model
 TEST_BIN = tests/test_quant
 
-.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf smoke test parity parity-v2 m2 exact-f32 live-moe check
+.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro smoke test parity parity-v2 m2 exact-f32 live-moe check
 
 all: $(TARGET)
 
@@ -51,6 +51,14 @@ micro-hf:
 	python3 tools/convert_hf_to_rabbit.py --model-dir models/hf_micro_moe \
 		--out models/micro-hf-v2.rabbit --layout v2 --quant 8
 
+# GQA + Mixtral tensor names (w1/w2/w3, block_sparse_moe) — offline stand-in for TinyBrainBot
+mixtral-micro: $(TARGET)
+	@mkdir -p models
+	python3 tools/create_mixtral_micro.py --out-dir models/hf_mixtral_micro --seed 7
+	python3 tools/convert_hf_to_rabbit.py --model-dir models/hf_mixtral_micro \
+		--out models/mixtral-micro.rabbit --layout v2 --quant 4
+	./$(TARGET) probe-v2 --model models/mixtral-micro.rabbit --prompt hi --tokens 8
+
 demo-model:
 	@mkdir -p models
 	python3 tools/convert_hf_to_rabbit.py --demo --out models/demo-moe.rabbit \
@@ -74,7 +82,7 @@ smoke: $(TARGET) test-model
 	@grep -q "Rabbit" /tmp/rabbit-smoke.out /tmp/rabbit-smoke.err
 	@echo "smoke: ok"
 
-check: test smoke parity parity-v2 m2 exact-f32
+check: test smoke parity parity-v2 m2 exact-f32 mixtral-micro
 	@echo "check: all passed"
 
 debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
