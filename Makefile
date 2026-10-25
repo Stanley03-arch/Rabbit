@@ -24,7 +24,8 @@ $(TEST_TOOL): tools/create_test_model.c
 test-model: $(TEST_TOOL)
 	@mkdir -p models
 	./$(TEST_TOOL) models/tiny-test.rabbit
-	debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
+
+debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
 debug: clean $(TARGET)
 
 clean:
