@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Parity: NumPy ref_forward vs rabbit C fingerprint on ref-v1."""
+"""Exact parity: NumPy ref_forward vs `rabbit probe` on ref-v1."""
 
 from __future__ import annotations
 
@@ -14,55 +14,68 @@ sys.path.insert(0, str(ROOT / "tools"))
 from ref_forward import forward, load_ref  # noqa: E402
 
 
-def run_c_fingerprint(model: Path, prompt: str) -> dict:
-    """Use a tiny helper mode: parse sum/L1 from chat is fragile;
-    instead call ref_forward only and compare internal consistency,
-    plus ensure rabbit loads the model.
+def parse_probe(text: str) -> dict:
+    m = re.search(
+        r"PROBE prompt=(\S+) dim=(\d+) sum=([-+0-9.eE]+) l1=([-+0-9.eE]+) l2=([-+0-9.eE]+) first8=([-0-9.,eE]+)",
+        text,
+    )
+    if not m:
+        raise RuntimeError("probe line not found in:\n" + text[-2000:])
+    first8 = [float(x) for x in m.group(6).split(",")]
+    return {
+        "prompt": m.group(1),
+        "dim": int(m.group(2)),
+        "sum": float(m.group(3)),
+        "l1": float(m.group(4)),
+        "l2": float(m.group(5)),
+        "first8": first8,
+    }
 
-    Full tensor dump from C is Phase A.1b; for now we verify:
-      1) model loads
-      2) NumPy forward is deterministic
-      3) rabbit chat exits 0
-    """
+
+def run_probe(model: Path, prompt: str) -> dict:
     rabbit = ROOT / "rabbit"
     proc = subprocess.run(
-        [str(rabbit), "chat", "--model", str(model), "--tokens", "4", "--temp", "0"],
-        input=f"{prompt}\nquit\n".encode(),
+        [str(rabbit), "probe", "--model", str(model), "--prompt", prompt],
         capture_output=True,
+        text=True,
         timeout=60,
     )
-    text = proc.stdout.decode("utf-8", errors="replace") + proc.stderr.decode(
-        "utf-8", errors="replace"
-    )
+    out = (proc.stdout or "") + "\n" + (proc.stderr or "")
     if proc.returncode != 0:
-        raise RuntimeError(f"rabbit failed: {text[-1000:]}")
-    if "ref-v1" not in text and "name" not in text:
-        # still ok if loaded without printing name path
-        pass
-    return {"returncode": proc.returncode, "log": text}
+        raise RuntimeError(f"probe failed rc={proc.returncode}: {out[-1500:]}")
+    return parse_probe(out)
+
+
+def close(a: float, b: float, tol: float = 1e-4) -> bool:
+    return abs(a - b) <= tol * max(1.0, abs(a), abs(b))
 
 
 def main() -> int:
     model_path = ROOT / "models" / "ref-v1.rabbit"
     if not model_path.is_file():
-        subprocess.check_call([sys.executable, str(ROOT / "tools" / "create_ref_model.py"), "--out", str(model_path)])
+        subprocess.check_call(
+            [sys.executable, str(ROOT / "tools" / "create_ref_model.py"), "--out", str(model_path)]
+        )
 
+    prompt = "hi"
     m = load_ref(model_path)
-    a = forward(m, "hi")
-    b = forward(m, "hi")
-    assert a == b, "NumPy forward not deterministic"
+    ref = forward(m, prompt)
+    c = run_probe(model_path, prompt)
 
-    # Fixed expected fingerprint for seed=1 ref model (regenerate if architecture changes)
-    # We assert stability bounds rather than brittle exact floats across platforms
-    assert abs(a["l2"]) > 0.0
-    assert a["l1"] > 0.0
+    assert c["dim"] == m["hidden_dim"]
+    assert close(c["sum"], ref["sum"]), (c["sum"], ref["sum"])
+    assert close(c["l1"], ref["l1"]), (c["l1"], ref["l1"])
+    assert close(c["l2"], ref["l2"]), (c["l2"], ref["l2"])
+    for i, (cv, rv) in enumerate(zip(c["first8"], ref["first8"])):
+        assert close(cv, rv, 1e-4), (i, cv, rv)
 
-    c = run_c_fingerprint(model_path, "hi")
-    assert c["returncode"] == 0
-    assert "error:" not in c["log"].lower() or "invalid magic" not in c["log"].lower()
+    # second prompt
+    ref2 = forward(m, "ab")
+    c2 = run_probe(model_path, "ab")
+    assert close(c2["l2"], ref2["l2"]), (c2["l2"], ref2["l2"])
 
-    print("parity-ref: ok")
-    print("  numpy l1=", a["l1"], "l2=", a["l2"])
+    print("parity-ref: ok (exact C vs NumPy within 1e-4)")
+    print(f"  prompt=hi  l2_ref={ref['l2']:.6f}  l2_c={c['l2']:.6f}")
     return 0
 
 

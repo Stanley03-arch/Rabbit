@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-#define RABBIT_VERSION "0.2.3"
+#define RABBIT_VERSION "0.2.4"
 #define RABBIT_MAGIC   "RABBIT01"
 #define RABBIT_MAX_CACHE_SLOTS 8
 
@@ -93,6 +93,7 @@ const void  *rabbit_expert_ptr(const RabbitModel *m, int expert_id);
 /* MoE / layers */
 const void *rabbit_fetch_expert(RabbitModel *m, int expert_id, int promote);
 int         rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim);
+int         rabbit_ref_forward(RabbitModel *m, const char *prompt, float *out_hidden);
 void        rabbit_attn_reset(void);
 int         rabbit_layer_step(RabbitModel *m, float *hidden, int hidden_dim);
 

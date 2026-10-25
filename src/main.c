@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 static void print_usage(const char *prog) {
     fprintf(stderr,
@@ -10,19 +11,76 @@ static void print_usage(const char *prog) {
         "Usage:\n"
         "  %s version\n"
         "  %s chat --model <path> [options]\n"
+        "  %s probe --model <path> [--prompt text]\n"
         "\n"
         "Options:\n"
-        "  --model <path>   Path to .rabbit model (required for chat)\n"
-        "  --vocab <path>   Word vocabulary file (one token per line)\n"
-        "  --tokens <n>     Maximum new tokens (default: 64, max: 2048)\n"
+        "  --model <path>   Path to .rabbit model\n"
+        "  --vocab <path>   Word vocabulary file\n"
+        "  --tokens <n>     Maximum new tokens (default: 64)\n"
         "  --temp <f>       Sampling temperature (default: 0.85)\n"
-        "  -h, --help       Show this help\n"
-        "\n"
-        "Examples:\n"
-        "  %s chat --model models/demo-moe.rabbit\n"
-        "  %s chat --model models/demo-moe.rabbit --tokens 128 --temp 0.7\n"
-        "  %s chat --model models/demo-moe.rabbit --vocab models/sample_vocab.txt\n",
-        rabbit_version(), prog, prog, prog, prog, prog);
+        "  --prompt <text>  Prompt for probe (default: hi)\n"
+        "  -h, --help       Show this help\n",
+        rabbit_version(), prog, prog, prog);
+}
+
+static int cmd_probe(int argc, char **argv) {
+    const char *model_path = NULL;
+    const char *prompt = "hi";
+
+    for (int i = 2; i < argc; i++) {
+        if ((strcmp(argv[i], "--model") == 0) && i + 1 < argc)
+            model_path = argv[++i];
+        else if ((strcmp(argv[i], "--prompt") == 0) && i + 1 < argc)
+            prompt = argv[++i];
+        else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+            print_usage(argv[0]);
+            return 0;
+        } else {
+            fprintf(stderr, "Unknown option: %s\n", argv[i]);
+            return 1;
+        }
+    }
+    if (!model_path) {
+        fprintf(stderr, "error: --model required\n");
+        return 1;
+    }
+
+    RabbitModel *m = rabbit_load(model_path);
+    if (!m) return 1;
+
+    int dim = m->hidden_dim;
+    float *h = (float *)calloc((size_t)dim, sizeof(float));
+    if (!h) {
+        rabbit_free(m);
+        return 1;
+    }
+
+    if (rabbit_ref_forward(m, prompt, h) != 0) {
+        fprintf(stderr, "error: ref_forward failed\n");
+        free(h);
+        rabbit_free(m);
+        return 1;
+    }
+
+    double sum = 0.0, l1 = 0.0, l2 = 0.0;
+    for (int i = 0; i < dim; i++) {
+        sum += h[i];
+        l1 += fabs((double)h[i]);
+        l2 += (double)h[i] * (double)h[i];
+    }
+    l2 = sqrt(l2);
+
+    /* Machine-readable line for tests */
+    printf("PROBE prompt=%s dim=%d sum=%.8f l1=%.8f l2=%.8f first8=", prompt, dim, sum, l1, l2);
+    for (int i = 0; i < dim && i < 8; i++) {
+        if (i) printf(",");
+        printf("%.8f", h[i]);
+    }
+    printf("\n");
+
+    free(h);
+    rabbit_free(m);
+    return 0;
 }
 
 int main(int argc, char **argv) {
@@ -43,6 +101,9 @@ int main(int argc, char **argv) {
         return 0;
     }
 
+    if (strcmp(argv[1], "probe") == 0)
+        return cmd_probe(argc, argv);
+
     if (strcmp(argv[1], "chat") == 0) {
         const char *model_path = NULL;
         const char *vocab_path = NULL;
@@ -50,11 +111,11 @@ int main(int argc, char **argv) {
         float temperature = 0.85f;
 
         for (int i = 2; i < argc; i++) {
-            if ((strcmp(argv[i], "--model") == 0) && i + 1 < argc) {
+            if ((strcmp(argv[i], "--model") == 0) && i + 1 < argc)
                 model_path = argv[++i];
-            } else if ((strcmp(argv[i], "--vocab") == 0) && i + 1 < argc) {
+            else if ((strcmp(argv[i], "--vocab") == 0) && i + 1 < argc)
                 vocab_path = argv[++i];
-            } else if ((strcmp(argv[i], "--tokens") == 0) && i + 1 < argc) {
+            else if ((strcmp(argv[i], "--tokens") == 0) && i + 1 < argc) {
                 max_tokens = atoi(argv[++i]);
                 if (max_tokens < 1) max_tokens = 1;
                 if (max_tokens > 2048) max_tokens = 2048;
@@ -81,20 +142,15 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Rabbit %s\n", rabbit_version());
         fprintf(stderr, "loading %s\n", model_path);
 
-        if (vocab_path) {
-            if (rabbit_tokenizer_load_vocab(vocab_path) != 0) {
-                fprintf(stderr, "warning: failed to load vocab '%s'; using byte mode\n",
-                        vocab_path);
-                rabbit_tokenizer_set_byte_mode();
-            }
-        } else {
-            rabbit_tokenizer_set_byte_mode();
-        }
-
         RabbitModel *model = rabbit_load(model_path);
         if (!model) {
             fprintf(stderr, "error: failed to load model\n");
             return 1;
+        }
+
+        if (vocab_path) {
+            if (rabbit_tokenizer_load_vocab(vocab_path) != 0)
+                fprintf(stderr, "warning: could not load vocab %s (using byte mode)\n", vocab_path);
         }
 
         rabbit_status st = rabbit_chat_ex(model, max_tokens, temperature);

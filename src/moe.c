@@ -90,51 +90,56 @@ const void *rabbit_fetch_expert(RabbitModel *m, int expert_id, int promote) {
     return ptr;
 }
 
+/* Apply one expert: h := h + 0.05 * weight * scale * (W @ h)
+ * Uses a temporary buffer so matmul reads the original hidden state. */
 static void apply_expert(const RabbitModel *m, const void *expert_data,
                          float *hidden, int hidden_dim, float weight) {
     if (!expert_data || !hidden || hidden_dim <= 0) return;
 
+    float *delta = (float *)calloc((size_t)hidden_dim, sizeof(float));
+    if (!delta) return;
+
     const uint8_t *bytes = (const uint8_t *)expert_data;
     size_t size = m->expert_size;
     int quant = m->hdr.expert_quant ? (int)m->hdr.expert_quant : 8;
+    float scale = 1.0f / 127.0f;
+    const uint8_t *W = bytes;
+    size_t payload = size;
 
     if (size >= 4 + (size_t)hidden_dim) {
-        float scale;
         memcpy(&scale, bytes, sizeof(float));
         if (!(scale > 0.0f) || !isfinite(scale))
             scale = 1.0f / 127.0f;
+        W = bytes + 4;
+        payload = size - 4;
+    }
 
-        const uint8_t *W = bytes + 4;
-        size_t payload = size - 4;
+    float w = weight * 0.05f;
 
-        if (quant == 4) {
-            size_t need = (size_t)hidden_dim * ((size_t)(hidden_dim + 1) / 2);
-            if (payload >= need) {
-                gemv_int4(W, scale, hidden, hidden, hidden_dim, hidden_dim, weight * 0.05f);
-                return;
-            }
-        } else {
-            size_t need = (size_t)hidden_dim * (size_t)hidden_dim;
-            if (payload >= need) {
-                gemv_int8((const int8_t *)W, scale, hidden, hidden,
-                          hidden_dim, hidden_dim, weight * 0.05f);
-                return;
+    if (quant == 4) {
+        size_t need = (size_t)hidden_dim * ((size_t)(hidden_dim + 1) / 2);
+        if (payload >= need)
+            gemv_int4(W, scale, hidden, delta, hidden_dim, hidden_dim, w);
+    } else {
+        size_t need = (size_t)hidden_dim * (size_t)hidden_dim;
+        if (payload >= need)
+            gemv_int8((const int8_t *)W, scale, hidden, delta, hidden_dim, hidden_dim, w);
+        else if (size >= need)
+            gemv_int8((const int8_t *)bytes, 1.0f / 127.0f, hidden, delta,
+                      hidden_dim, hidden_dim, w);
+        else {
+            int usable = (int)(size < (size_t)hidden_dim ? size : (size_t)hidden_dim);
+            for (int i = 0; i < usable; i++) {
+                float v = ((float)bytes[i] - 128.0f) / 128.0f;
+                delta[i] = weight * v * 0.1f;
             }
         }
     }
 
-    size_t need = (size_t)hidden_dim * (size_t)hidden_dim;
-    if (size >= need) {
-        gemv_int8((const int8_t *)bytes, 1.0f / 127.0f, hidden, hidden,
-                  hidden_dim, hidden_dim, weight * 0.05f);
-        return;
-    }
+    for (int i = 0; i < hidden_dim; i++)
+        hidden[i] += delta[i];
 
-    int usable = (int)(size < (size_t)hidden_dim ? size : (size_t)hidden_dim);
-    for (int i = 0; i < usable; i++) {
-        float v = ((float)bytes[i] - 128.0f) / 128.0f;
-        hidden[i] += weight * v * 0.1f;
-    }
+    free(delta);
 }
 
 int rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim) {
@@ -166,6 +171,30 @@ int rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim) {
         const void *expert = rabbit_fetch_expert(m, ids[i], 1);
         if (!expert) continue;
         apply_expert(m, expert, hidden, hidden_dim, weights[i]);
+    }
+    return 0;
+}
+
+/* MoE-only forward matching tools/ref_forward.py (no attention / dense FFN). */
+int rabbit_ref_forward(RabbitModel *m, const char *prompt, float *out_hidden) {
+    if (!m || !prompt || !out_hidden) return -1;
+    int dim = m->hidden_dim;
+    if (dim <= 0) return -1;
+
+    memset(out_hidden, 0, sizeof(float) * (size_t)dim);
+
+    const unsigned char *p = (const unsigned char *)prompt;
+    int i = 0;
+    while (*p) {
+        out_hidden[i % dim] += ((float)(*p % 64) - 32.0f) / 32.0f;
+        p++;
+        i++;
+    }
+
+    int layers = m->n_layers > 0 ? m->n_layers : 1;
+    for (int L = 0; L < layers; L++) {
+        if (rabbit_moe_step(m, out_hidden, dim) != 0)
+            return -1;
     }
     return 0;
 }

@@ -1,8 +1,6 @@
-# Phase A — Correctness spine
+# Phase A \u2014 Correctness spine
 
 Goal: make Rabbit **checkable**, not merely runnable.
-
-Colibrì-level quality is impossible without a correctness spine. This phase defines one frozen toy architecture, a deterministic reference implementation, and automated tests that must stay green.
 
 ## Frozen architecture: `rabbit-ref-v1`
 
@@ -10,55 +8,34 @@ Colibrì-level quality is impossible without a correctness spine. This phase def
 |-------|-------|
 | layers | 2 |
 | hidden_dim | 32 |
-| vocab_size | 64 (byte subset 0..63) |
+| vocab_size | 64 |
 | n_experts | 4 |
 | experts_per_token | 2 |
-| expert matrix | `[hidden_dim x hidden_dim]` int8 with leading `float32` scale |
-| dense blob | `hidden_dim * 64` float32 values quantized to int8+scale records for residual |
+| expert | int8 `H x H` + leading float32 scale |
 
-Routing (reference):
-
-```
-score[e] = sum_{i=0..min(31,H-1)} h[i] * ((e+1)*(i+3))
-top-2 → softmax weights
-```
-
-Expert apply (reference):
-
-```
-h := h + 0.05 * w_k * scale * (W_k @ h)   # int8 GEMV, for each selected expert k
-```
-
-No attention in the **parity core** (MoE-only). Attention remains experimental outside the ref contract.
-
-## Artifacts
-
-| Path | Role |
-|------|------|
-| `tools/create_ref_model.py` | Builds `models/ref-v1.rabbit` with **fixed PRNG seed** |
-| `tools/ref_forward.py` | NumPy reference forward (MoE-only) |
-| `tests/test_parity_ref.py` | Compares C engine fingerprint vs NumPy |
-| `tests/test_quant.c` | Quant unit tests |
+Routing and apply match `tools/ref_forward.py` and `rabbit_ref_forward` in C.
 
 ## Commands
 
 ```bash
-make ref-model          # write models/ref-v1.rabbit
-make test               # C unit tests
-make parity             # Python NumPy vs rabbit binary fingerprint
-make check              # unit + smoke + parity
+make ref-model
+make
+./rabbit probe --model models/ref-v1.rabbit --prompt hi
+make parity          # exact C vs NumPy (1e-4)
+make check
 ```
 
-## Exit criteria for Phase A
+## Exit criteria
 
 - [x] Frozen ref architecture documented
 - [x] Deterministic model file generator (seed=1)
 - [x] NumPy reference forward
-- [x] Automated parity check in CI
-- [ ] One **real** small HF MoE with exact tensor map (Phase A.2 — next)
+- [x] `rabbit probe` machine-readable fingerprint
+- [x] Automated **exact** C vs NumPy parity (`make parity`)
+- [x] Expert GEMV uses temp buffer (no read/write alias)
+- [ ] One real small HF MoE with exact tensor map (next)
 
-## Non-goals for Phase A
+## Non-goals
 
-- Matching Colibrì performance or UI
-- Full transformer parity (attention/RoPE/norms)
-- Frontier model support
+- Colibr\u00ec performance/UI parity
+- Full transformer (attention) inside the ref contract
