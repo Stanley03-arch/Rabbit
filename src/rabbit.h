@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <sys/types.h>
 
 /* ============================================================
  * Rabbit 🐇 — Core public API
@@ -90,19 +91,23 @@ struct RabbitModel {
  * Public API
  * ------------------------------------------------------------ */
 
-/* Load a Rabbit-format model from path. Returns NULL on failure. */
 RabbitModel *rabbit_load(const char *path);
-
-/* Free everything. */
-void rabbit_free(RabbitModel *model);
-
-/* Simple chat loop (placeholder). */
+void         rabbit_free(RabbitModel *model);
 rabbit_status rabbit_chat(RabbitModel *model);
+const char  *rabbit_version(void);
+void         rabbit_print_info(const RabbitModel *model);
 
-/* Version string. */
-const char *rabbit_version(void);
+/* Memory / cache helpers (used internally and by moe.c) */
+ExpertCache *rabbit_cache_create(int n_slots);
+void         rabbit_cache_free(ExpertCache *c);
+void         rabbit_cache_set_expert_size(ExpertCache *c, size_t size);
+void        *rabbit_cache_get(ExpertCache *c, int expert_id);
+void        *rabbit_cache_put(ExpertCache *c, int expert_id, const void *src);
 
-/* Print model info. */
-void rabbit_print_info(const RabbitModel *model);
+int          rabbit_mmap_experts(const char *path, void **map, size_t *size, int *fd);
+int          rabbit_mmap_experts_region(const char *path, off_t offset, size_t length,
+                                        void **map, int *fd);
+void         rabbit_munmap_experts(void *map, size_t size, int fd);
+const void  *rabbit_expert_ptr(const RabbitModel *m, int expert_id);
 
 #endif /* RABBIT_H */

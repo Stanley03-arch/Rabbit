@@ -6,12 +6,6 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
-/* Forward declarations from other modules */
-ExpertCache *rabbit_cache_create(int n_slots);
-void         rabbit_cache_free(ExpertCache *c);
-int          rabbit_mmap_experts(const char *path, void **map, size_t *size, int *fd);
-void         rabbit_munmap_experts(void *map, size_t size, int fd);
-
 const char *rabbit_version(void) {
     return RABBIT_VERSION;
 }
@@ -29,6 +23,7 @@ void rabbit_print_info(const RabbitModel *m) {
     printf("Total experts size  : %.2f GB\n", m->hdr.total_experts_size / (1024.0 * 1024.0 * 1024.0));
     printf("Dense quant         : %u-bit\n", m->hdr.dense_quant ? m->hdr.dense_quant : 16);
     printf("Expert quant        : %u-bit\n", m->hdr.expert_quant ? m->hdr.expert_quant : 16);
+    printf("Expert map          : %s\n", m->expert_map ? "active" : "none");
 }
 
 RabbitModel *rabbit_load(const char *path) {
@@ -48,7 +43,6 @@ RabbitModel *rabbit_load(const char *path) {
         return NULL;
     }
 
-    /* Validate magic */
     if (memcmp(hdr.magic, RABBIT_MAGIC, 8) != 0) {
         fprintf(stderr, "[rabbit] bad magic (not a Rabbit model)\n");
         close(fd);
@@ -77,6 +71,7 @@ RabbitModel *rabbit_load(const char *path) {
     m->expert_size = (size_t)hdr.expert_size;
     m->dense_size = (size_t)hdr.dense_size;
     m->expert_fd = -1;
+    m->expert_map = NULL;
 
     /* Load dense blob into RAM */
     if (hdr.dense_size > 0) {
@@ -99,30 +94,34 @@ RabbitModel *rabbit_load(const char *path) {
         }
     }
 
-    /* Memory-map the expert section (from current offset to end of file) */
-    off_t expert_offset = sizeof(RabbitHeader) + hdr.dense_size;
+    /* Memory-map the expert section */
+    off_t expert_offset = (off_t)(sizeof(RabbitHeader) + hdr.dense_size);
     struct stat st;
     if (fstat(fd, &st) == 0) {
         size_t remaining = (size_t)(st.st_size - expert_offset);
-        if (remaining > 0) {
-            /* We re-open for mmap simplicity for now */
+        if (remaining > 0 && hdr.n_experts > 0) {
             close(fd);
             fd = -1;
 
-            /* For the first version we just record the sizes.
-               Full mmap of experts will be finished in the next step. */
-            m->expert_map_size = remaining;
-            printf("[rabbit] expert section size: %.2f GB (mmap coming next)\n",
-                   remaining / (1024.0 * 1024.0 * 1024.0));
+            if (rabbit_mmap_experts_region(path, expert_offset, remaining,
+                                           &m->expert_map, &m->expert_fd) == 0) {
+                m->expert_map_size = remaining;
+                printf("[rabbit] experts memory-mapped (%.2f GB)\n",
+                       remaining / (1024.0 * 1024.0 * 1024.0));
+            } else {
+                fprintf(stderr, "[rabbit] warning: could not mmap experts\n");
+            }
         }
     }
 
     if (fd >= 0) close(fd);
 
-    /* Tiny expert cache (aggressive for 4 GB target) */
+    /* Tiny expert cache */
     m->cache = rabbit_cache_create(4);
+    if (m->cache)
+        rabbit_cache_set_expert_size(m->cache, m->expert_size);
 
-    printf("[rabbit] loaded header successfully\n");
+    printf("[rabbit] model loaded\n");
     rabbit_print_info(m);
 
     return m;
