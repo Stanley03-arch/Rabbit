@@ -4,11 +4,6 @@
 #include <string.h>
 #include <math.h>
 
-/*
- * MoE expert application (non-v2 path).
- * expert_quant 0 = f32 (not used on this path for ref-v2).
- */
-
 static void gemv_int8(const int8_t *W, float scale, const float *x, float *y,
                       int out_dim, int in_dim, float weight) {
     for (int o = 0; o < out_dim; o++) {
@@ -22,9 +17,10 @@ static void gemv_int8(const int8_t *W, float scale, const float *x, float *y,
 
 static void gemv_int4(const uint8_t *W, float scale, const float *x, float *y,
                       int out_dim, int in_dim, float weight) {
+    int in_bytes = (in_dim + 1) / 2;
     for (int o = 0; o < out_dim; o++) {
         float sum = 0.0f;
-        const uint8_t *row = W + (size_t)o * ((in_dim + 1) / 2);
+        const uint8_t *row = W + (size_t)o * (size_t)in_bytes;
         for (int i = 0; i < in_dim; i++) {
             int byte = row[i / 2];
             int nibble = (i & 1) ? (byte >> 4) : (byte & 0x0f);
