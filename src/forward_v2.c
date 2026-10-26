@@ -1,1 +1,1 @@
-/* will be replaced */
+#PLACEHOLDER_WILL_LOAD_FROM_LOCAL#
