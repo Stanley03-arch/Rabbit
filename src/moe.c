@@ -82,10 +82,10 @@ const void *rabbit_fetch_expert(RabbitModel *m, int global_expert_id, int promot
     if (!ptr)
         return NULL;
 
-    if (promote && m->cache && m->expert_size > 0) {
-        void *slot = rabbit_cache_put(m->cache, global_expert_id, ptr, m->expert_size);
-        if (slot)
-            return slot;
+    if (promote && m->cache) {
+        void *ram = rabbit_cache_put(m->cache, global_expert_id, ptr);
+        if (ram)
+            return ram;
     }
     return ptr;
 }
@@ -231,7 +231,6 @@ int rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim) {
     select_top_k(scores, m->num_experts, k, ids, weights);
     free(scores);
 
-    /* Legacy path: treat as shared (layer 0) */
     for (int i = 0; i < k; i++) {
         if (ids[i] < 0) continue;
         const void *expert = rabbit_fetch_expert_layer(m, 0, ids[i], 1);
