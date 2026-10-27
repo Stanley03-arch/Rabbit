@@ -4,6 +4,8 @@ const promptEl = document.getElementById("prompt");
 const sendBtn = document.getElementById("send");
 const statusPill = document.getElementById("status-pill");
 
+let lastInfo = {};
+
 function addBubble(role, text) {
   const div = document.createElement("div");
   div.className = `bubble ${role}`;
@@ -37,10 +39,85 @@ function renderExperts(n, warmIds) {
   }
 }
 
+function renderTiers(j) {
+  const row = document.getElementById("tier-row");
+  if (!row) return;
+  row.querySelector('[data-t="dense"]').classList.toggle("on", true);
+  row.querySelector('[data-t="lru"]').classList.toggle("on", (j.cache_slots || 0) > 0);
+  row.querySelector('[data-t="mmap"]').classList.toggle("on", !!j.mapped);
+  row.querySelector('[data-t="lru"]').classList.toggle(
+    "warn",
+    !!(j.over_budget)
+  );
+}
+
+function renderAtlas(j) {
+  const layers = Math.max(1, Number(j.layers) || 1);
+  const epl = Math.max(1, Number(j.experts) || 8);
+  const warm = new Set(j.warm_experts || []);
+  const maxShowE = Math.min(epl, 24);
+  const maxShowL = Math.min(layers, 16);
+
+  const table = document.getElementById("atlas-table");
+  const thead = table.querySelector("thead");
+  const tbody = table.querySelector("tbody");
+  thead.innerHTML = "";
+  tbody.innerHTML = "";
+
+  const hr = document.createElement("tr");
+  const corner = document.createElement("th");
+  corner.textContent = "L\\E";
+  hr.appendChild(corner);
+  for (let e = 0; e < maxShowE; e++) {
+    const th = document.createElement("th");
+    th.textContent = String(e);
+    hr.appendChild(th);
+  }
+  if (epl > maxShowE) {
+    const th = document.createElement("th");
+    th.textContent = "…";
+    hr.appendChild(th);
+  }
+  thead.appendChild(hr);
+
+  for (let L = 0; L < maxShowL; L++) {
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.textContent = String(L);
+    tr.appendChild(th);
+    for (let e = 0; e < maxShowE; e++) {
+      const td = document.createElement("td");
+      const localWarm = warm.has(e);
+      td.className = "atlas-cell" + (localWarm ? (e % 3 === 0 ? " hot" : " warm") : "");
+      td.title = `layer ${L} expert ${e}`;
+      tr.appendChild(td);
+    }
+    if (epl > maxShowE) {
+      const td = document.createElement("td");
+      td.className = "atlas-cell dim";
+      td.textContent = "·";
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  if (layers > maxShowL) {
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.textContent = "…";
+    tr.appendChild(th);
+    tbody.appendChild(tr);
+  }
+
+  document.getElementById("atlas-meta").textContent =
+    `${layers} layers × ${epl} experts/layer · showing ${maxShowL}×${maxShowE}` +
+    (j.tiers ? ` · tiers: ${(j.tiers || []).join(" → ")}` : "");
+}
+
 async function refreshInfo() {
   try {
     const r = await fetch("/api/info");
     const j = await r.json();
+    lastInfo = j;
     document.getElementById("version").textContent = j.version || "engine";
     document.getElementById("model-name").textContent = j.model_name || "—";
     document.getElementById("s-layers").textContent = j.layers ?? "—";
@@ -63,7 +140,9 @@ async function refreshInfo() {
       ? "ok"
       : "—";
 
+    renderTiers(j);
     renderExperts(j.experts || 8, j.warm_experts || []);
+    renderAtlas(j);
 
     const hits = j.cache_hits || 0;
     const misses = j.cache_misses || 0;
@@ -78,6 +157,22 @@ async function refreshInfo() {
     console.warn(e);
   }
 }
+
+document.querySelectorAll(".tab").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    const view = btn.dataset.view;
+    document.getElementById("view-chat").classList.toggle("hidden", view !== "chat");
+    document.getElementById("view-atlas").classList.toggle("hidden", view !== "atlas");
+    document.getElementById("view-title").textContent =
+      view === "atlas" ? "Expert Atlas" : "Chat";
+    document.getElementById("view-sub").textContent =
+      view === "atlas"
+        ? "Layer × expert map · warm = recent routing / cache"
+        : "Dense in RAM · experts streamed from disk";
+  });
+});
 
 form.addEventListener("submit", async (ev) => {
   ev.preventDefault();

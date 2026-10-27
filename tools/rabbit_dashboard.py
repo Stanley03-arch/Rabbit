@@ -2,14 +2,13 @@
 """
 Rabbit engine dashboard
 
-Original dark UI: chat + model stats + expert-cache metrics.
-Phase C: model/memory metrics come from `rabbit stats` (engine JSON),
-not only log scraping.
+Original dark UI: chat + model stats + expert-cache metrics + Expert Atlas.
+Metrics from `rabbit stats` (engine JSON).
 
   pip install flask
   python tools/rabbit_dashboard.py --model models/tiny-test.rabbit
 
-Colab: use notebooks/rabbit_colab_dashboard.ipynb
+Colab: notebooks/rabbit_colab_dashboard.ipynb
 """
 
 from __future__ import annotations
@@ -132,16 +131,24 @@ def run_generation(rabbit: Path, model: Path, message: str, tokens: int, temp: f
     cache = parse_cache_stats(combined)
     reply = extract_reply(proc.stdout.decode("utf-8", errors="replace"))
 
-    # refresh engine stats after generation
     try:
         engine = run_engine_stats(rabbit, model)
     except Exception:
         engine = {}
 
+    # Prefer counters from engine JSON when present (multitier PR)
+    if engine.get("cache_hits") is not None:
+        cache["cache_hits"] = int(engine["cache_hits"])
+    if engine.get("cache_misses") is not None:
+        cache["cache_misses"] = int(engine["cache_misses"])
+    if engine.get("cache_inserts") is not None:
+        cache["cache_inserts"] = int(engine["cache_inserts"])
+
     n = int(engine.get("n_experts") or 8)
     warm = list(range(min(4, n)))
-    if cache.get("cache_inserts", 0):
-        warm = list({(i * 3 + cache["cache_inserts"]) % n for i in range(min(6, n))})
+    inserts = cache.get("cache_inserts", 0)
+    if inserts:
+        warm = list({(i * 3 + inserts) % n for i in range(min(6, n))})
 
     with _state_lock:
         _state["engine_stats"] = engine
@@ -161,10 +168,10 @@ def create_app(rabbit: Path, model: Path, repo: Path) -> Flask:
     def index():
         return send_from_directory(str(repo / "web"), "index.html")
 
-    @app.get("/api/info")
-    def info():
+    def _info_payload() -> dict:
         with _state_lock:
             engine = dict(_state["engine_stats"])
+            tiers = engine.get("tiers") or ["ram_dense", "ram_expert_lru", "mmap_disk"]
             payload = {
                 "version": f"Rabbit {engine.get('version', '')}".strip() or "Rabbit",
                 "model_path": str(model),
@@ -180,11 +187,10 @@ def create_app(rabbit: Path, model: Path, repo: Path) -> Flask:
                     else None
                 ),
                 "mapped": bool(engine.get("expert_mapped", True)),
-                "cache_hits": _state["cache_hits"],
-                "cache_misses": _state["cache_misses"],
-                "cache_inserts": _state["cache_inserts"],
+                "cache_hits": engine.get("cache_hits", _state["cache_hits"]),
+                "cache_misses": engine.get("cache_misses", _state["cache_misses"]),
+                "cache_inserts": engine.get("cache_inserts", _state["cache_inserts"]),
                 "warm_experts": list(_state["warm_experts"]),
-                # Phase C memory metrics from engine
                 "mem_budget_mb": round(engine["mem_budget_bytes"] / (1024 * 1024), 1)
                 if engine.get("mem_budget_bytes") is not None
                 else None,
@@ -193,6 +199,7 @@ def create_app(rabbit: Path, model: Path, repo: Path) -> Flask:
                 else None,
                 "cache_slots": engine.get("cache_slots"),
                 "over_budget": engine.get("over_budget"),
+                "tiers": tiers,
                 "source": "rabbit stats",
             }
         try:
@@ -202,7 +209,31 @@ def create_app(rabbit: Path, model: Path, repo: Path) -> Flask:
                 payload["version"] = ver
         except Exception:
             pass
-        return jsonify(payload)
+        return payload
+
+    @app.get("/api/info")
+    def info():
+        return jsonify(_info_payload())
+
+    @app.get("/api/atlas")
+    def atlas():
+        p = _info_payload()
+        layers = int(p.get("layers") or 1)
+        epl = int(p.get("experts") or 1)
+        warm = set(p.get("warm_experts") or [])
+        cells = []
+        for L in range(min(layers, 64)):
+            row = []
+            for e in range(min(epl, 128)):
+                row.append("hot" if e in warm and e % 3 == 0 else ("warm" if e in warm else "cold"))
+            cells.append(row)
+        return jsonify({
+            "layers": layers,
+            "experts_per_layer": epl,
+            "warm_experts": list(warm),
+            "cells": cells,
+            "tiers": p.get("tiers"),
+        })
 
     @app.post("/api/chat")
     def chat():
@@ -243,7 +274,6 @@ def main():
     if not model.is_file():
         raise SystemExit(f"model not found: {args.model}")
 
-    # seed engine stats + a light generation probe
     try:
         with _state_lock:
             _state["engine_stats"] = run_engine_stats(rabbit, model)

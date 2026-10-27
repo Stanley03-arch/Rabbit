@@ -29,7 +29,12 @@
       </section>
 
       <section class="panel">
-        <h3>Memory</h3>
+        <h3>Memory tiers</h3>
+        <div class="tier-row" id="tier-row">
+          <div class="tier" data-t="dense"><span>RAM</span><small>dense</small></div>
+          <div class="tier" data-t="lru"><span>RAM</span><small>LRU</small></div>
+          <div class="tier" data-t="mmap"><span>Disk</span><small>mmap</small></div>
+        </div>
         <div class="kv"><span>budget</span><b id="m-budget">—</b></div>
         <div class="kv"><span>estimate</span><b id="m-est">—</b></div>
         <div class="kv"><span>cache slots</span><b id="m-slots">—</b></div>
@@ -46,9 +51,9 @@
       </section>
 
       <section class="panel">
-        <h3>Expert activity</h3>
+        <h3>Warm experts</h3>
         <div class="expert-grid" id="expert-grid"></div>
-        <p class="hint">Warm = recently routed</p>
+        <p class="hint">Quick view (first N experts)</p>
       </section>
 
       <section class="panel controls">
@@ -61,19 +66,44 @@
     <main class="main">
       <header class="top">
         <div>
-          <h1>Chat</h1>
-          <p class="muted">Dense in RAM · experts streamed from disk</p>
+          <h1 id="view-title">Chat</h1>
+          <p class="muted" id="view-sub">Dense in RAM · experts streamed from disk</p>
         </div>
-        <div class="status-pill" id="status-pill">idle</div>
+        <div class="top-right">
+          <nav class="tabs">
+            <button type="button" class="tab active" data-view="chat">Chat</button>
+            <button type="button" class="tab" data-view="atlas">Expert Atlas</button>
+          </nav>
+          <div class="status-pill" id="status-pill">idle</div>
+        </div>
       </header>
 
-      <div class="chat" id="chat"></div>
+      <div class="view" id="view-chat">
+        <div class="chat" id="chat"></div>
+        <form class="composer" id="form">
+          <input id="prompt" autocomplete="off" placeholder="Message Rabbit…" />
+          <button type="submit" id="send">Send</button>
+        </form>
+        <p class="footer-note">Synthetic weights produce non-linguistic output — this dashboard validates the engine path. Metrics from <code>rabbit stats</code>.</p>
+      </div>
 
-      <form class="composer" id="form">
-        <input id="prompt" autocomplete="off" placeholder="Message Rabbit…" />
-        <button type="submit" id="send">Send</button>
-      </form>
-      <p class="footer-note">Synthetic weights produce non-linguistic output — this dashboard validates the engine path. Metrics from <code>rabbit stats</code>.</p>
+      <div class="view hidden" id="view-atlas">
+        <div class="atlas-wrap">
+          <div class="atlas-legend">
+            <span class="leg cold">cold (mmap)</span>
+            <span class="leg warm">warm</span>
+            <span class="leg hot">hot / LRU</span>
+          </div>
+          <div class="atlas-meta" id="atlas-meta">—</div>
+          <div class="atlas-scroll">
+            <table class="atlas-table" id="atlas-table">
+              <thead></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p class="footer-note">Atlas is a layout map of experts per layer. Warm cells come from recent routing heuristics + cache activity — not a Colibrì clone.</p>
+        </div>
+      </div>
     </main>
   </div>
   <script src="/static/app.js"></script>
