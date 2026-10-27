@@ -11,7 +11,7 @@ import json
 import struct
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional
 
 import numpy as np
 
@@ -59,7 +59,6 @@ def fit2d(m, rows, cols):
 
 def expert_nbytes(inter, H, quant: int = 4, gs=32):
     if quant == 0:
-        # gate[I,H] + up[I,H] + down[H,I] as f32
         return (inter * H + inter * H + H * inter) * 4
 
     def one(n):
@@ -70,7 +69,7 @@ def expert_nbytes(inter, H, quant: int = 4, gs=32):
 
 
 class ShardIndex:
-    """Map tensor name → (shard_path, key) without loading weights."""
+    """Map tensor name → shard path; load tensors on demand."""
 
     def __init__(self, model_dir: Path):
         self.model_dir = model_dir
@@ -81,38 +80,30 @@ class ShardIndex:
         if not st_files:
             raise SystemExit(f"No safetensors in {model_dir}")
 
-        # Prefer index json if present (HF multi-shard)
         index_path = model_dir / "model.safetensors.index.json"
         if index_path.is_file():
             idx = json.loads(index_path.read_text())
             weight_map = idx.get("weight_map") or {}
             for name, fname in weight_map.items():
                 self.name_to_file[name] = model_dir / fname
-            print(f"[index] {len(self.name_to_file)} tensors across "
-                  f"{len(set(self.name_to_file.values()))} shards")
+            print(
+                f"[index] {len(self.name_to_file)} tensors across "
+                f"{len(set(self.name_to_file.values()))} shards"
+            )
         else:
             for path in st_files:
                 with safe_open(str(path), framework="np") as st:
                     for key in st.keys():
                         self.name_to_file[key] = path
-            print(f"[index] {len(self.name_to_file)} tensors in "
-                  f"{len(st_files)} file(s)")
+            print(
+                f"[index] {len(self.name_to_file)} tensors in "
+                f"{len(st_files)} file(s)"
+            )
 
-    def get(self, name: str) -> np.ndarray:
+    def get(self, name: str) -> Optional[np.ndarray]:
         path = self.name_to_file.get(name)
         if path is None:
-            # try common alternates
-            for alt in (
-                name.replace("model.", ""),
-                "model." + name if not name.startswith("model.") else name,
-            ):
-                path = self.name_to_file.get(alt)
-                if path is not None:
-                    name = alt
-                    break
-        if path is None:
-            raise KeyError(name)
-
+            return None
         key = str(path)
         if key not in self._open:
             self._open[key] = safe_open(str(path), framework="np")
@@ -120,13 +111,14 @@ class ShardIndex:
         return np.asarray(st.get_tensor(name), dtype=np.float32)
 
     def require(self, name: str) -> np.ndarray:
-        try:
-            return self.get(name)
-        except KeyError:
+        t = self.get(name)
+        if t is None:
+            sample = list(self.name_to_file)[:8]
             raise SystemExit(
                 f"Missing required tensor: {name}\n"
-                f"  Available sample: {list(self.name_to_file)[:8]}..."
+                f"  Available sample: {sample}..."
             )
+        return t
 
     def close(self) -> None:
         self._open.clear()
@@ -153,7 +145,10 @@ def main() -> None:
     ap.add_argument("--model-dir", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument(
-        "--quant", type=int, default=4, choices=[0, 4],
+        "--quant",
+        type=int,
+        default=4,
+        choices=[0, 4],
         help="Expert quant: 0=f32, 4=group-int4 (default)",
     )
     args = ap.parse_args()
@@ -226,29 +221,29 @@ def main() -> None:
         embed = T("model.embed_tokens.weight")
         emb = fit2d(embed, V, H)
         f.write(emb.tobytes())
-        # Prefer dedicated lm_head if present; else tied embed
-        try:
-            lm = T("lm_head.weight")
-            lm_w = fit2d(lm, V, H).T  # want [H, V]
-            if lm_w.shape != (H, V):
-                lm_w = emb.T.copy()
+
+        lm = shards.get("lm_head.weight")
+        if lm is not None:
+            # HF lm_head is usually [V, H]; pack as [H, V]
+            lm_w = fit2d(lm, V, H).T.copy()
             f.write(lm_w.astype(np.float32).tobytes())
             del lm, lm_w
-        except SystemExit:
+        else:
             f.write(emb.T.copy().tobytes())
         del embed, emb
 
-        f.write(T("model.norm.weight").astype(np.float32).reshape(-1)[:H].tobytes())
+        norm = T("model.norm.weight").astype(np.float32).reshape(-1)
+        if norm.size < H:
+            norm = np.pad(norm, (0, H - norm.size), constant_values=1.0)
+        f.write(norm[:H].tobytes())
 
         for layer in range(L):
             p = f"model.layers.{layer}"
-            f.write(T(f"{p}.input_layernorm.weight").astype(np.float32).reshape(-1)[:H].tobytes())
-            f.write(
-                T(f"{p}.post_attention_layernorm.weight")
-                .astype(np.float32)
-                .reshape(-1)[:H]
-                .tobytes()
-            )
+            for nname in ("input_layernorm.weight", "post_attention_layernorm.weight"):
+                w = T(f"{p}.{nname}").astype(np.float32).reshape(-1)
+                if w.size < H:
+                    w = np.pad(w, (0, H - w.size), constant_values=1.0)
+                f.write(w[:H].tobytes())
             f.write(fit2d(T(f"{p}.self_attn.q_proj.weight"), q_dim, H).tobytes())
             f.write(fit2d(T(f"{p}.self_attn.k_proj.weight"), kv_dim, H).tobytes())
             f.write(fit2d(T(f"{p}.self_attn.v_proj.weight"), kv_dim, H).tobytes())
