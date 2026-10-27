@@ -17,7 +17,7 @@ TEST_BIN = tests/test_quant
 # Optional quant for live-moe (0=f32 parity, 4=group-int4 disk-friendly)
 LIVE_QUANT ?= 4
 
-.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro smoke test parity parity-v2 m2 exact-f32 live-moe check
+.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro stream-mixtral smoke test parity parity-v2 m2 exact-f32 live-moe check
 
 all: $(TARGET)
 
@@ -62,6 +62,10 @@ mixtral-micro: $(TARGET)
 		--out models/mixtral-micro.rabbit --layout v2 --quant 4
 	./$(TARGET) probe-v2 --model models/mixtral-micro.rabbit --prompt hi --tokens 8
 
+# Streaming converter offline path (needs pip install safetensors)
+stream-mixtral: $(TARGET)
+	python3 tests/test_stream_mixtral.py
+
 demo-model:
 	@mkdir -p models
 	python3 tools/convert_hf_to_rabbit.py --demo --out models/demo-moe.rabbit \
@@ -85,7 +89,7 @@ smoke: $(TARGET) test-model
 	@grep -q "Rabbit" /tmp/rabbit-smoke.out /tmp/rabbit-smoke.err
 	@echo "smoke: ok"
 
-check: test smoke parity parity-v2 m2 exact-f32 mixtral-micro
+check: test smoke parity parity-v2 m2 exact-f32 mixtral-micro stream-mixtral
 	@echo "check: all passed"
 
 debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
