@@ -2,6 +2,11 @@ CC ?= gcc
 CFLAGS ?= -O2 -Wall -Wextra -std=c11 -I./src
 LDFLAGS ?= -lm
 
+# Optional CUDA: make RABBIT_CUDA=1 (requires nvcc + cudart)
+RABBIT_CUDA ?= 0
+NVCC ?= nvcc
+NVCCFLAGS ?= -O2 -std=c++17 -I./src
+
 SRC = src/main.c src/memory.c src/model.c src/moe.c src/quant.c \
       src/tokenizer.c src/utils.c src/attention.c src/forward_v2.c
 OBJ = $(SRC:.c=.o)
@@ -10,22 +15,37 @@ LIB_SRC = src/memory.c src/model.c src/moe.c src/quant.c \
           src/tokenizer.c src/utils.c src/attention.c src/forward_v2.c
 LIB_OBJ = $(LIB_SRC:.c=.o)
 
+ifeq ($(RABBIT_CUDA),1)
+  SRC += src/cuda_gemv_link.c
+  CUDA_OBJ = src/cuda_gemv.o
+  LDFLAGS += -lcudart
+  CFLAGS += -DRABBIT_CUDA=1
+else
+  SRC += src/cuda_gemv_stub.c
+  CUDA_OBJ =
+endif
+
+OBJ = $(SRC:.c=.o)
+
 TARGET = rabbit
 TEST_TOOL = tools/create_test_model
 TEST_BIN = tests/test_quant
 
-# Optional quant for live-moe (0=f32 parity, 4=group-int4 disk-friendly)
 LIVE_QUANT ?= 4
+MODEL ?= tinybrainbot
 
-.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro stream-mixtral smoke test parity parity-v2 m2 exact-f32 live-moe check
+.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro stream-mixtral smoke test parity parity-v2 m2 exact-f32 live-moe public-moe download-moe check cuda-test
 
 all: $(TARGET)
 
-$(TARGET): $(OBJ)
-	$(CC) $(OBJ) -o $@ $(LDFLAGS)
+$(TARGET): $(OBJ) $(CUDA_OBJ)
+	$(CC) $(OBJ) $(CUDA_OBJ) -o $@ $(LDFLAGS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
+
+src/cuda_gemv.o: src/cuda_gemv.cu src/cuda_gemv.h
+	$(NVCC) $(NVCCFLAGS) -c src/cuda_gemv.cu -o $@
 
 $(TEST_TOOL): tools/create_test_model.c
 	$(CC) -O2 -Wall -Wextra -o $@ $<
@@ -54,7 +74,6 @@ micro-hf:
 	python3 tools/convert_hf_to_rabbit.py --model-dir models/hf_micro_moe \
 		--out models/micro-hf-v2.rabbit --layout v2 --quant 8
 
-# GQA + Mixtral tensor names (w1/w2/w3, block_sparse_moe) — offline stand-in for TinyBrainBot
 mixtral-micro: $(TARGET)
 	@mkdir -p models
 	python3 tools/create_mixtral_micro.py --out-dir models/hf_mixtral_micro --seed 7
@@ -62,7 +81,6 @@ mixtral-micro: $(TARGET)
 		--out models/mixtral-micro.rabbit --layout v2 --quant 4
 	./$(TARGET) probe-v2 --model models/mixtral-micro.rabbit --prompt hi --tokens 8
 
-# Streaming converter offline path (needs pip install safetensors)
 stream-mixtral: $(TARGET)
 	python3 tests/test_stream_mixtral.py
 
@@ -89,19 +107,18 @@ smoke: $(TARGET) test-model
 	@grep -q "Rabbit" /tmp/rabbit-smoke.out /tmp/rabbit-smoke.err
 	@echo "smoke: ok"
 
-check: test smoke parity parity-v2 m2 exact-f32 mixtral-micro stream-mixtral
+cuda-test:
+	python3 tests/test_cuda_optional.py
+
+check: test smoke parity parity-v2 m2 exact-f32 mixtral-micro stream-mixtral cuda-test
 	@echo "check: all passed"
 
 debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
 debug: clean $(TARGET)
 
 clean:
-	rm -f $(OBJ) $(TARGET) $(TEST_TOOL) $(TEST_BIN)
+	rm -f $(OBJ) $(CUDA_OBJ) $(TARGET) $(TEST_TOOL) $(TEST_BIN) src/cuda_gemv.o
 
-# Live Mixtral-style MoE (TinyBrainBot 360M).
-# Requires: pip install huggingface_hub safetensors numpy transformers
-# Uses streaming converter so ~1GB RAM hosts can convert the checkpoint.
-# Override quant: make live-moe LIVE_QUANT=0
 live-moe: $(TARGET)
 	@mkdir -p models/tinybrainbot
 	@python3 -c "import huggingface_hub, safetensors, numpy" 2>/dev/null || \
@@ -114,3 +131,9 @@ live-moe: $(TARGET)
 	./$(TARGET) probe-v2 --model models/tinybrainbot-v2.rabbit \
 		--tokenizer models/tinybrainbot.tok --prompt Hello --tokens 16
 	@echo "Chat: ./rabbit chat --model models/tinybrainbot-v2.rabbit --tokenizer models/tinybrainbot.tok"
+
+download-moe:
+	python3 tools/download_public_moe.py --models $(MODEL) --skip-convert --skip-verify
+
+public-moe: $(TARGET)
+	python3 tools/download_public_moe.py --models $(MODEL) --rabbit-binary ./$(TARGET) --quant $(LIVE_QUANT)

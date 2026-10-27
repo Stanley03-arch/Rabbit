@@ -1,4 +1,5 @@
 #include "rabbit.h"
+#include "cuda_gemv.h"
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -63,16 +64,6 @@ int rabbit_pack_int4(const float *src, int n, uint8_t *dst, float *out_scale) {
     return (n + 1) / 2;
 }
 
-/*
- * Group-scaled int4
- *
- * On-disk layout for one matrix (n elements):
- *   u32  group_size
- *   f32  scales[n_groups]     where n_groups = ceil(n / group_size)
- *   u8   packed[(n+1)/2]      two signed nibbles per byte, bias +8
- *
- * Returns total bytes written into dst (must be large enough).
- */
 int rabbit_pack_int4_grouped(const float *src, int n, int group_size,
                              uint8_t *dst, int dst_cap) {
     if (!src || !dst || n <= 0) return -1;
@@ -91,7 +82,6 @@ int rabbit_pack_int4_grouped(const float *src, int n, int group_size,
     float *scales = (float *)p;
     p += n_groups * 4;
 
-    /* compute per-group scales */
     for (int g = 0; g < n_groups; g++) {
         int start = g * group_size;
         int end = start + group_size;
@@ -104,7 +94,6 @@ int rabbit_pack_int4_grouped(const float *src, int n, int group_size,
         scales[g] = max_abs / 7.0f + 1e-8f;
     }
 
-    /* pack nibbles with group scale */
     for (int i = 0; i < n; i += 2) {
         int g0 = i / group_size;
         float s0 = scales[g0];
@@ -141,17 +130,9 @@ int rabbit_dequant_int4_grouped(const uint8_t *src, float *dst, int n) {
     return 0;
 }
 
-/*
- * GEMV: y[out] = W[out, in] * x[in]
- * W stored as group-scaled int4 (row-major, each row is `in_dim` elements).
- * Layout is one big grouped blob for the whole matrix (n = out_dim * in_dim).
- */
-void rabbit_gemv_int4_grouped(const uint8_t *W, const float *x, float *y,
-                              int out_dim, int in_dim) {
-    if (!W || !x || !y || out_dim <= 0 || in_dim <= 0) return;
-
+static void gemv_int4_grouped_cpu(const uint8_t *W, const float *x, float *y,
+                                  int out_dim, int in_dim) {
     int n = out_dim * in_dim;
-    /* Dequant whole matrix into temp (simple, correct). For tiny experts OK. */
     float *full = (float *)malloc(sizeof(float) * (size_t)n);
     if (!full) {
         memset(y, 0, sizeof(float) * (size_t)out_dim);
@@ -170,6 +151,18 @@ void rabbit_gemv_int4_grouped(const uint8_t *W, const float *x, float *y,
         y[o] = sum;
     }
     free(full);
+}
+
+void rabbit_gemv_int4_grouped(const uint8_t *W, const float *x, float *y,
+                              int out_dim, int in_dim) {
+    if (!W || !x || !y || out_dim <= 0 || in_dim <= 0) return;
+
+    /* Optional CUDA path (no-op stub when RABBIT_CUDA not enabled). */
+    if (rabbit_cuda_available() &&
+        rabbit_cuda_gemv_int4_grouped(W, x, y, out_dim, in_dim) == 0)
+        return;
+
+    gemv_int4_grouped_cpu(W, x, y, out_dim, in_dim);
 }
 
 int rabbit_int4_grouped_nbytes(int n, int group_size) {

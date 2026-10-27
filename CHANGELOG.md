@@ -1,3 +1,19 @@
+## [0.4.11] - 2026-10-27
+
+### Optional CUDA group-int4 GEMV
+- Default build links CPU stub (no CUDA toolkit)
+- `make RABBIT_CUDA=1` builds `cuda_gemv.cu`; `rabbit_gemv_int4_grouped` prefers GPU when available
+- Docs: `docs/CUDA.md`; offline `tests/test_cuda_optional.py`
+
+## [0.4.10] - 2026-10-27
+
+### Public MoE roster (realistic)
+- `tools/download_public_moe.py` — TinyBrainBot, OLMoE-1B-7B, Qwen1.5-MoE-A2.7B
+- Stream converter preferred for Mixtral-style; v2 fallback
+- `make public-moe MODEL=…` / `make download-moe`
+- `tools/hf_backend.py` optional HF greedy JSON helper
+- Docs: `docs/PUBLIC_MOE.md`; offline `tests/test_public_moe_roster.py`
+
 ## [0.4.9] - 2026-10-27
 
 ### Live MoE streaming harden
@@ -18,19 +34,14 @@
 ## [0.4.7] - 2026-10-25
 
 ### Final RMSNorm
-- Dense layout: `embed | lm_head | final_norm | layers…`
-- C `forward_v2` + NumPy oracle apply `model.norm` before logits
-- Fixtures / converter pack `model.norm.weight`
 
 ## [0.4.6] - 2026-10-25
 
 ### GQA + Mixtral path
-- Separate Q/K/V, header GQA metadata, Mixtral w1/w3/w2, `make mixtral-micro`
 
 ## [0.4.5] - 2026-10-25
 
 ### Group-scaled int4
-- group=32 pack/dequant/GEMV + converter `--quant 4`
 
 ## [0.4.4] - 2026-10-25
 
