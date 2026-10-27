@@ -18,7 +18,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install Python deps
-        run: pip install numpy
+        run: pip install numpy safetensors
 
       - name: Build
         run: make clean && make
@@ -37,6 +37,9 @@ jobs:
 
       - name: Phase D M2 micro-HF
         run: make m2
+
+      - name: Mixtral micro + stream converter
+        run: make mixtral-micro && make stream-mixtral
 
       - name: Version
         run: ./rabbit version

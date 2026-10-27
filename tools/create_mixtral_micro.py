@@ -3,6 +3,9 @@
 
 Shapes mirror TinyBrainBot / Mixtral but scaled down:
   H=64, L=2, heads=4, kv_heads=2, head_dim=16, E=4, top_k=2, inter=32, V=256
+
+Writes model.npz always; also model.safetensors when the safetensors package is available
+(so tools/convert_hf_stream.py can be exercised offline).
 """
 from __future__ import annotations
 
@@ -55,11 +58,21 @@ def main() -> None:
         p = f"model.layers.{layer}"
         tensors[f"{p}.input_layernorm.weight"] = np.ones(H, dtype=np.float32)
         tensors[f"{p}.post_attention_layernorm.weight"] = np.ones(H, dtype=np.float32)
-        tensors[f"{p}.self_attn.q_proj.weight"] = rng.normal(0, 0.02, (n_heads * hd, H)).astype(np.float32)
-        tensors[f"{p}.self_attn.k_proj.weight"] = rng.normal(0, 0.02, (n_kv * hd, H)).astype(np.float32)
-        tensors[f"{p}.self_attn.v_proj.weight"] = rng.normal(0, 0.02, (n_kv * hd, H)).astype(np.float32)
-        tensors[f"{p}.self_attn.o_proj.weight"] = rng.normal(0, 0.02, (H, n_heads * hd)).astype(np.float32)
-        tensors[f"{p}.block_sparse_moe.gate.weight"] = rng.normal(0, 0.02, (E, H)).astype(np.float32)
+        tensors[f"{p}.self_attn.q_proj.weight"] = rng.normal(
+            0, 0.02, (n_heads * hd, H)
+        ).astype(np.float32)
+        tensors[f"{p}.self_attn.k_proj.weight"] = rng.normal(
+            0, 0.02, (n_kv * hd, H)
+        ).astype(np.float32)
+        tensors[f"{p}.self_attn.v_proj.weight"] = rng.normal(
+            0, 0.02, (n_kv * hd, H)
+        ).astype(np.float32)
+        tensors[f"{p}.self_attn.o_proj.weight"] = rng.normal(
+            0, 0.02, (H, n_heads * hd)
+        ).astype(np.float32)
+        tensors[f"{p}.block_sparse_moe.gate.weight"] = rng.normal(
+            0, 0.02, (E, H)
+        ).astype(np.float32)
         for e in range(E):
             ep = f"{p}.block_sparse_moe.experts.{e}"
             tensors[f"{ep}.w1.weight"] = rng.normal(0, 0.02, (inter, H)).astype(np.float32)
@@ -68,6 +81,14 @@ def main() -> None:
 
     np.savez(out / "model.npz", **tensors)
     print(f"[mixtral-micro] {out}  tensors={len(tensors)}  H={H} L={L} E={E}")
+
+    try:
+        from safetensors.numpy import save_file
+
+        save_file(tensors, str(out / "model.safetensors"))
+        print(f"[mixtral-micro] wrote model.safetensors ({len(tensors)} tensors)")
+    except ImportError:
+        print("[mixtral-micro] safetensors not installed — skip .safetensors (stream path needs it)")
 
 
 if __name__ == "__main__":

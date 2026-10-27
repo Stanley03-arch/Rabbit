@@ -6,7 +6,7 @@ Rabbit is a pure-C engine that keeps dense weights in RAM and streams routed exp
 
 Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) — not a clone of its product or UI.
 
-> **Status:** v0.4.0 — Phase A/B largely complete, Phase C mostly complete. OpenAI-compatible HTTP API with **SSE streaming**, `rabbit stats`, dashboard driven by engine JSON.
+> **Status:** v0.4.9 — Phase A–C complete enough for product surface; Phase D quality spine mostly done (parity, GQA, Mixtral naming, streaming HF converter). OpenAI-compatible HTTP API with **SSE streaming**, `rabbit stats`, dashboard driven by engine JSON.
 
 [![Dashboard in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_dashboard.ipynb)
 
@@ -78,10 +78,11 @@ export RABBIT_MEM_BUDGET_MB=1024   # default 1536
 - Dense RAM + expert `mmap` + LRU cache  
 - Multi-head attention with per-head RoPE → dense residual → MoE  
 - int4 / int8 expert GEMV + SwiGLU-style path when gate/up/down present  
-- HF → `.rabbit` converter  
+- Group-scaled int4 (group=32) + GQA metadata in header  
+- HF → `.rabbit` converter (`layout v2`) and **low-RAM streaming** converter  
 - OpenAI-compatible HTTP API with SSE streaming  
 - Dashboard metrics from `rabbit stats`  
-- Exact C vs NumPy parity on the frozen ref model  
+- Exact C vs NumPy parity on frozen ref models  
 
 ---
 
@@ -89,11 +90,24 @@ export RABBIT_MEM_BUDGET_MB=1024   # default 1536
 
 ```bash
 pip install safetensors numpy
-python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf --out models/m.rabbit --quant 4
-python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf --out models/m.rabbit --quant 4 --layout flat
+
+# In-memory (more naming variants)
+python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf \
+  --out models/m.rabbit --layout v2 --quant 4
+
+# Low-RAM streaming (Mixtral-style w1/w3/w2 + multi-shard)
+python tools/convert_hf_stream.py --model-dir /path/to/hf \
+  --out models/m.rabbit --quant 4
 ```
 
-See [docs/tensor-map.md](docs/tensor-map.md) and [docs/conversion.md](docs/conversion.md).
+Live public Mixtral-style model (downloads TinyBrainBot):
+```bash
+pip install huggingface_hub safetensors numpy transformers
+make live-moe                 # quant 4
+make live-moe LIVE_QUANT=0    # f32 experts
+```
+
+See [docs/tensor-map.md](docs/tensor-map.md), [docs/conversion.md](docs/conversion.md), and [docs/PHASE_D.md](docs/PHASE_D.md).
 
 ---
 
