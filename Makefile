@@ -14,6 +14,9 @@ TARGET = rabbit
 TEST_TOOL = tools/create_test_model
 TEST_BIN = tests/test_quant
 
+# Optional quant for live-moe (0=f32 parity, 4=group-int4 disk-friendly)
+LIVE_QUANT ?= 4
+
 .PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro smoke test parity parity-v2 m2 exact-f32 live-moe check
 
 all: $(TARGET)
@@ -92,13 +95,18 @@ clean:
 	rm -f $(OBJ) $(TARGET) $(TEST_TOOL) $(TEST_BIN)
 
 # Live Mixtral-style MoE (TinyBrainBot 360M).
-# Requires: pip install huggingface_hub safetensors numpy
-# Uses streaming converter so ~1GB RAM hosts can convert the 1.5GB f32 checkpoint.
+# Requires: pip install huggingface_hub safetensors numpy transformers
+# Uses streaming converter so ~1GB RAM hosts can convert the checkpoint.
+# Override quant: make live-moe LIVE_QUANT=0
 live-moe: $(TARGET)
 	@mkdir -p models/tinybrainbot
-	python3 -c "from huggingface_hub import snapshot_download; snapshot_download('nkthebass/tinybrainbot-360m-a75m-v4.1-moe-base', local_dir='models/tinybrainbot', allow_patterns=['config.json','model.safetensors','tokenizer.json','tokenizer.model','tokenizer_config.json'])"
+	@python3 -c "import huggingface_hub, safetensors, numpy" 2>/dev/null || \
+		(echo "pip install huggingface_hub safetensors numpy transformers" && exit 1)
+	python3 -c "from huggingface_hub import snapshot_download; snapshot_download('nkthebass/tinybrainbot-360m-a75m-v4.1-moe-base', local_dir='models/tinybrainbot', allow_patterns=['config.json','*.safetensors','tokenizer.json','tokenizer.model','tokenizer_config.json','model.safetensors.index.json'])"
 	python3 tools/convert_hf_stream.py --model-dir models/tinybrainbot \
-		--out models/tinybrainbot-v2.rabbit --quant 4
-	python3 tools/export_hf_tokenizer.py --hf-dir models/tinybrainbot --out models/tinybrainbot.tok || true
-	./$(TARGET) probe-v2 --model models/tinybrainbot-v2.rabbit --prompt Hello --tokens 16
+		--out models/tinybrainbot-v2.rabbit --quant $(LIVE_QUANT)
+	python3 tools/export_hf_tokenizer.py --hf-dir models/tinybrainbot \
+		--out models/tinybrainbot.tok || true
+	./$(TARGET) probe-v2 --model models/tinybrainbot-v2.rabbit \
+		--tokenizer models/tinybrainbot.tok --prompt Hello --tokens 16
 	@echo "Chat: ./rabbit chat --model models/tinybrainbot-v2.rabbit --tokenizer models/tinybrainbot.tok"

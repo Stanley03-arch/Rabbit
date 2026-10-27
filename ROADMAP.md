@@ -29,7 +29,8 @@ See [docs/PHASE_D.md](docs/PHASE_D.md).
 - [x] Group-scaled int4 (group=32)
 - [x] GQA dense layout (Q/K/V separate, header.reserved metadata)
 - [x] Mixtral naming (`w1/w3/w2`, `block_sparse_moe`) + `make mixtral-micro`
-- [ ] Live public MoE end-to-end (TinyBrainBot 360M) — needs HF download on your machine
+- [x] Streaming converter multi-shard + quant 0|4 (`tools/convert_hf_stream.py`)
+- [ ] Live public MoE end-to-end (TinyBrainBot 360M) — run `make live-moe` on a machine with HF access
 
 ## Non-goals
 

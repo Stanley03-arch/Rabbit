@@ -1,3 +1,12 @@
+## [0.4.9] - 2026-10-27
+
+### Live MoE streaming harden
+- `convert_hf_stream.py`: multi-shard safetensors via weight_map index, on-demand tensor load
+- Support `--quant 0` (f32) and `--quant 4` (group-int4)
+- Optional `lm_head.weight` when not tied to embed
+- `make live-moe`: dependency check, download index.json + all shards, `LIVE_QUANT` override
+- Docs: PHASE_D / ROADMAP updated for live MoE recipe
+
 ## [0.4.8] - 2026-10-26
 
 ### Fix f32 expert path (quant=0)

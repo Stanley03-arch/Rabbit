@@ -18,6 +18,8 @@ make parity-v2
 - Real BPE tokenizer (RBTTOK01)
 - Group-scaled int4 (`--quant 4`, group=32)
 - **GQA** dense layout: separate Q/K/V with `n_heads`, `n_kv_heads`, `head_dim` in header.reserved
+- **Mixtral naming** (`w1/w3/w2`, `block_sparse_moe`) + `make mixtral-micro`
+- **Streaming converter** (`tools/convert_hf_stream.py`): multi-shard safetensors, quant 0|4, low-RAM
 
 ### Live public MoE (in progress)
 
@@ -31,32 +33,44 @@ Target: **[nkthebass/tinybrainbot-360m-a75m-v4.1-moe-base](https://huggingface.c
 | Vocab | 32k (SentencePiece / BPE) |
 
 ```bash
-# Download (needs huggingface-cli or git-lfs)
+# One-shot (downloads + converts + probe)
+# LIVE_QUANT=4 (default) or 0 for f32 parity checks
+pip install huggingface_hub safetensors numpy transformers
+make live-moe
+# or: make live-moe LIVE_QUANT=0
+
+# Manual steps
 mkdir -p models/tinybrainbot
 huggingface-cli download nkthebass/tinybrainbot-360m-a75m-v4.1-moe-base \
   --local-dir models/tinybrainbot
 
-# Convert (start with quant 0 for parity, or 4 for disk size)
-python tools/convert_hf_to_rabbit.py \
+python tools/convert_hf_stream.py \
   --model-dir models/tinybrainbot \
   --out models/tinybrainbot-v2.rabbit \
-  --layout v2 --quant 0
+  --quant 4
 
-# Tokenizer
 python tools/export_hf_tokenizer.py \
-  --model models/tinybrainbot \
+  --hf-dir models/tinybrainbot \
   --out models/tinybrainbot.tok
 
 ./rabbit probe-v2 --model models/tinybrainbot-v2.rabbit \
   --tokenizer models/tinybrainbot.tok --prompt "Hello" --tokens 32
-```
 
-See also `make live-moe` (downloads + converts when HF CLI is available).
+./rabbit chat --model models/tinybrainbot-v2.rabbit \
+  --tokenizer models/tinybrainbot.tok
+```
 
 ### Real checkpoint recipe (generic)
 
 ```bash
 pip install safetensors numpy
+# Low-RAM path (Mixtral tensor names):
+python tools/convert_hf_stream.py \
+  --model-dir /path/to/hf_moe \
+  --out models/real-v2.rabbit \
+  --quant 4
+
+# Full in-memory path (more naming variants):
 python tools/convert_hf_to_rabbit.py \
   --model-dir /path/to/hf_moe \
   --out models/real-v2.rabbit \
