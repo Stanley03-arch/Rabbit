@@ -16,8 +16,10 @@ TEST_BIN = tests/test_quant
 
 # Optional quant for live-moe (0=f32 parity, 4=group-int4 disk-friendly)
 LIVE_QUANT ?= 4
+# Public MoE key for make public-moe (tinybrainbot|olmoe|qwen-moe-a2.7b|all)
+MODEL ?= tinybrainbot
 
-.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro stream-mixtral smoke test parity parity-v2 m2 exact-f32 live-moe check
+.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro stream-mixtral smoke test parity parity-v2 m2 exact-f32 live-moe public-moe download-moe check
 
 all: $(TARGET)
 
@@ -54,7 +56,6 @@ micro-hf:
 	python3 tools/convert_hf_to_rabbit.py --model-dir models/hf_micro_moe \
 		--out models/micro-hf-v2.rabbit --layout v2 --quant 8
 
-# GQA + Mixtral tensor names (w1/w2/w3, block_sparse_moe) — offline stand-in for TinyBrainBot
 mixtral-micro: $(TARGET)
 	@mkdir -p models
 	python3 tools/create_mixtral_micro.py --out-dir models/hf_mixtral_micro --seed 7
@@ -62,7 +63,6 @@ mixtral-micro: $(TARGET)
 		--out models/mixtral-micro.rabbit --layout v2 --quant 4
 	./$(TARGET) probe-v2 --model models/mixtral-micro.rabbit --prompt hi --tokens 8
 
-# Streaming converter offline path (needs pip install safetensors)
 stream-mixtral: $(TARGET)
 	python3 tests/test_stream_mixtral.py
 
@@ -90,6 +90,7 @@ smoke: $(TARGET) test-model
 	@echo "smoke: ok"
 
 check: test smoke parity parity-v2 m2 exact-f32 mixtral-micro stream-mixtral
+	python3 tests/test_public_moe_roster.py
 	@echo "check: all passed"
 
 debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
@@ -98,10 +99,6 @@ debug: clean $(TARGET)
 clean:
 	rm -f $(OBJ) $(TARGET) $(TEST_TOOL) $(TEST_BIN)
 
-# Live Mixtral-style MoE (TinyBrainBot 360M).
-# Requires: pip install huggingface_hub safetensors numpy transformers
-# Uses streaming converter so ~1GB RAM hosts can convert the checkpoint.
-# Override quant: make live-moe LIVE_QUANT=0
 live-moe: $(TARGET)
 	@mkdir -p models/tinybrainbot
 	@python3 -c "import huggingface_hub, safetensors, numpy" 2>/dev/null || \
@@ -114,3 +111,10 @@ live-moe: $(TARGET)
 	./$(TARGET) probe-v2 --model models/tinybrainbot-v2.rabbit \
 		--tokenizer models/tinybrainbot.tok --prompt Hello --tokens 16
 	@echo "Chat: ./rabbit chat --model models/tinybrainbot-v2.rabbit --tokenizer models/tinybrainbot.tok"
+
+# Public MoE roster (see tools/download_public_moe.py --list)
+download-moe:
+	python3 tools/download_public_moe.py --models $(MODEL) --skip-convert --skip-verify
+
+public-moe: $(TARGET)
+	python3 tools/download_public_moe.py --models $(MODEL) --rabbit-binary ./$(TARGET) --quant $(LIVE_QUANT)

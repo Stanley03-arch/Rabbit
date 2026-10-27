@@ -1,3 +1,12 @@
+## [0.4.10] - 2026-10-27
+
+### Public MoE roster (realistic)
+- `tools/download_public_moe.py` — TinyBrainBot, OLMoE-1B-7B, Qwen1.5-MoE-A2.7B
+- Stream converter preferred for Mixtral-style; v2 fallback
+- `make public-moe MODEL=…` / `make download-moe`
+- `tools/hf_backend.py` optional HF greedy JSON helper
+- Docs: `docs/PUBLIC_MOE.md`; offline `tests/test_public_moe_roster.py`
+
 ## [0.4.9] - 2026-10-27
 
 ### Live MoE streaming harden
