@@ -222,10 +222,14 @@ static int cmd_stats(int argc, char **argv) {
     printf("  \"expert_mapped\": %s,\n", m->expert_map ? "true" : "false");
     printf("  \"cache_slots\": %d,\n", r.cache_slots);
     printf("  \"cache_bytes\": %zu,\n", r.cache_bytes);
+    printf("  \"cache_hits\": %llu,\n", (unsigned long long)r.cache_hits);
+    printf("  \"cache_misses\": %llu,\n", (unsigned long long)r.cache_misses);
+    printf("  \"cache_inserts\": %llu,\n", (unsigned long long)r.cache_inserts);
     printf("  \"kv_bytes_est\": %zu,\n", r.kv_bytes);
     printf("  \"mem_budget_bytes\": %zu,\n", r.budget_bytes);
     printf("  \"mem_total_est_bytes\": %zu,\n", r.total_estimate);
-    printf("  \"over_budget\": %s\n", r.over_budget ? "true" : "false");
+    printf("  \"over_budget\": %s,\n", r.over_budget ? "true" : "false");
+    printf("  \"tiers\": [\"ram_dense\", \"ram_expert_lru\", \"mmap_disk\"]\n");
     printf("}\n");
 
     free(m->dense);
