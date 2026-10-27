@@ -43,6 +43,9 @@ void rabbit_memory_report(const RabbitModel *m, RabbitMemoryReport *out) {
     out->total_estimate = out->dense_bytes + out->cache_bytes + out->kv_bytes;
     out->budget_bytes = m->mem_budget > 0 ? m->mem_budget : rabbit_default_mem_budget();
     out->over_budget = (out->total_estimate > out->budget_bytes) ? 1 : 0;
+
+    if (m->cache)
+        rabbit_cache_stats(m->cache, &out->cache_hits, &out->cache_misses, &out->cache_inserts);
 }
 
 void rabbit_print_memory(const RabbitModel *m) {
@@ -56,6 +59,15 @@ void rabbit_print_memory(const RabbitModel *m) {
     printf("  total estimate     %.2f MB%s\n",
            r.total_estimate / (1024.0 * 1024.0),
            r.over_budget ? "  [OVER BUDGET]" : "");
+    printf("  tiers              RAM dense | RAM LRU experts | mmap disk\n");
+    if (r.cache_hits + r.cache_misses > 0) {
+        double rate = 100.0 * (double)r.cache_hits /
+                      (double)(r.cache_hits + r.cache_misses);
+        printf("  cache hit rate     %.1f%% (%llu hits / %llu misses)\n",
+               rate,
+               (unsigned long long)r.cache_hits,
+               (unsigned long long)r.cache_misses);
+    }
 }
 
 void rabbit_print_info(const RabbitModel *m) {
@@ -98,6 +110,12 @@ static void print_cache_stats(const RabbitModel *m) {
 }
 
 static int choose_cache_slots(size_t expert_size, size_t budget, size_t dense_size) {
+    const char *env = getenv("RABBIT_CACHE_SLOTS");
+    if (env && env[0]) {
+        long n = strtol(env, NULL, 10);
+        if (n >= 1 && n <= RABBIT_MAX_CACHE_SLOTS)
+            return (int)n;
+    }
     if (expert_size == 0) return 2;
     size_t remain = 0;
     if (budget > dense_size + 8 * 1024 * 1024)
