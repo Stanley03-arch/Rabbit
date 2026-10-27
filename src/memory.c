@@ -7,6 +7,16 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#ifndef MADV_WILLNEED
+#define MADV_WILLNEED 3
+#endif
+#ifndef MADV_DONTNEED
+#define MADV_DONTNEED 4
+#endif
+#ifndef MADV_RANDOM
+#define MADV_RANDOM 1
+#endif
+
 typedef struct {
     int   expert_id;
     void *data;
@@ -51,6 +61,17 @@ void rabbit_cache_stats(const ExpertCache *c, uint64_t *hits, uint64_t *misses, 
     if (hits) *hits = c ? c->hits : 0;
     if (misses) *misses = c ? c->misses : 0;
     if (inserts) *inserts = c ? c->inserts : 0;
+}
+
+int rabbit_cache_pin(ExpertCache *c, int expert_id, int pinned) {
+    if (!c || expert_id < 0) return -1;
+    for (int i = 0; i < c->n_slots; i++) {
+        if (c->slots[i].expert_id == expert_id) {
+            c->slots[i].pinned = pinned ? 1 : 0;
+            return 0;
+        }
+    }
+    return -1;
 }
 
 void *rabbit_cache_get(ExpertCache *c, int expert_id) {
@@ -98,6 +119,7 @@ void *rabbit_cache_put(ExpertCache *c, int expert_id, const void *src) {
     memcpy(c->slots[victim].data, src, c->expert_size);
     c->slots[victim].expert_id = expert_id;
     c->slots[victim].last_used = ++c->clock;
+    c->slots[victim].pinned = 0;
     c->inserts++;
     return c->slots[victim].data;
 }
@@ -125,6 +147,11 @@ int rabbit_mmap_file(const char *path, void **base, size_t *size, int *fd) {
         *fd = -1;
         *base = NULL;
         return -1;
+    }
+
+    /* Expert traffic is sparse: RANDOM reduces sequential readahead waste. */
+    if (madvise(*base, *size, MADV_RANDOM) != 0) {
+        /* non-fatal */
     }
     return 0;
 }
@@ -159,4 +186,32 @@ const void *rabbit_expert_ptr_layer(const RabbitModel *m, int layer, int local_e
     int gid = rabbit_expert_global_id(m, layer, local_expert_id);
     if (gid < 0) return NULL;
     return rabbit_expert_ptr(m, gid);
+}
+
+int rabbit_expert_prefetch(RabbitModel *m, int global_expert_id) {
+    if (!m || !m->expert_map || global_expert_id < 0 || m->expert_size == 0)
+        return -1;
+    int nrec = m->n_expert_records > 0 ? m->n_expert_records : m->num_experts;
+    if (global_expert_id >= nrec)
+        return -1;
+
+    void *p = (void *)((const uint8_t *)m->expert_map +
+                       (size_t)global_expert_id * m->expert_size);
+    if (madvise(p, m->expert_size, MADV_WILLNEED) != 0)
+        return -1;
+    return 0;
+}
+
+int rabbit_expert_release_hint(RabbitModel *m, int global_expert_id) {
+    if (!m || !m->expert_map || global_expert_id < 0 || m->expert_size == 0)
+        return -1;
+    int nrec = m->n_expert_records > 0 ? m->n_expert_records : m->num_experts;
+    if (global_expert_id >= nrec)
+        return -1;
+
+    void *p = (void *)((const uint8_t *)m->expert_map +
+                       (size_t)global_expert_id * m->expert_size);
+    if (madvise(p, m->expert_size, MADV_DONTNEED) != 0)
+        return -1;
+    return 0;
 }

@@ -6,9 +6,9 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-#define RABBIT_VERSION "0.4.9"
+#define RABBIT_VERSION "0.4.12"
 #define RABBIT_MAGIC   "RABBIT01"
-#define RABBIT_MAX_CACHE_SLOTS 8
+#define RABBIT_MAX_CACHE_SLOTS 16
 #define RABBIT_INT4_GROUP 32
 
 #define RABBIT_DEFAULT_MEM_BUDGET_MB 1536
@@ -60,6 +60,9 @@ typedef struct {
     size_t budget_bytes;
     int    cache_slots;
     int    over_budget;
+    uint64_t cache_hits;
+    uint64_t cache_misses;
+    uint64_t cache_inserts;
 } RabbitMemoryReport;
 
 struct RabbitModel {
@@ -112,13 +115,16 @@ void         rabbit_cache_set_expert_size(ExpertCache *c, size_t size);
 void        *rabbit_cache_get(ExpertCache *c, int expert_id);
 void        *rabbit_cache_put(ExpertCache *c, int expert_id, const void *src);
 void         rabbit_cache_stats(const ExpertCache *c, uint64_t *hits, uint64_t *misses, uint64_t *inserts);
+int          rabbit_cache_pin(ExpertCache *c, int expert_id, int pinned);
 
-/* Mapping */
+/* Mapping / tiers */
 int          rabbit_mmap_file(const char *path, void **base, size_t *size, int *fd);
 void         rabbit_munmap_file(void *base, size_t size, int fd);
 const void  *rabbit_expert_ptr(const RabbitModel *m, int global_expert_id);
 const void  *rabbit_expert_ptr_layer(const RabbitModel *m, int layer, int local_expert_id);
 int          rabbit_expert_global_id(const RabbitModel *m, int layer, int local_expert_id);
+int          rabbit_expert_prefetch(RabbitModel *m, int global_expert_id);
+int          rabbit_expert_release_hint(RabbitModel *m, int global_expert_id);
 
 /* MoE / layers */
 const void *rabbit_fetch_expert(RabbitModel *m, int global_expert_id, int promote);
