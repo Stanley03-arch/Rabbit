@@ -4,6 +4,11 @@
 - `rabbit_xcalloc`, `rabbit_xrealloc`, `rabbit_xstrdup`
 - Formatted fatal helper `rabbit_dief`
 - Declarations added to `rabbit.h`
+- `main.c` now uses the safer alloc helpers
+
+### CLI / docs
+- Help text includes quick examples
+- CONTRIBUTING updated with current helpers, `make check`, and live-moe note
 
 ## [0.4.9] - 2026-10-27
 
