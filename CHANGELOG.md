@@ -1,3 +1,10 @@
+## [0.4.10] - 2026-10-28
+
+### Utility helpers
+- `rabbit_xcalloc`, `rabbit_xrealloc`, `rabbit_xstrdup`
+- Formatted fatal helper `rabbit_dief`
+- Declarations added to `rabbit.h`
+
 ## [0.4.9] - 2026-10-27
 
 ### Live MoE streaming harden
