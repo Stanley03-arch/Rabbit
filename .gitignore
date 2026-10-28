@@ -3,10 +3,13 @@ rabbit
 *.o
 src/*.o
 tools/create_test_model
+tests/test_quant
 
 # Models (keep only samples tracked if desired)
 models/*.rabbit
 !models/sample_vocab.txt
+models/tinybrainbot/
+models/hf_*/
 
 # Python
 __pycache__/
@@ -24,3 +27,5 @@ venv/
 # Local experiment dirs
 hf-models/
 checkpoints/
+*.log
+/tmp/
