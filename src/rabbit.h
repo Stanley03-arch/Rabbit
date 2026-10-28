@@ -92,6 +92,14 @@ struct RabbitModel {
     int     cache_slots;
 };
 
+/* Utilities */
+void  rabbit_die(const char *msg);
+void  rabbit_dief(const char *fmt, ...);
+void *rabbit_xmalloc(size_t n);
+void *rabbit_xcalloc(size_t n, size_t size);
+void *rabbit_xrealloc(void *ptr, size_t n);
+char *rabbit_xstrdup(const char *s);
+
 /* Lifecycle */
 RabbitModel  *rabbit_load(const char *path);
 void          rabbit_free(RabbitModel *model);
