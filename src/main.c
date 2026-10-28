@@ -22,7 +22,12 @@ static void print_usage(const char *prog) {
         "  --tokens <n>         Maximum new tokens (default: 64)\n"
         "  --temp <f>           Sampling temperature (default: 0.85)\n"
         "  --prompt <text>      Prompt for probe (default: hi)\n"
-        "  -h, --help           Show this help\n",
+        "  -h, --help           Show this help\n"
+        "\n"
+        "Examples:\n"
+        "  make && make test-model\n"
+        "  ./rabbit chat --model models/tiny-test.rabbit --tokens 32\n"
+        "  ./rabbit stats --model models/tiny-test.rabbit\n",
         rabbit_version(), prog, prog, prog, prog, prog);
 }
 
@@ -69,11 +74,7 @@ static int cmd_probe(int argc, char **argv) {
     if (!m) return 1;
 
     int dim = m->hidden_dim;
-    float *h = (float *)calloc((size_t)dim, sizeof(float));
-    if (!h) {
-        rabbit_free(m);
-        return 1;
-    }
+    float *h = (float *)rabbit_xcalloc((size_t)dim, sizeof(float));
 
     if (rabbit_ref_forward(m, prompt, h) != 0) {
         fprintf(stderr, "error: ref_forward failed\n");
@@ -138,11 +139,7 @@ static int cmd_probe_v2(int argc, char **argv) {
     if (!m) return 1;
 
     int max_ids = 512 + n_new;
-    int *ids = (int *)malloc(sizeof(int) * (size_t)max_ids);
-    if (!ids) {
-        rabbit_free(m);
-        return 1;
-    }
+    int *ids = (int *)rabbit_xmalloc(sizeof(int) * (size_t)max_ids);
 
     int n = rabbit_ref_v2_greedy(m, prompt, n_new, ids, max_ids);
     if (n < 0) {
