@@ -6,7 +6,7 @@ Rabbit is a pure-C engine that keeps dense weights in RAM and streams routed exp
 
 Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) — not a clone of its product or UI.
 
-> **Status:** v0.4.9 — Phase A–C complete enough for product surface; Phase D quality spine mostly done (parity, GQA, Mixtral naming, streaming HF converter). OpenAI-compatible HTTP API with **SSE streaming**, `rabbit stats`, dashboard driven by engine JSON.
+> **Status:** v0.4.10 — Phase A–C complete enough for product surface; Phase D quality spine mostly done (parity, GQA, Mixtral naming, streaming HF converter). OpenAI-compatible HTTP API with **SSE streaming**, `rabbit stats`, dashboard driven by engine JSON. Added safer allocation helpers (`xcalloc` / `xrealloc` / `xstrdup`).
 
 [![Dashboard in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_dashboard.ipynb)
 
