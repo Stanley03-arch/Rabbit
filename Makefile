@@ -17,7 +17,7 @@ TEST_BIN = tests/test_quant
 # Optional quant for live-moe (0=f32 parity, 4=group-int4 disk-friendly)
 LIVE_QUANT ?= 4
 
-.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro stream-mixtral smoke test parity parity-v2 m2 exact-f32 live-moe check
+.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro stream-mixtral smoke test parity parity-v2 m2 exact-f32 live-moe check version
 
 all: $(TARGET)
 
@@ -32,6 +32,9 @@ $(TEST_TOOL): tools/create_test_model.c
 
 $(TEST_BIN): tests/test_quant.c $(LIB_OBJ)
 	$(CC) $(CFLAGS) tests/test_quant.c $(LIB_OBJ) -o $@ $(LDFLAGS)
+
+version: $(TARGET)
+	./$(TARGET) version
 
 test: $(TEST_BIN)
 	./$(TEST_BIN)
