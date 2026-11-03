@@ -1,3 +1,13 @@
+## [0.4.11] - 2026-11-03
+
+### CLI
+- New `bench` command: time ref-v2 greedy (or fallback probe) over multiple runs; reports avg ms and tokens/sec
+- Help text includes bench examples and `--runs`
+
+### Robustness
+- Clearer model load errors (`ENOENT`, `EACCES`, strerror fallback)
+- Generation paths use `rabbit_xmalloc` / `rabbit_xcalloc` instead of unchecked malloc
+
 ## [0.4.10] - 2026-10-28
 
 ### Utility helpers
