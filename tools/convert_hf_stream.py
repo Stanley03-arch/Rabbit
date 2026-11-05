@@ -10,6 +10,7 @@ import argparse
 import json
 import struct
 import sys
+import time
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -145,6 +146,11 @@ def main() -> None:
     ap.add_argument("--model-dir", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument(
+        "--name",
+        default=None,
+        help="Model name stored in header (default: model-dir basename)",
+    )
+    ap.add_argument(
         "--quant",
         type=int,
         default=4,
@@ -177,6 +183,7 @@ def main() -> None:
     q_dim = n_heads * head_dim
     kv_dim = n_kv * head_dim
     quant = int(args.quant)
+    model_name = (args.name or model_dir.name)[:60]
 
     expert_size = expert_nbytes(inter, H, quant=quant)
     dense_size = (V * H + H * V + H) * 4
@@ -184,7 +191,7 @@ def main() -> None:
         H * 2 + q_dim * H + kv_dim * H + kv_dim * H + H * q_dim + E * H
     ) * 4
     print(
-        f"[config] H={H} L={L} V={V} E={E} inter={inter} "
+        f"[config] name={model_name!r} H={H} L={L} V={V} E={E} inter={inter} "
         f"heads={n_heads}/{n_kv}/{head_dim} quant={quant}"
     )
     print(
@@ -197,6 +204,7 @@ def main() -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
 
     T = shards.require
+    t0 = time.time()
 
     with open(out, "wb") as f:
         write_header(
@@ -211,7 +219,7 @@ def main() -> None:
             expert_size=expert_size,
             dense_quant=0,
             expert_quant=quant,
-            name=model_dir.name[:60],
+            name=model_name,
             n_expert_records=L * E,
             n_heads=n_heads,
             n_kv_heads=n_kv,
@@ -249,7 +257,7 @@ def main() -> None:
             f.write(fit2d(T(f"{p}.self_attn.v_proj.weight"), kv_dim, H).tobytes())
             f.write(fit2d(T(f"{p}.self_attn.o_proj.weight"), H, q_dim).tobytes())
             f.write(fit2d(T(f"{p}.block_sparse_moe.gate.weight"), E, H).tobytes())
-            print(f"  dense {layer}/{L - 1}", flush=True)
+            print(f"  dense {layer + 1}/{L}", flush=True)
 
         for layer in range(L):
             for e in range(E):
@@ -267,10 +275,12 @@ def main() -> None:
                     )
                 f.write(blob)
                 del g, u, d, blob
-            print(f"  experts {layer}/{L - 1}", flush=True)
+            elapsed = time.time() - t0
+            print(f"  experts {layer + 1}/{L}  ({elapsed:.1f}s)", flush=True)
 
     shards.close()
-    print(f"[done] {out}  {out.stat().st_size / 1e6:.1f} MB")
+    elapsed = time.time() - t0
+    print(f"[done] {out}  {out.stat().st_size / 1e6:.1f} MB  in {elapsed:.1f}s")
 
 
 if __name__ == "__main__":
