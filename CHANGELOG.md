@@ -8,6 +8,13 @@
 - Expanded help text with all commands and clearer examples
 - Consistent option handling across chat / probe / probe-v2 / bench / stats
 
+### Engine robustness
+- Clearer model-load errors: ENOENT / EACCES / strerror with path context
+- Generation paths now use `rabbit_xmalloc` / `rabbit_xcalloc` throughout
+
+### Product surface
+- `rabbit_server.py` and `rabbit_dashboard.py` both accept `--tokenizer` and pass it to the engine
+
 ### Docs & polish
 - Version bumped to 0.4.12
 - README and ROADMAP updated for current feature set
