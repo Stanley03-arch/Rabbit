@@ -144,6 +144,23 @@ body {
   font-family: var(--mono);
 }
 
+.btn-secondary {
+  width: 100%;
+  margin-top: 0.55rem;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+.btn-secondary:hover {
+  color: var(--text);
+  border-color: var(--accent-2);
+}
+
 .main {
   display: flex;
   flex-direction: column;
@@ -188,6 +205,21 @@ body {
   flex-direction: column;
   gap: 0.85rem;
 }
+
+.empty-state {
+  margin: auto;
+  text-align: center;
+  color: var(--muted);
+  max-width: 360px;
+  padding: 2rem 1rem;
+}
+.empty-state p { margin: 0.4rem 0; line-height: 1.5; }
+.empty-state code {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  color: var(--accent-2);
+}
+
 .bubble {
   max-width: 720px;
   padding: 0.85rem 1rem;
