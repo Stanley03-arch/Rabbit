@@ -29,6 +29,9 @@ jobs:
       - name: Smoke test
         run: make smoke
 
+      - name: Bench smoke
+        run: make bench-smoke
+
       - name: Phase A parity
         run: make parity
 
