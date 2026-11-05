@@ -3,8 +3,19 @@ const form = document.getElementById("form");
 const promptEl = document.getElementById("prompt");
 const sendBtn = document.getElementById("send");
 const statusPill = document.getElementById("status-pill");
+const clearBtn = document.getElementById("clear-chat");
+const emptyState = document.getElementById("empty-state");
+
+function hideEmpty() {
+  if (emptyState) emptyState.style.display = "none";
+}
+
+function showEmpty() {
+  if (emptyState) emptyState.style.display = "";
+}
 
 function addBubble(role, text) {
+  hideEmpty();
   const div = document.createElement("div");
   div.className = `bubble ${role}`;
   const meta = document.createElement("div");
@@ -77,6 +88,18 @@ async function refreshInfo() {
   } catch (e) {
     console.warn(e);
   }
+}
+
+function clearChat() {
+  const bubbles = chatEl.querySelectorAll(".bubble");
+  bubbles.forEach((b) => b.remove());
+  showEmpty();
+  setStatus("ok", "ready");
+  promptEl.focus();
+}
+
+if (clearBtn) {
+  clearBtn.addEventListener("click", clearChat);
 }
 
 form.addEventListener("submit", async (ev) => {
