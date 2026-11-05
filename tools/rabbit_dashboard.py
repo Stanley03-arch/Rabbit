@@ -8,6 +8,7 @@ not only log scraping.
 
   pip install flask
   python tools/rabbit_dashboard.py --model models/tiny-test.rabbit
+  python tools/rabbit_dashboard.py --model models/m.rabbit --tokenizer models/m.tok
 
 Colab: use notebooks/rabbit_colab_dashboard.ipynb
 """
@@ -22,6 +23,7 @@ import shutil
 import subprocess
 import threading
 from pathlib import Path
+from typing import Optional
 
 from flask import Flask, jsonify, request, send_from_directory
 
@@ -112,7 +114,14 @@ def extract_reply(stdout: str) -> str:
     return text or "[no generation captured]"
 
 
-def run_generation(rabbit: Path, model: Path, message: str, tokens: int, temp: float) -> str:
+def run_generation(
+    rabbit: Path,
+    model: Path,
+    message: str,
+    tokens: int,
+    temp: float,
+    tokenizer: Optional[Path] = None,
+) -> str:
     cmd = [
         str(rabbit),
         "chat",
@@ -123,6 +132,9 @@ def run_generation(rabbit: Path, model: Path, message: str, tokens: int, temp: f
         "--temp",
         str(temp),
     ]
+    if tokenizer and tokenizer.is_file():
+        cmd.extend(["--tokenizer", str(tokenizer)])
+
     stdin = (message.strip() + "\nquit\n").encode("utf-8", errors="replace")
     proc = subprocess.run(cmd, input=stdin, capture_output=True, timeout=180)
     combined = proc.stdout.decode("utf-8", errors="replace") + "\n" + proc.stderr.decode(
@@ -132,7 +144,6 @@ def run_generation(rabbit: Path, model: Path, message: str, tokens: int, temp: f
     cache = parse_cache_stats(combined)
     reply = extract_reply(proc.stdout.decode("utf-8", errors="replace"))
 
-    # refresh engine stats after generation
     try:
         engine = run_engine_stats(rabbit, model)
     except Exception:
@@ -154,7 +165,12 @@ def run_generation(rabbit: Path, model: Path, message: str, tokens: int, temp: f
     return reply
 
 
-def create_app(rabbit: Path, model: Path, repo: Path) -> Flask:
+def create_app(
+    rabbit: Path,
+    model: Path,
+    repo: Path,
+    tokenizer: Optional[Path] = None,
+) -> Flask:
     app = Flask(__name__, static_folder=str(repo / "web" / "static"), static_url_path="/static")
 
     @app.get("/")
@@ -184,7 +200,6 @@ def create_app(rabbit: Path, model: Path, repo: Path) -> Flask:
                 "cache_misses": _state["cache_misses"],
                 "cache_inserts": _state["cache_inserts"],
                 "warm_experts": list(_state["warm_experts"]),
-                # Phase C memory metrics from engine
                 "mem_budget_mb": round(engine["mem_budget_bytes"] / (1024 * 1024), 1)
                 if engine.get("mem_budget_bytes") is not None
                 else None,
@@ -193,6 +208,7 @@ def create_app(rabbit: Path, model: Path, repo: Path) -> Flask:
                 else None,
                 "cache_slots": engine.get("cache_slots"),
                 "over_budget": engine.get("over_budget"),
+                "tokenizer": str(tokenizer) if tokenizer else None,
                 "source": "rabbit stats",
             }
         try:
@@ -215,7 +231,7 @@ def create_app(rabbit: Path, model: Path, repo: Path) -> Flask:
         tokens = max(8, min(256, tokens))
         temp = max(0.0, min(1.5, temp))
         try:
-            reply = run_generation(rabbit, model, message, tokens, temp)
+            reply = run_generation(rabbit, model, message, tokens, temp, tokenizer)
             return jsonify({"reply": reply})
         except subprocess.TimeoutExpired:
             return jsonify({"error": "generation timed out"}), 504
@@ -228,6 +244,7 @@ def create_app(rabbit: Path, model: Path, repo: Path) -> Flask:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="models/tiny-test.rabbit")
+    ap.add_argument("--tokenizer", default=None, help="Optional BPE tokenizer (.tok)")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=7860)
     ap.add_argument("--share-hint", action="store_true", help="Print Colab proxy tip")
@@ -243,20 +260,32 @@ def main():
     if not model.is_file():
         raise SystemExit(f"model not found: {args.model}")
 
-    # seed engine stats + a light generation probe
+    tokenizer: Optional[Path] = None
+    if args.tokenizer:
+        tokenizer = Path(args.tokenizer)
+        if not tokenizer.is_file():
+            alt = repo / args.tokenizer
+            if alt.is_file():
+                tokenizer = alt
+        if not tokenizer.is_file():
+            print(f"warning: tokenizer not found: {args.tokenizer}")
+            tokenizer = None
+
     try:
         with _state_lock:
             _state["engine_stats"] = run_engine_stats(rabbit, model)
     except Exception as e:
         print("warning: initial stats failed:", e)
     try:
-        run_generation(rabbit, model, "ping", 8, 0.5)
+        run_generation(rabbit, model, "ping", 8, 0.5, tokenizer)
     except Exception as e:
         print("warning: initial probe failed:", e)
 
-    app = create_app(rabbit, model, repo)
+    app = create_app(rabbit, model, repo, tokenizer)
     print(f"Rabbit binary : {rabbit}")
     print(f"Model         : {model}")
+    if tokenizer:
+        print(f"Tokenizer     : {tokenizer}")
     print(f"Dashboard     : http://127.0.0.1:{args.port}/")
     if args.share_hint:
         print("On Colab, use the UI output URL or a localtunnel/ngrok if needed.")
