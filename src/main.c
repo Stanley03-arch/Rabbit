@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
 
 static void print_usage(const char *prog) {
     fprintf(stderr,
@@ -14,21 +15,25 @@ static void print_usage(const char *prog) {
         "  %s probe    --model <path> [--prompt text]\n"
         "  %s probe-v2 --model <path> [--prompt text] [--tokens n] [--tokenizer path]\n"
         "  %s stats    --model <path>\n"
+        "  %s bench    --model <path> [options]\n"
         "\n"
         "Options:\n"
         "  --model <path>       Path to .rabbit model\n"
         "  --tokenizer <path>   BPE tokenizer (.tok / RBTTOK01)\n"
         "  --vocab <path>       Simple word vocabulary file\n"
-        "  --tokens <n>         Maximum new tokens (default: 64)\n"
+        "  --tokens <n>         Maximum new tokens (default: 64 for chat, 32 for probe/bench)\n"
         "  --temp <f>           Sampling temperature (default: 0.85)\n"
-        "  --prompt <text>      Prompt for probe (default: hi)\n"
+        "  --prompt <text>      Prompt for probe / bench (default: hi)\n"
+        "  --runs <n>           Number of timed runs for bench (default: 5)\n"
         "  -h, --help           Show this help\n"
         "\n"
         "Examples:\n"
         "  make && make test-model\n"
         "  ./rabbit chat --model models/tiny-test.rabbit --tokens 32\n"
-        "  ./rabbit stats --model models/tiny-test.rabbit\n",
-        rabbit_version(), prog, prog, prog, prog, prog);
+        "  ./rabbit stats --model models/tiny-test.rabbit\n"
+        "  ./rabbit bench --model models/ref-v2.rabbit --tokens 16 --runs 10\n"
+        "  ./rabbit probe-v2 --model models/mixtral-micro.rabbit --prompt hi --tokens 8\n",
+        rabbit_version(), prog, prog, prog, prog, prog, prog);
 }
 
 static void try_load_tokenizer(const char *tok_path, const char *vocab_path) {
@@ -46,6 +51,12 @@ static void try_load_tokenizer(const char *tok_path, const char *vocab_path) {
         }
         fprintf(stderr, "warning: could not load vocab %s (byte mode)\n", vocab_path);
     }
+}
+
+static double now_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1e6;
 }
 
 static int cmd_probe(int argc, char **argv) {
@@ -161,6 +172,104 @@ static int cmd_probe_v2(int argc, char **argv) {
     return 0;
 }
 
+static int cmd_bench(int argc, char **argv) {
+    const char *model_path = NULL;
+    const char *prompt = "hi";
+    const char *tok_path = NULL;
+    int n_new = 32;
+    int runs = 5;
+
+    for (int i = 2; i < argc; i++) {
+        if ((strcmp(argv[i], "--model") == 0) && i + 1 < argc)
+            model_path = argv[++i];
+        else if ((strcmp(argv[i], "--prompt") == 0) && i + 1 < argc)
+            prompt = argv[++i];
+        else if ((strcmp(argv[i], "--tokenizer") == 0) && i + 1 < argc)
+            tok_path = argv[++i];
+        else if ((strcmp(argv[i], "--tokens") == 0) && i + 1 < argc) {
+            n_new = atoi(argv[++i]);
+            if (n_new < 1) n_new = 1;
+            if (n_new > 256) n_new = 256;
+        } else if ((strcmp(argv[i], "--runs") == 0) && i + 1 < argc) {
+            runs = atoi(argv[++i]);
+            if (runs < 1) runs = 1;
+            if (runs > 100) runs = 100;
+        } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+            print_usage(argv[0]);
+            return 0;
+        } else {
+            fprintf(stderr, "Unknown option: %s\n", argv[i]);
+            return 1;
+        }
+    }
+    if (!model_path) {
+        fprintf(stderr, "error: --model required\n");
+        return 1;
+    }
+
+    try_load_tokenizer(tok_path, NULL);
+
+    RabbitModel *m = rabbit_load(model_path);
+    if (!m) return 1;
+
+    int max_ids = 512 + n_new;
+    int *ids = (int *)rabbit_xmalloc(sizeof(int) * (size_t)max_ids);
+
+    /* Warm-up */
+    int n = rabbit_ref_v2_greedy(m, prompt, n_new, ids, max_ids);
+    int use_v2 = (n >= 0);
+
+    if (!use_v2) {
+        /* Fallback: time a simple ref_forward path */
+        float *h = (float *)rabbit_xcalloc((size_t)m->hidden_dim, sizeof(float));
+        double total_ms = 0.0;
+        for (int r = 0; r < runs; r++) {
+            double t0 = now_ms();
+            if (rabbit_ref_forward(m, prompt, h) != 0) {
+                fprintf(stderr, "error: ref_forward failed on run %d\n", r + 1);
+                free(h);
+                free(ids);
+                rabbit_free(m);
+                return 1;
+            }
+            total_ms += now_ms() - t0;
+        }
+        double avg = total_ms / (double)runs;
+        printf("BENCH mode=probe runs=%d avg_ms=%.3f\n", runs, avg);
+        free(h);
+        free(ids);
+        rabbit_free(m);
+        return 0;
+    }
+
+    double total_ms = 0.0;
+    int total_tokens = 0;
+
+    for (int r = 0; r < runs; r++) {
+        double t0 = now_ms();
+        n = rabbit_ref_v2_greedy(m, prompt, n_new, ids, max_ids);
+        double dt = now_ms() - t0;
+        if (n < 0) {
+            fprintf(stderr, "error: ref-v2 greedy failed on run %d\n", r + 1);
+            free(ids);
+            rabbit_free(m);
+            return 1;
+        }
+        total_ms += dt;
+        total_tokens += n;
+    }
+
+    double avg_ms = total_ms / (double)runs;
+    double toks_per_sec = (total_ms > 0.0) ? ((double)total_tokens * 1000.0 / total_ms) : 0.0;
+
+    printf("BENCH mode=ref-v2 runs=%d tokens=%d avg_ms=%.3f tokens/sec=%.2f\n",
+           runs, total_tokens / runs, avg_ms, toks_per_sec);
+
+    free(ids);
+    rabbit_free(m);
+    return 0;
+}
+
 static int cmd_stats(int argc, char **argv) {
     const char *model_path = NULL;
 
@@ -259,6 +368,9 @@ int main(int argc, char **argv) {
 
     if (strcmp(argv[1], "probe-v2") == 0)
         return cmd_probe_v2(argc, argv);
+
+    if (strcmp(argv[1], "bench") == 0)
+        return cmd_bench(argc, argv);
 
     if (strcmp(argv[1], "stats") == 0)
         return cmd_stats(argc, argv);
