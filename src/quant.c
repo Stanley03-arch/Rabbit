@@ -145,31 +145,50 @@ int rabbit_dequant_int4_grouped(const uint8_t *src, float *dst, int n) {
  * GEMV: y[out] = W[out, in] * x[in]
  * W stored as group-scaled int4 (row-major, each row is `in_dim` elements).
  * Layout is one big grouped blob for the whole matrix (n = out_dim * in_dim).
+ *
+ * Optimized: dequant one row at a time into a small buffer instead of the
+ * entire matrix — much lower peak RAM on constrained hosts.
  */
 void rabbit_gemv_int4_grouped(const uint8_t *W, const float *x, float *y,
                               int out_dim, int in_dim) {
     if (!W || !x || !y || out_dim <= 0 || in_dim <= 0) return;
 
+    uint32_t group_size = 0;
+    memcpy(&group_size, W, 4);
+    if (group_size == 0 || group_size > 4096) {
+        memset(y, 0, sizeof(float) * (size_t)out_dim);
+        return;
+    }
+
     int n = out_dim * in_dim;
-    /* Dequant whole matrix into temp (simple, correct). For tiny experts OK. */
-    float *full = (float *)malloc(sizeof(float) * (size_t)n);
-    if (!full) {
+    int n_groups = (n + (int)group_size - 1) / (int)group_size;
+    const float *scales = (const float *)(W + 4);
+    const uint8_t *packed = W + 4 + n_groups * 4;
+
+    /* Row buffer avoids full-matrix allocation */
+    float *row = (float *)malloc(sizeof(float) * (size_t)in_dim);
+    if (!row) {
         memset(y, 0, sizeof(float) * (size_t)out_dim);
         return;
     }
-    if (rabbit_dequant_int4_grouped(W, full, n) != 0) {
-        free(full);
-        memset(y, 0, sizeof(float) * (size_t)out_dim);
-        return;
-    }
+
     for (int o = 0; o < out_dim; o++) {
+        int base = o * in_dim;
+        for (int i = 0; i < in_dim; i++) {
+            int flat = base + i;
+            int byte_i = flat / 2;
+            int nibble = (flat & 1) ? ((packed[byte_i] >> 4) & 0x0F) : (packed[byte_i] & 0x0F);
+            int q = nibble - 8;
+            int g = flat / (int)group_size;
+            row[i] = (float)q * scales[g];
+        }
         float sum = 0.0f;
-        const float *row = full + (size_t)o * in_dim;
         for (int i = 0; i < in_dim; i++)
             sum += row[i] * x[i];
         y[o] = sum;
     }
-    free(full);
+
+    free(row);
 }
 
 int rabbit_int4_grouped_nbytes(int n, int group_size) {
