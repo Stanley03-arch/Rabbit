@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <math.h>
 #include <time.h>
+#include <errno.h>
 
 int  rabbit_layer_step(RabbitModel *m, float *hidden, int hidden_dim);
 void rabbit_attn_reset(void);
@@ -163,25 +164,31 @@ RabbitModel *rabbit_load(const char *path) {
 
     int fd = open(path, O_RDONLY);
     if (fd < 0) {
-        perror("open");
+        int e = errno;
+        if (e == ENOENT)
+            fprintf(stderr, "error: model not found: %s\n", path);
+        else if (e == EACCES)
+            fprintf(stderr, "error: permission denied: %s\n", path);
+        else
+            fprintf(stderr, "error: cannot open %s: %s\n", path, strerror(e));
         return NULL;
     }
 
     RabbitHeader hdr;
     ssize_t n = read(fd, &hdr, sizeof(hdr));
     if (n != (ssize_t)sizeof(hdr)) {
-        fprintf(stderr, "error: incomplete header\n");
+        fprintf(stderr, "error: incomplete header in %s (got %zd bytes)\n", path, n);
         close(fd);
         return NULL;
     }
 
     if (memcmp(hdr.magic, RABBIT_MAGIC, 8) != 0) {
-        fprintf(stderr, "error: invalid magic (not a Rabbit model)\n");
+        fprintf(stderr, "error: invalid magic in %s (not a Rabbit model)\n", path);
         close(fd);
         return NULL;
     }
     if (hdr.version != 1) {
-        fprintf(stderr, "error: unsupported format version %u\n", hdr.version);
+        fprintf(stderr, "error: unsupported format version %u in %s\n", hdr.version, path);
         close(fd);
         return NULL;
     }
@@ -200,6 +207,7 @@ RabbitModel *rabbit_load(const char *path) {
 
     RabbitModel *m = calloc(1, sizeof(RabbitModel));
     if (!m) {
+        fprintf(stderr, "error: out of memory allocating model structure\n");
         close(fd);
         return NULL;
     }
@@ -221,14 +229,16 @@ RabbitModel *rabbit_load(const char *path) {
     if (hdr.dense_size > 0) {
         m->dense = malloc(hdr.dense_size);
         if (!m->dense) {
-            fprintf(stderr, "error: out of memory for dense weights\n");
+            fprintf(stderr, "error: out of memory for dense weights (%.1f MB)\n",
+                    hdr.dense_size / (1024.0 * 1024.0));
             free(m);
             close(fd);
             return NULL;
         }
         n = read(fd, m->dense, hdr.dense_size);
         if (n != (ssize_t)hdr.dense_size) {
-            fprintf(stderr, "error: failed to read dense blob\n");
+            fprintf(stderr, "error: failed to read dense blob (got %zd of %llu bytes)\n",
+                    n, (unsigned long long)hdr.dense_size);
             free(m->dense);
             free(m);
             close(fd);
@@ -251,7 +261,7 @@ RabbitModel *rabbit_load(const char *path) {
             rabbit_munmap_file(base, map_size, map_fd);
         }
     } else {
-        fprintf(stderr, "warning: could not memory-map model file\n");
+        fprintf(stderr, "warning: could not memory-map model file (experts may be slow)\n");
     }
 
     m->cache = rabbit_cache_create(m->cache_slots);
@@ -293,8 +303,7 @@ static int sample_token(const float *probs, int n, float temperature) {
             if (probs[i] > best_p) { best_p = probs[i]; best = i; }
         return best;
     }
-    float *tmp = malloc(sizeof(float) * (size_t)n);
-    if (!tmp) return 0;
+    float *tmp = (float *)rabbit_xmalloc(sizeof(float) * (size_t)n);
     for (int i = 0; i < n; i++)
         tmp[i] = powf(probs[i], 1.0f / temperature);
     float sum = 0.0f;
@@ -324,14 +333,9 @@ static void lm_head_toy(const float *hidden, int hidden_dim, float *logits, int 
 static void generate_v2(RabbitModel *m, const char *prompt, int max_new_tokens, float temperature) {
     int vocab = m->vocab_size > 0 ? m->vocab_size : 256;
     int max_ids = (int)strlen(prompt) + max_new_tokens + 16;
-    int *tokens = (int *)malloc(sizeof(int) * (size_t)max_ids);
-    float *hidden = (float *)malloc(sizeof(float) * (size_t)m->hidden_dim);
-    float *logits = (float *)malloc(sizeof(float) * (size_t)vocab);
-    if (!tokens || !hidden || !logits) {
-        free(tokens); free(hidden); free(logits);
-        fprintf(stderr, "error: out of memory during v2 generation\n");
-        return;
-    }
+    int *tokens = (int *)rabbit_xmalloc(sizeof(int) * (size_t)max_ids);
+    float *hidden = (float *)rabbit_xmalloc(sizeof(float) * (size_t)m->hidden_dim);
+    float *logits = (float *)rabbit_xmalloc(sizeof(float) * (size_t)vocab);
 
     int n = 0;
     for (const unsigned char *p = (const unsigned char *)prompt; *p && n < max_ids - max_new_tokens - 1; p++)
@@ -379,14 +383,9 @@ static void generate(RabbitModel *m, const char *prompt, int max_new_tokens, flo
     int vocab = rabbit_tokenizer_vocab();
     if (vocab > 4096) vocab = 4096;
 
-    float *hidden = calloc((size_t)dim, sizeof(float));
-    float *logits = calloc((size_t)vocab, sizeof(float));
-    int *tokens = malloc(sizeof(int) * ((size_t)strlen(prompt) + (size_t)max_new_tokens + 16));
-    if (!hidden || !logits || !tokens) {
-        free(hidden); free(logits); free(tokens);
-        fprintf(stderr, "error: out of memory during generation\n");
-        return;
-    }
+    float *hidden = (float *)rabbit_xcalloc((size_t)dim, sizeof(float));
+    float *logits = (float *)rabbit_xcalloc((size_t)vocab, sizeof(float));
+    int *tokens = (int *)rabbit_xmalloc(sizeof(int) * ((size_t)strlen(prompt) + (size_t)max_new_tokens + 16));
 
     rabbit_attn_reset();
     int n_tokens = rabbit_tokenize(prompt, tokens, 512);
