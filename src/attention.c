@@ -57,12 +57,8 @@ static int ensure_kv(int dim) {
     g_kv.max_len = RABBIT_MAX_CTX;
     derive_heads(dim, &g_kv.n_heads, &g_kv.head_dim);
 
-    g_kv.k_cache = calloc((size_t)g_kv.max_len * dim, sizeof(float));
-    g_kv.v_cache = calloc((size_t)g_kv.max_len * dim, sizeof(float));
-    if (!g_kv.k_cache || !g_kv.v_cache) {
-        rabbit_attn_reset();
-        return -1;
-    }
+    g_kv.k_cache = (float *)rabbit_xcalloc((size_t)g_kv.max_len * dim, sizeof(float));
+    g_kv.v_cache = (float *)rabbit_xcalloc((size_t)g_kv.max_len * dim, sizeof(float));
     return 0;
 }
 
@@ -86,8 +82,7 @@ static void apply_rope_head(float *x, int head_dim, int pos) {
 static void tiny_attention(float *x, int dim) {
     if (ensure_kv(dim) != 0) return;
 
-    float *q = (float *)malloc((size_t)dim * sizeof(float));
-    if (!q) return;
+    float *q = (float *)rabbit_xmalloc((size_t)dim * sizeof(float));
     memcpy(q, x, (size_t)dim * sizeof(float));
 
     /* RoPE per head on query */
