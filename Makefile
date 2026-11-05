@@ -17,7 +17,7 @@ TEST_BIN = tests/test_quant
 # Optional quant for live-moe (0=f32 parity, 4=group-int4 disk-friendly)
 LIVE_QUANT ?= 4
 
-.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro stream-mixtral smoke test parity parity-v2 m2 exact-f32 live-moe check version
+.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro stream-mixtral smoke bench-smoke test parity parity-v2 m2 exact-f32 live-moe check version
 
 all: $(TARGET)
 
@@ -92,7 +92,12 @@ smoke: $(TARGET) test-model
 	@grep -q "Rabbit" /tmp/rabbit-smoke.out /tmp/rabbit-smoke.err
 	@echo "smoke: ok"
 
-check: test smoke parity parity-v2 m2 exact-f32 mixtral-micro stream-mixtral
+# Quick bench path (works on tiny-test / probe fallback)
+bench-smoke: $(TARGET) test-model
+	./$(TARGET) bench --model models/tiny-test.rabbit --tokens 8 --runs 2
+	@echo "bench-smoke: ok"
+
+check: test smoke bench-smoke parity parity-v2 m2 exact-f32 mixtral-micro stream-mixtral
 	@echo "check: all passed"
 
 debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
