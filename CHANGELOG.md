@@ -12,10 +12,11 @@
 ### Engine robustness
 - Clearer model-load errors: ENOENT / EACCES / strerror with path context
 - Generation paths now use `rabbit_xmalloc` / `rabbit_xcalloc` throughout
+- Attention KV cache and MoE expert apply use safer alloc helpers
 - **int4 group GEMV** is now row-wise (one row buffer) instead of full-matrix dequant — lower peak RAM on constrained hosts
 
 ### Product surface
-- `rabbit_server.py` and `rabbit_dashboard.py` both accept `--tokenizer` and pass it to the engine
+- `rabbit_server.py`, `rabbit_dashboard.py`, and `rabbit_ui.py` (Gradio) all accept `--tokenizer`
 - Dashboard UI: Clear chat button, empty state, Enter-to-send hint
 
 ### Docs & polish
