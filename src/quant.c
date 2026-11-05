@@ -166,11 +166,7 @@ void rabbit_gemv_int4_grouped(const uint8_t *W, const float *x, float *y,
     const uint8_t *packed = W + 4 + n_groups * 4;
 
     /* Row buffer avoids full-matrix allocation */
-    float *row = (float *)malloc(sizeof(float) * (size_t)in_dim);
-    if (!row) {
-        memset(y, 0, sizeof(float) * (size_t)out_dim);
-        return;
-    }
+    float *row = (float *)rabbit_xmalloc(sizeof(float) * (size_t)in_dim);
 
     for (int o = 0; o < out_dim; o++) {
         int base = o * in_dim;
