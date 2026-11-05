@@ -2,7 +2,12 @@
 """Low-RAM streaming HF safetensors → rabbit-ref-v2 (group-int4 or f32 experts).
 
 Supports single-file and multi-shard safetensors without loading the full
-checkpoint into RAM. Uses Mixtral tensor names (w1/w3/w2, block_sparse_moe).
+checkpoint into RAM.
+
+Expert / router naming (auto-detected):
+  Mixtral:  block_sparse_moe.experts.{e}.w1|w2|w3  + block_sparse_moe.gate
+  Qwen:     mlp.experts.{e}.gate_proj|up_proj|down_proj  + mlp.gate
+  Other:    moe.experts / sparse_moe variants (see rabbit_name_maps.py)
 """
 from __future__ import annotations
 
@@ -12,12 +17,27 @@ import struct
 import sys
 import time
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional, Tuple
 
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from rabbit_convert_pack import write_header
+from rabbit_name_maps import (
+    ATTN_K_TEMPLATES,
+    ATTN_O_TEMPLATES,
+    ATTN_Q_TEMPLATES,
+    ATTN_V_TEMPLATES,
+    EMBED_TEMPLATES,
+    FINAL_NORM_TEMPLATES,
+    INPUT_NORM_TEMPLATES,
+    LM_HEAD_TEMPLATES,
+    POST_NORM_TEMPLATES,
+    detect_expert_scheme,
+    first_present,
+    resolve_expert_triple_names,
+    resolve_router_name,
+)
 
 try:
     from safetensors import safe_open
@@ -101,6 +121,9 @@ class ShardIndex:
                 f"{len(st_files)} file(s)"
             )
 
+    def has(self, name: str) -> bool:
+        return name in self.name_to_file
+
     def get(self, name: str) -> Optional[np.ndarray]:
         path = self.name_to_file.get(name)
         if path is None:
@@ -121,6 +144,16 @@ class ShardIndex:
             )
         return t
 
+    def require_any(self, names) -> Tuple[str, np.ndarray]:
+        name, val = first_present(self.get, names)
+        if val is None:
+            sample = list(self.name_to_file)[:8]
+            raise SystemExit(
+                f"Missing required tensor (tried {list(names)[:4]}…)\n"
+                f"  Available sample: {sample}..."
+            )
+        return name, val  # type: ignore[return-value]
+
     def close(self) -> None:
         self._open.clear()
 
@@ -139,9 +172,38 @@ def pack_expert(g: np.ndarray, u: np.ndarray, d: np.ndarray, quant: int) -> byte
     )
 
 
+def load_expert(
+    shards: ShardIndex,
+    layer: int,
+    expert: int,
+    inter: int,
+    H: int,
+    scheme_index: Optional[int],
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    """Load gate/up/down for one expert; return arrays + matching scheme index."""
+    triples = resolve_expert_triple_names(layer, expert)
+    order = list(range(len(triples)))
+    if scheme_index is not None:
+        order = [scheme_index] + [i for i in order if i != scheme_index]
+
+    for idx in order:
+        g_name, u_name, d_name = triples[idx]
+        g = shards.get(g_name)
+        u = shards.get(u_name)
+        d = shards.get(d_name)
+        if g is not None and u is not None and d is not None:
+            return fit2d(g, inter, H), fit2d(u, inter, H), fit2d(d, H, inter), idx
+
+    tried = [t[0] for t in triples[:4]]
+    raise SystemExit(
+        f"Missing expert weights for layer={layer} expert={expert}\n"
+        f"  Tried schemes starting with: {tried}"
+    )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Stream HF Mixtral-style MoE → .rabbit (low RAM)"
+        description="Stream HF MoE (Mixtral / Qwen / variants) → .rabbit (low RAM)"
     )
     ap.add_argument("--model-dir", required=True)
     ap.add_argument("--out", required=True)
@@ -168,10 +230,17 @@ def main() -> None:
     H = int(config["hidden_size"])
     L = int(config["num_hidden_layers"])
     V = int(config["vocab_size"])
-    E = int(config.get("num_local_experts") or config.get("num_experts") or 0)
+    E = int(
+        config.get("num_local_experts")
+        or config.get("num_experts")
+        or config.get("n_routed_experts")
+        or 0
+    )
     if E <= 0:
-        raise SystemExit("config: num_local_experts / num_experts missing")
-    top_k = int(config.get("num_experts_per_tok") or 2)
+        raise SystemExit(
+            "config: num_local_experts / num_experts / n_routed_experts missing"
+        )
+    top_k = int(config.get("num_experts_per_tok") or config.get("moe_top_k") or 2)
     inter = int(
         config.get("moe_intermediate_size")
         or config.get("intermediate_size")
@@ -200,11 +269,14 @@ def main() -> None:
     )
 
     shards = ShardIndex(model_dir)
+    scheme = detect_expert_scheme(shards.has, layer=0, expert=0)
+    print(f"[scheme] experts={scheme or 'auto-probe per layer'}")
+
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    T = shards.require
     t0 = time.time()
+    scheme_index: Optional[int] = None
 
     with open(out, "wb") as f:
         write_header(
@@ -226,13 +298,14 @@ def main() -> None:
             head_dim=head_dim,
         )
 
-        embed = T("model.embed_tokens.weight")
+        _, embed = shards.require_any(
+            [t for t in EMBED_TEMPLATES]
+        )
         emb = fit2d(embed, V, H)
         f.write(emb.tobytes())
 
-        lm = shards.get("lm_head.weight")
+        lm_name, lm = first_present(shards.get, LM_HEAD_TEMPLATES)
         if lm is not None:
-            # HF lm_head is usually [V, H]; pack as [H, V]
             lm_w = fit2d(lm, V, H).T.copy()
             f.write(lm_w.astype(np.float32).tobytes())
             del lm, lm_w
@@ -240,31 +313,51 @@ def main() -> None:
             f.write(emb.T.copy().tobytes())
         del embed, emb
 
-        norm = T("model.norm.weight").astype(np.float32).reshape(-1)
+        _, norm = shards.require_any(FINAL_NORM_TEMPLATES)
+        norm = np.asarray(norm, dtype=np.float32).reshape(-1)
         if norm.size < H:
             norm = np.pad(norm, (0, H - norm.size), constant_values=1.0)
         f.write(norm[:H].tobytes())
 
         for layer in range(L):
-            p = f"model.layers.{layer}"
-            for nname in ("input_layernorm.weight", "post_attention_layernorm.weight"):
-                w = T(f"{p}.{nname}").astype(np.float32).reshape(-1)
-                if w.size < H:
-                    w = np.pad(w, (0, H - w.size), constant_values=1.0)
-                f.write(w[:H].tobytes())
-            f.write(fit2d(T(f"{p}.self_attn.q_proj.weight"), q_dim, H).tobytes())
-            f.write(fit2d(T(f"{p}.self_attn.k_proj.weight"), kv_dim, H).tobytes())
-            f.write(fit2d(T(f"{p}.self_attn.v_proj.weight"), kv_dim, H).tobytes())
-            f.write(fit2d(T(f"{p}.self_attn.o_proj.weight"), H, q_dim).tobytes())
-            f.write(fit2d(T(f"{p}.block_sparse_moe.gate.weight"), E, H).tobytes())
-            print(f"  dense {layer + 1}/{L}", flush=True)
+            def layer_names(templates):
+                return [t.format(layer=layer) for t in templates]
+
+            _, in_n = shards.require_any(layer_names(INPUT_NORM_TEMPLATES))
+            in_n = np.asarray(in_n, dtype=np.float32).reshape(-1)
+            if in_n.size < H:
+                in_n = np.pad(in_n, (0, H - in_n.size), constant_values=1.0)
+            f.write(in_n[:H].tobytes())
+
+            _, post_n = shards.require_any(layer_names(POST_NORM_TEMPLATES))
+            post_n = np.asarray(post_n, dtype=np.float32).reshape(-1)
+            if post_n.size < H:
+                post_n = np.pad(post_n, (0, H - post_n.size), constant_values=1.0)
+            f.write(post_n[:H].tobytes())
+
+            _, q = shards.require_any(layer_names(ATTN_Q_TEMPLATES))
+            _, k = shards.require_any(layer_names(ATTN_K_TEMPLATES))
+            _, v = shards.require_any(layer_names(ATTN_V_TEMPLATES))
+            _, o = shards.require_any(layer_names(ATTN_O_TEMPLATES))
+            f.write(fit2d(q, q_dim, H).tobytes())
+            f.write(fit2d(k, kv_dim, H).tobytes())
+            f.write(fit2d(v, kv_dim, H).tobytes())
+            f.write(fit2d(o, H, q_dim).tobytes())
+
+            r_name, router = first_present(shards.get, resolve_router_name(layer))
+            if router is None:
+                raise SystemExit(
+                    f"Missing router/gate for layer {layer} "
+                    f"(tried Mixtral block_sparse_moe.gate / Qwen mlp.gate / …)"
+                )
+            f.write(fit2d(router, E, H).tobytes())
+            print(f"  dense {layer + 1}/{L}  router={r_name}", flush=True)
 
         for layer in range(L):
             for e in range(E):
-                base = f"model.layers.{layer}.block_sparse_moe.experts.{e}"
-                g = fit2d(T(f"{base}.w1.weight"), inter, H)
-                u = fit2d(T(f"{base}.w3.weight"), inter, H)
-                d = fit2d(T(f"{base}.w2.weight"), H, inter)
+                g, u, d, scheme_index = load_expert(
+                    shards, layer, e, inter, H, scheme_index
+                )
                 blob = pack_expert(g, u, d, quant)
                 if len(blob) < expert_size:
                     blob += b"\0" * (expert_size - len(blob))
