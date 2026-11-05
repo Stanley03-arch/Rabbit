@@ -14,10 +14,19 @@
 - Generation, attention, MoE, and quant paths use safer alloc helpers
 - **int4 group GEMV** is now row-wise (one row buffer) instead of full-matrix dequant — lower peak RAM on constrained hosts
 
+### Converters
+- Shared `tools/rabbit_name_maps.py` for HF MoE tensor name variants
+- Streaming converter auto-detects:
+  - **Mixtral**: `block_sparse_moe.experts.*.w1|w2|w3` + `block_sparse_moe.gate`
+  - **Qwen2/3-MoE**: `mlp.experts.*.gate_proj|up_proj|down_proj` + `mlp.gate`
+  - **moe / sparse_moe** alternate prefixes
+- Also resolves alternate embed / norm / attention path names
+- Config accepts `n_routed_experts` as expert count fallback
+- `--name` flag, 1-based progress, elapsed time
+
 ### Product surface
 - `rabbit_server.py`, `rabbit_dashboard.py`, and `rabbit_ui.py` (Gradio) all accept `--tokenizer`
 - Dashboard UI: Clear chat button, empty state, Enter-to-send hint
-- Streaming converter: `--name` flag, 1-based progress, elapsed time
 
 ### Docs & polish
 - Version bumped to 0.4.12
