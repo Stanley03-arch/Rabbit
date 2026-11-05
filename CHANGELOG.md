@@ -1,3 +1,17 @@
+## [0.4.12] - 2026-11-05
+
+### CLI
+- **Implemented** the `bench` command (was documented in 0.4.11 but missing from binary)
+  - Times ref-v2 greedy generation (or falls back to probe path)
+  - Reports average ms and tokens/sec across `--runs` (default 5)
+  - Supports `--model`, `--prompt`, `--tokens`, `--tokenizer`, `--runs`
+- Expanded help text with all commands and clearer examples
+- Consistent option handling across chat / probe / probe-v2 / bench / stats
+
+### Docs & polish
+- Version bumped to 0.4.12
+- README and ROADMAP updated for current feature set
+
 ## [0.4.11] - 2026-11-03
 
 ### CLI
