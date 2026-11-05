@@ -10,6 +10,18 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
+try:
+    from rabbit_name_maps import EXPERT_MARKERS
+except ImportError:
+    EXPERT_MARKERS = (
+        ".experts.",
+        "block_sparse_moe.experts",
+        "mlp.experts",
+        "moe.experts",
+        "sparse_moe.experts",
+        "feed_forward.experts",
+    )
+
 RABBIT_MAGIC = b"RABBIT01"
 HEADER_SIZE = struct.calcsize(
     "8s" + "I" * 8 + "Q" * 3 + "I" * 2 + "64s" + "128s"
@@ -187,16 +199,9 @@ def classify_tensors(tensors: Dict[str, np.ndarray]):
     dense = {}
     experts: Dict[int, Dict[str, np.ndarray]] = {}
 
-    expert_markers = (
-        ".experts.",
-        "block_sparse_moe.experts",
-        "mlp.experts",
-        "moe.experts",
-    )
-
     for name, arr in tensors.items():
         lower = name.replace("/", ".")
-        is_expert = any(m in lower for m in expert_markers)
+        is_expert = any(m in lower for m in EXPERT_MARKERS)
 
         if not is_expert:
             dense[name] = arr
@@ -227,16 +232,9 @@ def collect_experts_per_layer(
         [{} for _ in range(n_experts)] for _ in range(n_layers)
     ]
 
-    expert_markers = (
-        ".experts.",
-        "block_sparse_moe.experts",
-        "mlp.experts",
-        "moe.experts",
-    )
-
     def _parse_layer_expert(name: str) -> Optional[Tuple[int, int]]:
         lower = name.replace("/", ".").lower()
-        if not any(m in lower for m in expert_markers):
+        if not any(m in lower for m in EXPERT_MARKERS):
             return None
         parts = lower.split(".")
         layer_idx: Optional[int] = None
