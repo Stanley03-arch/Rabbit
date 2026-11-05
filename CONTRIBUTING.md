@@ -11,19 +11,23 @@ make
 make test-model
 ./rabbit chat --model models/tiny-test.rabbit
 ./rabbit version
+./rabbit stats --model models/tiny-test.rabbit
+./rabbit bench --model models/tiny-test.rabbit --tokens 8 --runs 2
 ```
 
-Python tooling (converter):
+Python tooling (converter + UIs):
 
 ```bash
-pip install numpy safetensors
+pip install numpy safetensors flask   # + gradio for tools/rabbit_ui.py
 python tools/convert_hf_to_rabbit.py --demo --out models/demo-moe.rabbit
+python tools/rabbit_server.py --model models/tiny-test.rabbit
+python tools/rabbit_dashboard.py --model models/tiny-test.rabbit
 ```
 
 Full local check (recommended before a PR):
 
 ```bash
-make check
+make check   # includes unit tests, smoke, bench-smoke, parity, m2, mixtral
 ```
 
 ## Code guidelines
@@ -36,6 +40,18 @@ make check
 - **Format:** Match existing style (4-space or as in neighboring files; keep headers consistent with `rabbit.h`).
 - **Commits:** Prefer small, focused commits with imperative messages  
   (e.g. `Add int4 GEMV path`, not `updates`).
+
+## CLI surface (keep in sync)
+
+| Command | Role |
+|---------|------|
+| `chat` | Interactive generation |
+| `stats` | JSON model / memory report |
+| `bench` | Timed ref-v2 (or probe fallback); `--runs` |
+| `probe` / `probe-v2` | One-shot hidden / token dumps |
+| `version` | Print version string |
+
+Optional flags used across tools: `--model`, `--tokenizer`, `--tokens`, `--temp`, `--prompt`, `--runs`.
 
 ## What is most useful right now
 
