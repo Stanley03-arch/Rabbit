@@ -7,13 +7,16 @@
   - Supports `--model`, `--prompt`, `--tokens`, `--tokenizer`, `--runs`
 - Expanded help text with all commands and clearer examples
 - Consistent option handling across chat / probe / probe-v2 / bench / stats
+- `make bench-smoke` target added and included in `make check`
 
 ### Engine robustness
 - Clearer model-load errors: ENOENT / EACCES / strerror with path context
 - Generation paths now use `rabbit_xmalloc` / `rabbit_xcalloc` throughout
+- **int4 group GEMV** is now row-wise (one row buffer) instead of full-matrix dequant — lower peak RAM on constrained hosts
 
 ### Product surface
 - `rabbit_server.py` and `rabbit_dashboard.py` both accept `--tokenizer` and pass it to the engine
+- Dashboard UI: Clear chat button, empty state, Enter-to-send hint
 
 ### Docs & polish
 - Version bumped to 0.4.12
