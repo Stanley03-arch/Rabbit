@@ -105,8 +105,7 @@ static void apply_expert(const RabbitModel *m, const void *expert_data,
     size_t size = m->expert_size;
     int quant = (int)m->hdr.expert_quant; /* 0 = f32 */
 
-    float *delta = (float *)calloc((size_t)hidden_dim, sizeof(float));
-    if (!delta) return;
+    float *delta = (float *)rabbit_xcalloc((size_t)hidden_dim, sizeof(float));
 
     int inter = m->hdr.expert_dim > 0 ? (int)m->hdr.expert_dim : hidden_dim * 2;
     if (inter > hidden_dim * 4) inter = hidden_dim * 2;
@@ -119,52 +118,50 @@ static void apply_expert(const RabbitModel *m, const void *expert_data,
     size_t need3 = one_mat * 3;
 
     if (size >= need3 && inter > 0) {
-        float *tmp_gate = (float *)calloc((size_t)inter, sizeof(float));
-        float *tmp_up   = (float *)calloc((size_t)inter, sizeof(float));
-        float *tmp_mid  = (float *)calloc((size_t)inter, sizeof(float));
-        if (tmp_gate && tmp_up && tmp_mid) {
-            const uint8_t *p = bytes;
-            for (int part = 0; part < 3; part++) {
-                float scale = 1.0f / 127.0f;
-                if (size - (p - bytes) >= 4) {
-                    memcpy(&scale, p, 4);
-                    if (!(scale > 0.0f) || !isfinite(scale))
-                        scale = 1.0f / 127.0f;
-                    p += 4;
-                }
-                const uint8_t *W = p;
-                size_t payload = (quant == 4) ? ((mat_elems + 1) / 2) : mat_elems;
-                p += payload;
+        float *tmp_gate = (float *)rabbit_xcalloc((size_t)inter, sizeof(float));
+        float *tmp_up   = (float *)rabbit_xcalloc((size_t)inter, sizeof(float));
+        float *tmp_mid  = (float *)rabbit_xcalloc((size_t)inter, sizeof(float));
 
-                if (part == 0) {
-                    if (quant == 4)
-                        gemv_int4(W, scale, hidden, tmp_gate, inter, hidden_dim, 1.0f);
-                    else
-                        gemv_int8((const int8_t *)W, scale, hidden, tmp_gate, inter, hidden_dim, 1.0f);
-                } else if (part == 1) {
-                    if (quant == 4)
-                        gemv_int4(W, scale, hidden, tmp_up, inter, hidden_dim, 1.0f);
-                    else
-                        gemv_int8((const int8_t *)W, scale, hidden, tmp_up, inter, hidden_dim, 1.0f);
-                } else {
-                    for (int i = 0; i < inter; i++) {
-                        float g = tmp_gate[i];
-                        float sig = 1.0f / (1.0f + expf(-g));
-                        tmp_mid[i] = (g * sig) * tmp_up[i];
-                    }
-                    if (quant == 4)
-                        gemv_int4(W, scale, tmp_mid, delta, hidden_dim, inter, weight);
-                    else
-                        gemv_int8((const int8_t *)W, scale, tmp_mid, delta, hidden_dim, inter, weight);
-                }
+        const uint8_t *p = bytes;
+        for (int part = 0; part < 3; part++) {
+            float scale = 1.0f / 127.0f;
+            if (size - (p - bytes) >= 4) {
+                memcpy(&scale, p, 4);
+                if (!(scale > 0.0f) || !isfinite(scale))
+                    scale = 1.0f / 127.0f;
+                p += 4;
             }
-            for (int i = 0; i < hidden_dim; i++)
-                hidden[i] += delta[i];
-            free(tmp_gate); free(tmp_up); free(tmp_mid);
-            free(delta);
-            return;
+            const uint8_t *W = p;
+            size_t payload = (quant == 4) ? ((mat_elems + 1) / 2) : mat_elems;
+            p += payload;
+
+            if (part == 0) {
+                if (quant == 4)
+                    gemv_int4(W, scale, hidden, tmp_gate, inter, hidden_dim, 1.0f);
+                else
+                    gemv_int8((const int8_t *)W, scale, hidden, tmp_gate, inter, hidden_dim, 1.0f);
+            } else if (part == 1) {
+                if (quant == 4)
+                    gemv_int4(W, scale, hidden, tmp_up, inter, hidden_dim, 1.0f);
+                else
+                    gemv_int8((const int8_t *)W, scale, hidden, tmp_up, inter, hidden_dim, 1.0f);
+            } else {
+                for (int i = 0; i < inter; i++) {
+                    float g = tmp_gate[i];
+                    float sig = 1.0f / (1.0f + expf(-g));
+                    tmp_mid[i] = (g * sig) * tmp_up[i];
+                }
+                if (quant == 4)
+                    gemv_int4(W, scale, tmp_mid, delta, hidden_dim, inter, weight);
+                else
+                    gemv_int8((const int8_t *)W, scale, tmp_mid, delta, hidden_dim, inter, weight);
+            }
         }
+        for (int i = 0; i < hidden_dim; i++)
+            hidden[i] += delta[i];
         free(tmp_gate); free(tmp_up); free(tmp_mid);
+        free(delta);
+        return;
     }
 
     float scale = 1.0f / 127.0f;
@@ -216,8 +213,7 @@ int rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim) {
     if (k > m->num_experts) k = m->num_experts;
     if (k > 8) k = 8;
 
-    float *scores = (float *)malloc(sizeof(float) * (size_t)m->num_experts);
-    if (!scores) return -1;
+    float *scores = (float *)rabbit_xmalloc(sizeof(float) * (size_t)m->num_experts);
 
     for (int e = 0; e < m->num_experts; e++) {
         float s = 0.0f;
