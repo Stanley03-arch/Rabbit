@@ -6,7 +6,7 @@ Rabbit is a pure-C engine that keeps dense weights in RAM and streams routed exp
 
 Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) — not a clone of its product or UI.
 
-> **Status:** v0.4.11 — Phase A–C product surface + Phase D quality spine (parity, GQA, Mixtral naming, streaming HF converter). OpenAI-compatible HTTP API with **SSE streaming**, `rabbit stats` / `bench`, dashboard driven by engine JSON. Safer allocation helpers and clearer model-load errors.
+> **Status:** v0.4.12 — Phase A–C product surface + Phase D quality spine (parity, GQA, Mixtral naming, streaming HF converter). OpenAI-compatible HTTP API with **SSE streaming**, `rabbit stats` / `bench`, dashboard driven by engine JSON. Safer allocation helpers and clearer model-load errors.
 
 [![Dashboard in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_dashboard.ipynb)
 
@@ -18,6 +18,7 @@ Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) �
 |-----------|-------------|
 | **CLI** | `./rabbit chat --model …` |
 | **Stats** | `./rabbit stats --model …` (JSON) |
+| **Bench** | `./rabbit bench --model …` (avg ms + tokens/sec) |
 | **HTTP API** | OpenAI-compatible + SSE streaming |
 | **Dashboard** | Dark cockpit: chat, model/memory stats, expert cache |
 | **Gradio** | Simple browser chat (`tools/rabbit_ui.py`) |
@@ -64,6 +65,7 @@ make
 make test-model
 ./rabbit chat --model models/tiny-test.rabbit
 ./rabbit stats --model models/tiny-test.rabbit
+./rabbit bench --model models/tiny-test.rabbit --tokens 16 --runs 5
 ```
 
 Memory budget (optional):
@@ -82,6 +84,7 @@ export RABBIT_MEM_BUDGET_MB=1024   # default 1536
 - HF → `.rabbit` converter (`layout v2`) and **low-RAM streaming** converter  
 - OpenAI-compatible HTTP API with SSE streaming  
 - Dashboard metrics from `rabbit stats`  
+- `rabbit bench` for quick throughput measurement  
 - Exact C vs NumPy parity on frozen ref models  
 
 ---
