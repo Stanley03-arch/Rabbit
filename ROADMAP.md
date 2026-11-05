@@ -10,7 +10,7 @@ Memory + SwiGLU + multi-head RoPE done.
 
 ## Phase C — Product surface (mostly complete)
 
-OpenAI API + SSE, `rabbit stats`, dashboard engine metrics.
+OpenAI API + SSE, `rabbit stats`, `rabbit bench`, dashboard engine metrics.
 
 ## Phase D — Quality spine
 
