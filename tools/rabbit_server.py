@@ -101,13 +101,13 @@ def extract_reply(stdout: str) -> str:
     return text or "[no generation captured]"
 
 
-def run_chat(
+def _chat_cmd(
     rabbit: Path,
     model: Path,
-    message: str,
     max_tokens: int,
     temperature: float,
-) -> str:
+    tokenizer: Optional[Path] = None,
+) -> List[str]:
     cmd = [
         str(rabbit),
         "chat",
@@ -118,6 +118,20 @@ def run_chat(
         "--temp",
         str(temperature),
     ]
+    if tokenizer and tokenizer.is_file():
+        cmd.extend(["--tokenizer", str(tokenizer)])
+    return cmd
+
+
+def run_chat(
+    rabbit: Path,
+    model: Path,
+    message: str,
+    max_tokens: int,
+    temperature: float,
+    tokenizer: Optional[Path] = None,
+) -> str:
+    cmd = _chat_cmd(rabbit, model, max_tokens, temperature, tokenizer)
     stdin = (message.strip() + "\nquit\n").encode("utf-8", errors="replace")
     proc = subprocess.run(cmd, input=stdin, capture_output=True, timeout=180)
     stdout = proc.stdout.decode("utf-8", errors="replace")
@@ -145,21 +159,13 @@ def iter_chat_tokens(
     message: str,
     max_tokens: int,
     temperature: float,
+    tokenizer: Optional[Path] = None,
 ) -> Generator[str, None, None]:
     """
     Stream tokens as the engine prints them (fputs + fflush per token).
     Falls back to chunking a full reply if live parse yields nothing.
     """
-    cmd = [
-        str(rabbit),
-        "chat",
-        "--model",
-        str(model),
-        "--tokens",
-        str(max_tokens),
-        "--temp",
-        str(temperature),
-    ]
+    cmd = _chat_cmd(rabbit, model, max_tokens, temperature, tokenizer)
     stdin = (message.strip() + "\nquit\n").encode("utf-8", errors="replace")
     proc = subprocess.Popen(
         cmd,
@@ -176,8 +182,6 @@ def iter_chat_tokens(
     except BrokenPipeError:
         pass
 
-    # State: skip banner until we have seen the prompt echo phase, then emit.
-    # Engine prints banners, then "> ", then generation pieces (often without newlines).
     buf = ""
     past_banner = False
     yielded = False
@@ -198,25 +202,20 @@ def iter_chat_tokens(
             buf += text
 
             if not past_banner:
-                # Wait until after the interactive prompt marker
                 if ">" in buf or "Enter text" in buf:
-                    # drop everything through the last '>'
                     idx = buf.rfind(">")
                     if idx >= 0:
                         buf = buf[idx + 1 :]
                     past_banner = True
                 elif len(buf) > 8000:
-                    # safety: treat rest as content
                     past_banner = True
                 else:
                     continue
 
-            # Emit complete lines; keep partial trailing fragment
             while "\n" in buf:
                 line, buf = buf.split("\n", 1)
                 if _is_banner_line(line):
                     if yielded:
-                        # generation finished (blank / cache footer)
                         buf = ""
                         proc.kill()
                         break
@@ -226,15 +225,9 @@ def iter_chat_tokens(
                     yielded = True
                     yield piece
             else:
-                # no newline — engine often prints tokens without \n
-                # flush safe printable run (avoid holding forever)
                 if past_banner and buf and not buf.endswith(" ") and len(buf) >= 1:
-                    # emit character runs that look like generation, keep last partial word optional
-                    # Prefer emitting whole buffer when it has no control chars
                     if all(ord(c) >= 32 or c in "\t" for c in buf):
-                        # hold short buffers briefly to coalesce tokens
                         if len(buf) >= 4 or (yielded and len(buf) >= 1):
-                            # if banner-ish, skip
                             if not _is_banner_line(buf):
                                 yielded = True
                                 yield buf
@@ -243,7 +236,6 @@ def iter_chat_tokens(
             if proc.poll() is not None and not chunk:
                 break
 
-        # leftover
         if past_banner and buf.strip() and not _is_banner_line(buf):
             yielded = True
             yield buf.strip()
@@ -256,9 +248,8 @@ def iter_chat_tokens(
             pass
 
     if not yielded:
-        # Fallback: full run + word chunks
         try:
-            reply = run_chat(rabbit, model, message, max_tokens, temperature)
+            reply = run_chat(rabbit, model, message, max_tokens, temperature, tokenizer)
         except Exception:
             reply = "[generation failed]"
         for word in re.findall(r"\S+\s*", reply) or [reply]:
@@ -304,11 +295,11 @@ def stream_completion(
     prompt: str,
     max_tokens: int,
     temperature: float,
+    tokenizer: Optional[Path] = None,
 ) -> Generator[str, None, None]:
     cid = "chatcmpl-" + uuid.uuid4().hex[:24]
     created = int(time.time())
 
-    # role chunk
     yield sse_pack(
         {
             "id": cid,
@@ -326,7 +317,7 @@ def stream_completion(
     )
 
     try:
-        for piece in iter_chat_tokens(rabbit, model, prompt, max_tokens, temperature):
+        for piece in iter_chat_tokens(rabbit, model, prompt, max_tokens, temperature, tokenizer):
             if not piece:
                 continue
             yield sse_pack(
@@ -373,12 +364,25 @@ def stream_completion(
     yield "data: [DONE]\n\n"
 
 
-def create_app(rabbit: Path, model: Path, model_id: str) -> Flask:
+def create_app(
+    rabbit: Path,
+    model: Path,
+    model_id: str,
+    tokenizer: Optional[Path] = None,
+) -> Flask:
     app = Flask(__name__)
 
     @app.get("/health")
     def health():
-        return jsonify({"status": "ok", "engine": "rabbit", "model": str(model), "stream": True})
+        return jsonify(
+            {
+                "status": "ok",
+                "engine": "rabbit",
+                "model": str(model),
+                "stream": True,
+                "tokenizer": str(tokenizer) if tokenizer else None,
+            }
+        )
 
     @app.get("/v1/models")
     def list_models():
@@ -428,7 +432,7 @@ def create_app(rabbit: Path, model: Path, model_id: str) -> Flask:
 
         if stream:
             gen = stream_completion(
-                rabbit, model, model_id, req_model, prompt, max_tokens, temperature
+                rabbit, model, model_id, req_model, prompt, max_tokens, temperature, tokenizer
             )
             return Response(
                 stream_with_context(gen),
@@ -441,7 +445,7 @@ def create_app(rabbit: Path, model: Path, model_id: str) -> Flask:
             )
 
         try:
-            reply = run_chat(rabbit, model, prompt, max_tokens, temperature)
+            reply = run_chat(rabbit, model, prompt, max_tokens, temperature, tokenizer)
         except subprocess.TimeoutExpired:
             return jsonify(
                 {"error": {"message": "generation timed out", "type": "server_error"}}
@@ -480,6 +484,7 @@ def create_app(rabbit: Path, model: Path, model_id: str) -> Flask:
 def main():
     ap = argparse.ArgumentParser(description="Rabbit OpenAI-compatible API")
     ap.add_argument("--model", default="models/tiny-test.rabbit")
+    ap.add_argument("--tokenizer", default=None, help="Optional BPE tokenizer (.tok)")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=8080)
     ap.add_argument("--model-id", default="rabbit", help="Model id exposed in /v1/models")
@@ -495,9 +500,22 @@ def main():
     if not model.is_file():
         raise SystemExit(f"model not found: {args.model}")
 
-    app = create_app(rabbit, model, args.model_id)
+    tokenizer: Optional[Path] = None
+    if args.tokenizer:
+        tokenizer = Path(args.tokenizer)
+        if not tokenizer.is_file():
+            alt = repo / args.tokenizer
+            if alt.is_file():
+                tokenizer = alt
+        if not tokenizer.is_file():
+            print(f"warning: tokenizer not found: {args.tokenizer}")
+            tokenizer = None
+
+    app = create_app(rabbit, model, args.model_id, tokenizer)
     print(f"Rabbit binary : {rabbit}")
     print(f"Model         : {model}")
+    if tokenizer:
+        print(f"Tokenizer     : {tokenizer}")
     print(f"API           : http://127.0.0.1:{args.port}/v1/chat/completions")
     print(f"Streaming     : set \"stream\": true (SSE)")
     print(f"Stats         : http://127.0.0.1:{args.port}/v1/stats")
