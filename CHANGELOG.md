@@ -1,3 +1,11 @@
+## [Unreleased]
+
+### Docs
+- Polished README (status, CI badge, sampling flags, next-work bullets)
+- Refreshed ROADMAP: Phase D core marked complete; ordered post-Phase-D priorities
+- Updated CONTRIBUTING and architecture.md (GQA, shared experts, quant)
+- Added GitHub issue templates for bug reports and feature requests
+
 ## [0.4.13] - 2026-11-06
 
 ### Sampling
