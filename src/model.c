@@ -66,6 +66,12 @@ void rabbit_print_info(const RabbitModel *m) {
     printf("  hidden_dim         %u\n", m->hdr.hidden_dim);
     printf("  vocab_size         %u\n", m->hdr.vocab_size);
     printf("  experts/layer      %d (top-%d)\n", m->num_experts, m->experts_per_token);
+    {
+        uint32_t n_shared = 0;
+        memcpy(&n_shared, m->hdr.reserved + 12, 4);
+        if (n_shared > 0)
+            printf("  shared experts     %u (always-on)\n", n_shared);
+    }
     printf("  expert records     %d (%s)\n",
            m->n_expert_records,
            m->experts_shared ? "shared" : "per-layer");
@@ -114,9 +120,21 @@ static void setup_expert_table(RabbitModel *m) {
     int layers = m->n_layers > 0 ? m->n_layers : 1;
     m->experts_per_layer = epl;
 
+    uint32_t n_shared = 0;
+    memcpy(&n_shared, m->hdr.reserved + 12, 4);
+    if (n_shared > 64) n_shared = 0; /* sanity */
+
     int nrec = 0;
     if (m->expert_size > 0 && m->hdr.total_experts_size > 0)
         nrec = (int)(m->hdr.total_experts_size / m->expert_size);
+
+    /* DeepSeek-style: per layer = routed (E) + shared (S) */
+    if (epl > 0 && n_shared > 0 && nrec == (epl + (int)n_shared) * layers) {
+        m->n_expert_records = nrec;
+        m->experts_shared = 0;
+        m->experts_per_layer = epl + (int)n_shared;
+        return;
+    }
 
     if (epl > 0 && nrec == epl * layers) {
         m->n_expert_records = nrec;
@@ -373,86 +391,4 @@ static void generate_v2(RabbitModel *m, const char *prompt, int max_new_tokens, 
     free(tokens); free(hidden); free(logits);
 }
 
-static void generate(RabbitModel *m, const char *prompt, int max_new_tokens, float temperature) {
-    if (is_ref_v2_model(m)) {
-        generate_v2(m, prompt, max_new_tokens, temperature);
-        return;
-    }
-
-    int dim = m->hidden_dim > 0 ? m->hidden_dim : 64;
-    int vocab = rabbit_tokenizer_vocab();
-    if (vocab > 4096) vocab = 4096;
-
-    float *hidden = (float *)rabbit_xcalloc((size_t)dim, sizeof(float));
-    float *logits = (float *)rabbit_xcalloc((size_t)vocab, sizeof(float));
-    int *tokens = (int *)rabbit_xmalloc(sizeof(int) * ((size_t)strlen(prompt) + (size_t)max_new_tokens + 16));
-
-    rabbit_attn_reset();
-    int n_tokens = rabbit_tokenize(prompt, tokens, 512);
-    if (n_tokens <= 0) {
-        printf("(empty prompt)\n\n");
-        free(hidden); free(logits); free(tokens);
-        return;
-    }
-
-    for (int t = 0; t < n_tokens; t++) {
-        for (int i = 0; i < dim; i++) hidden[i] *= 0.9f;
-        hidden[tokens[t] % dim] += ((float)(tokens[t] % 256) - 64.0f) / 64.0f;
-        for (int layer = 0; layer < m->n_layers; layer++)
-            rabbit_layer_step(m, hidden, dim);
-    }
-
-    char piece[128];
-    for (int t = 0; t < max_new_tokens; t++) {
-        lm_head_toy(hidden, dim, logits, vocab);
-        softmax(logits, vocab);
-        int next = sample_token(logits, vocab, temperature);
-        rabbit_detokenize(next, piece, sizeof(piece));
-        fputs(piece, stdout);
-        fflush(stdout);
-
-        for (int i = 0; i < dim; i++) hidden[i] *= 0.92f;
-        hidden[next % dim] += ((float)(next % 256) - 64.0f) / 64.0f;
-        for (int layer = 0; layer < m->n_layers; layer++)
-            rabbit_layer_step(m, hidden, dim);
-        tokens[n_tokens++] = next;
-    }
-    printf("\n\n");
-    free(hidden); free(logits); free(tokens);
-}
-
-rabbit_status rabbit_chat(RabbitModel *model) {
-    return rabbit_chat_ex(model, 64, 0.85f);
-}
-
-rabbit_status rabbit_chat_ex(RabbitModel *model, int max_tokens, float temperature) {
-    if (!model) return RABBIT_ERR_ARGS;
-    srand((unsigned)time(NULL));
-
-    printf("\nRabbit %s\n", rabbit_version());
-    printf("----------------------------------------\n");
-    rabbit_print_info(model);
-    if (is_ref_v2_model(model))
-        printf("  forward             ref-v2 (faithful)\n");
-    else
-        printf("  forward             legacy\n");
-    printf("----------------------------------------\n");
-    printf("  max_tokens         %d\n", max_tokens);
-    printf("  temperature        %.2f\n", temperature);
-    printf("  tokenizer_vocab    %d\n", rabbit_tokenizer_vocab());
-    printf("----------------------------------------\n\n");
-    printf("Enter text (quit to exit).\n\n");
-
-    char line[1024];
-    while (1) {
-        printf("> ");
-        fflush(stdout);
-        if (!fgets(line, sizeof(line), stdin)) break;
-        size_t len = strlen(line);
-        if (len && line[len - 1] == '\n') line[len - 1] = 0;
-        if (strcmp(line, "quit") == 0 || strcmp(line, "exit") == 0) break;
-        if (line[0] == 0) continue;
-        generate(model, line, max_tokens, temperature);
-    }
-    return RABBIT_OK;
-}
+static void generate(RabbitModel *m, the const char *prompt, int max_new_tokens, float temperature) {
