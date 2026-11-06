@@ -220,7 +220,6 @@ static int cmd_bench(int argc, char **argv) {
     int use_v2 = (n >= 0);
 
     if (!use_v2) {
-        /* Fallback: time a simple ref_forward path */
         float *h = (float *)rabbit_xcalloc((size_t)m->hidden_dim, sizeof(float));
         double total_ms = 0.0;
         for (int r = 0; r < runs; r++) {
@@ -295,6 +294,13 @@ static int cmd_stats(int argc, char **argv) {
     RabbitMemoryReport r;
     rabbit_memory_report(m, &r);
 
+    uint32_t n_heads = 0, n_kv = 0, head_dim = 0, n_shared = 0;
+    memcpy(&n_heads, m->hdr.reserved + 0, 4);
+    memcpy(&n_kv, m->hdr.reserved + 4, 4);
+    memcpy(&head_dim, m->hdr.reserved + 8, 4);
+    memcpy(&n_shared, m->hdr.reserved + 12, 4);
+    if (n_shared > 64) n_shared = 0;
+
     char name_esc[160];
     size_t j = 0;
     for (size_t i = 0; m->name[i] && j + 2 < sizeof(name_esc); i++) {
@@ -310,6 +316,10 @@ static int cmd_stats(int argc, char **argv) {
     }
     name_esc[j] = 0;
 
+    /* quant 0 = f32 — do not rewrite to 16 */
+    unsigned dense_q = m->hdr.dense_quant;
+    unsigned expert_q = m->hdr.expert_quant;
+
     printf("{\n");
     printf("  \"version\": \"%s\",\n", rabbit_version());
     printf("  \"model_name\": \"%s\",\n", name_esc);
@@ -317,14 +327,21 @@ static int cmd_stats(int argc, char **argv) {
     printf("  \"hidden_dim\": %d,\n", m->hidden_dim);
     printf("  \"vocab_size\": %d,\n", m->vocab_size);
     printf("  \"n_experts\": %d,\n", m->num_experts);
+    printf("  \"n_shared_experts\": %u,\n", n_shared);
     printf("  \"experts_per_token\": %d,\n", m->experts_per_token);
+    printf("  \"experts_per_layer\": %d,\n", m->experts_per_layer);
+    printf("  \"n_expert_records\": %d,\n", m->n_expert_records);
+    printf("  \"experts_shared_table\": %s,\n", m->experts_shared ? "true" : "false");
     printf("  \"expert_dim\": %u,\n", m->hdr.expert_dim);
+    printf("  \"n_heads\": %u,\n", n_heads);
+    printf("  \"n_kv_heads\": %u,\n", n_kv);
+    printf("  \"head_dim\": %u,\n", head_dim);
     printf("  \"dense_bytes\": %zu,\n", r.dense_bytes);
     printf("  \"expert_size\": %zu,\n", m->expert_size);
     printf("  \"total_experts_bytes\": %llu,\n",
            (unsigned long long)m->hdr.total_experts_size);
-    printf("  \"dense_quant\": %u,\n", m->hdr.dense_quant ? m->hdr.dense_quant : 16);
-    printf("  \"expert_quant\": %u,\n", m->hdr.expert_quant ? m->hdr.expert_quant : 16);
+    printf("  \"dense_quant\": %u,\n", dense_q);
+    printf("  \"expert_quant\": %u,\n", expert_q);
     printf("  \"expert_mapped\": %s,\n", m->expert_map ? "true" : "false");
     printf("  \"cache_slots\": %d,\n", r.cache_slots);
     printf("  \"cache_bytes\": %zu,\n", r.cache_bytes);
