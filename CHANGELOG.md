@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Engine
+- **ref-v2 chat path** now uses the loaded tokenizer (`rabbit_tokenize` / `rabbit_detokenize`) instead of byte-casting the prompt — required for readable output with real BPE tokenizers
+- Clearer `rabbit_load` errors: invalid magic (suggests HF/safetensors mixup), corrupt header fields, truncated dense blob, missing expert region
+
 ## [0.4.13] - 2026-11-06
 
 ### Sampling
