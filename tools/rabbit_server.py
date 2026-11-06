@@ -10,17 +10,8 @@ Endpoints:
   GET  /health
   GET  /v1/models
   POST /v1/chat/completions   (supports "stream": true → SSE)
+  POST /v1/completions        (prompt-based text completion)
   GET  /v1/stats
-
-Non-streaming:
-  curl http://127.0.0.1:8080/v1/chat/completions \\
-    -H 'Content-Type: application/json' \\
-    -d '{"model":"rabbit","messages":[{"role":"user","content":"hello"}],"max_tokens":32}'
-
-Streaming (SSE):
-  curl -N http://127.0.0.1:8080/v1/chat/completions \\
-    -H 'Content-Type: application/json' \\
-    -d '{"model":"rabbit","messages":[{"role":"user","content":"hello"}],"max_tokens":32,"stream":true}'
 """
 
 from __future__ import annotations
@@ -107,6 +98,8 @@ def _chat_cmd(
     max_tokens: int,
     temperature: float,
     tokenizer: Optional[Path] = None,
+    top_p: float = 1.0,
+    seed: Optional[int] = None,
 ) -> List[str]:
     cmd = [
         str(rabbit),
@@ -117,7 +110,11 @@ def _chat_cmd(
         str(max_tokens),
         "--temp",
         str(temperature),
+        "--top-p",
+        str(top_p),
     ]
+    if seed is not None:
+        cmd.extend(["--seed", str(seed)])
     if tokenizer and tokenizer.is_file():
         cmd.extend(["--tokenizer", str(tokenizer)])
     return cmd
@@ -130,8 +127,10 @@ def run_chat(
     max_tokens: int,
     temperature: float,
     tokenizer: Optional[Path] = None,
+    top_p: float = 1.0,
+    seed: Optional[int] = None,
 ) -> str:
-    cmd = _chat_cmd(rabbit, model, max_tokens, temperature, tokenizer)
+    cmd = _chat_cmd(rabbit, model, max_tokens, temperature, tokenizer, top_p, seed)
     stdin = (message.strip() + "\nquit\n").encode("utf-8", errors="replace")
     proc = subprocess.run(cmd, input=stdin, capture_output=True, timeout=180)
     stdout = proc.stdout.decode("utf-8", errors="replace")
@@ -160,12 +159,10 @@ def iter_chat_tokens(
     max_tokens: int,
     temperature: float,
     tokenizer: Optional[Path] = None,
+    top_p: float = 1.0,
+    seed: Optional[int] = None,
 ) -> Generator[str, None, None]:
-    """
-    Stream tokens as the engine prints them (fputs + fflush per token).
-    Falls back to chunking a full reply if live parse yields nothing.
-    """
-    cmd = _chat_cmd(rabbit, model, max_tokens, temperature, tokenizer)
+    cmd = _chat_cmd(rabbit, model, max_tokens, temperature, tokenizer, top_p, seed)
     stdin = (message.strip() + "\nquit\n").encode("utf-8", errors="replace")
     proc = subprocess.Popen(
         cmd,
@@ -249,7 +246,9 @@ def iter_chat_tokens(
 
     if not yielded:
         try:
-            reply = run_chat(rabbit, model, message, max_tokens, temperature, tokenizer)
+            reply = run_chat(
+                rabbit, model, message, max_tokens, temperature, tokenizer, top_p, seed
+            )
         except Exception:
             reply = "[generation failed]"
         for word in re.findall(r"\S+\s*", reply) or [reply]:
@@ -296,6 +295,8 @@ def stream_completion(
     max_tokens: int,
     temperature: float,
     tokenizer: Optional[Path] = None,
+    top_p: float = 1.0,
+    seed: Optional[int] = None,
 ) -> Generator[str, None, None]:
     cid = "chatcmpl-" + uuid.uuid4().hex[:24]
     created = int(time.time())
@@ -317,7 +318,9 @@ def stream_completion(
     )
 
     try:
-        for piece in iter_chat_tokens(rabbit, model, prompt, max_tokens, temperature, tokenizer):
+        for piece in iter_chat_tokens(
+            rabbit, model, prompt, max_tokens, temperature, tokenizer, top_p, seed
+        ):
             if not piece:
                 continue
             yield sse_pack(
@@ -372,17 +375,45 @@ def create_app(
 ) -> Flask:
     app = Flask(__name__)
 
+    @app.after_request
+    def add_cors(resp):
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        return resp
+
+    @app.route("/", defaults={"path": ""}, methods=["OPTIONS"])
+    @app.route("/<path:path>", methods=["OPTIONS"])
+    def options_handler(path):
+        return ("", 204)
+
     @app.get("/health")
     def health():
-        return jsonify(
-            {
-                "status": "ok",
-                "engine": "rabbit",
-                "model": str(model),
-                "stream": True,
-                "tokenizer": str(tokenizer) if tokenizer else None,
-            }
-        )
+        payload: Dict[str, Any] = {
+            "status": "ok",
+            "engine": "rabbit",
+            "version": None,
+            "model": str(model),
+            "stream": True,
+            "tokenizer": str(tokenizer) if tokenizer else None,
+            "endpoints": [
+                "/health",
+                "/v1/models",
+                "/v1/chat/completions",
+                "/v1/completions",
+                "/v1/stats",
+            ],
+        }
+        try:
+            st = run_stats(rabbit, model)
+            payload["version"] = st.get("version")
+            payload["n_experts"] = st.get("n_experts")
+            payload["n_shared_experts"] = st.get("n_shared_experts")
+            payload["layers"] = st.get("layers")
+            payload["hidden_dim"] = st.get("hidden_dim")
+        except Exception:
+            pass
+        return jsonify(payload)
 
     @app.get("/v1/models")
     def list_models():
@@ -410,6 +441,19 @@ def create_app(
         except Exception as e:
             return jsonify({"error": str(e)}), 500
 
+    def _gen_params(body: dict):
+        max_tokens = int(body.get("max_tokens") or body.get("max_completion_tokens") or 48)
+        temperature = float(
+            body.get("temperature") if body.get("temperature") is not None else 0.8
+        )
+        top_p = float(body.get("top_p") if body.get("top_p") is not None else 1.0)
+        seed = body.get("seed")
+        seed_i = int(seed) if seed is not None else None
+        max_tokens = max(1, min(512, max_tokens))
+        temperature = max(0.0, min(2.0, temperature))
+        top_p = max(0.01, min(1.0, top_p))
+        return max_tokens, temperature, top_p, seed_i
+
     @app.post("/v1/chat/completions")
     def chat_completions():
         body = request.get_json(force=True, silent=True) or {}
@@ -419,20 +463,23 @@ def create_app(
                 {"error": {"message": "messages required", "type": "invalid_request_error"}}
             ), 400
 
-        max_tokens = int(body.get("max_tokens") or body.get("max_completion_tokens") or 48)
-        temperature = float(
-            body.get("temperature") if body.get("temperature") is not None else 0.8
-        )
-        max_tokens = max(1, min(512, max_tokens))
-        temperature = max(0.0, min(2.0, temperature))
+        max_tokens, temperature, top_p, seed = _gen_params(body)
         req_model = body.get("model") or model_id
         stream = bool(body.get("stream"))
-
         prompt = messages_to_prompt(messages)
 
         if stream:
             gen = stream_completion(
-                rabbit, model, model_id, req_model, prompt, max_tokens, temperature, tokenizer
+                rabbit,
+                model,
+                model_id,
+                req_model,
+                prompt,
+                max_tokens,
+                temperature,
+                tokenizer,
+                top_p,
+                seed,
             )
             return Response(
                 stream_with_context(gen),
@@ -445,7 +492,9 @@ def create_app(
             )
 
         try:
-            reply = run_chat(rabbit, model, prompt, max_tokens, temperature, tokenizer)
+            reply = run_chat(
+                rabbit, model, prompt, max_tokens, temperature, tokenizer, top_p, seed
+            )
         except subprocess.TimeoutExpired:
             return jsonify(
                 {"error": {"message": "generation timed out", "type": "server_error"}}
@@ -467,6 +516,56 @@ def create_app(
                     {
                         "index": 0,
                         "message": {"role": "assistant", "content": reply},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": max(1, len(prompt.split())),
+                    "completion_tokens": max(1, len(reply.split())),
+                    "total_tokens": max(1, len(prompt.split()) + len(reply.split())),
+                },
+            }
+        )
+
+    @app.post("/v1/completions")
+    def text_completions():
+        body = request.get_json(force=True, silent=True) or {}
+        prompt = body.get("prompt")
+        if prompt is None:
+            return jsonify(
+                {"error": {"message": "prompt required", "type": "invalid_request_error"}}
+            ), 400
+        if isinstance(prompt, list):
+            prompt = "\n".join(str(p) for p in prompt)
+        prompt = str(prompt).strip() or "hello"
+
+        max_tokens, temperature, top_p, seed = _gen_params(body)
+        req_model = body.get("model") or model_id
+
+        try:
+            reply = run_chat(
+                rabbit, model, prompt, max_tokens, temperature, tokenizer, top_p, seed
+            )
+        except subprocess.TimeoutExpired:
+            return jsonify(
+                {"error": {"message": "generation timed out", "type": "server_error"}}
+            ), 504
+        except Exception as e:
+            return jsonify(
+                {"error": {"message": str(e), "type": "server_error"}}
+            ), 500
+
+        cid = "cmpl-" + uuid.uuid4().hex[:24]
+        return jsonify(
+            {
+                "id": cid,
+                "object": "text_completion",
+                "created": int(time.time()),
+                "model": req_model,
+                "choices": [
+                    {
+                        "text": reply,
+                        "index": 0,
                         "finish_reason": "stop",
                     }
                 ],
@@ -517,6 +616,7 @@ def main():
     if tokenizer:
         print(f"Tokenizer     : {tokenizer}")
     print(f"API           : http://127.0.0.1:{args.port}/v1/chat/completions")
+    print(f"Completions   : http://127.0.0.1:{args.port}/v1/completions")
     print(f"Streaming     : set \"stream\": true (SSE)")
     print(f"Stats         : http://127.0.0.1:{args.port}/v1/stats")
     app.run(host=args.host, port=args.port, debug=False, threaded=True)
