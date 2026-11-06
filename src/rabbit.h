@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-#define RABBIT_VERSION "0.4.12"
+#define RABBIT_VERSION "0.4.13"
 #define RABBIT_MAGIC   "RABBIT01"
 #define RABBIT_MAX_CACHE_SLOTS 8
 #define RABBIT_INT4_GROUP 32
@@ -108,6 +108,9 @@ RabbitModel  *rabbit_load(const char *path);
 void          rabbit_free(RabbitModel *model);
 rabbit_status rabbit_chat(RabbitModel *model);
 rabbit_status rabbit_chat_ex(RabbitModel *model, int max_tokens, float temperature);
+/* seed < 0 → RABBIT_SEED env or time(NULL); top_p in (0,1], 1.0 = disabled */
+rabbit_status rabbit_chat_ex2(RabbitModel *model, int max_tokens, float temperature,
+                              float top_p, int seed);
 const char   *rabbit_version(void);
 void          rabbit_print_info(const RabbitModel *model);
 
