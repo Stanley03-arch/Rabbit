@@ -17,7 +17,7 @@ TEST_BIN = tests/test_quant
 # Optional quant for live-moe (0=f32 parity, 4=group-int4 disk-friendly)
 LIVE_QUANT ?= 4
 
-.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro stream-mixtral smoke bench-smoke test parity parity-v2 m2 exact-f32 live-moe check version
+.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro stream-mixtral stream-qwen smoke bench-smoke test parity parity-v2 m2 exact-f32 live-moe check version
 
 all: $(TARGET)
 
@@ -69,6 +69,10 @@ mixtral-micro: $(TARGET)
 stream-mixtral: $(TARGET)
 	python3 tests/test_stream_mixtral.py
 
+# Qwen2/3-MoE naming (mlp.experts gate/up/down_proj)
+stream-qwen: $(TARGET)
+	python3 tests/test_stream_qwen_moe.py
+
 demo-model:
 	@mkdir -p models
 	python3 tools/convert_hf_to_rabbit.py --demo --out models/demo-moe.rabbit \
@@ -97,7 +101,7 @@ bench-smoke: $(TARGET) test-model
 	./$(TARGET) bench --model models/tiny-test.rabbit --tokens 8 --runs 2
 	@echo "bench-smoke: ok"
 
-check: test smoke bench-smoke parity parity-v2 m2 exact-f32 mixtral-micro stream-mixtral
+check: test smoke bench-smoke parity parity-v2 m2 exact-f32 mixtral-micro stream-mixtral stream-qwen
 	@echo "check: all passed"
 
 debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
