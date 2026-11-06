@@ -28,7 +28,9 @@ See [docs/PHASE_D.md](docs/PHASE_D.md).
 - [x] Real BPE tokenizer (RBTTOK01)
 - [x] Group-scaled int4 (group=32)
 - [x] GQA dense layout (Q/K/V separate, header.reserved metadata)
-- [x] Mixtral naming (`w1/w3/w2`, `block_sparse_moe`) + `make mixtral-micro`
+- [x] Mixtral naming (`w1/w3/w2`, `block_sparse_moe`) + `make mixtral-micro` / `stream-mixtral`
+- [x] Qwen2/3-MoE naming (`gate_proj/up_proj/down_proj`, `mlp.gate`) + `make stream-qwen`
+- [x] Shared name maps (`tools/rabbit_name_maps.py`) for Mixtral / Qwen / moe.* / sparse_moe
 - [x] Streaming converter multi-shard + quant 0|4 (`tools/convert_hf_stream.py`)
 - [ ] Live public MoE end-to-end (TinyBrainBot 360M) — run `make live-moe` on a machine with HF access
 
