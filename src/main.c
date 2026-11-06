@@ -23,13 +23,15 @@ static void print_usage(const char *prog) {
         "  --vocab <path>       Simple word vocabulary file\n"
         "  --tokens <n>         Maximum new tokens (default: 64 for chat, 32 for probe/bench)\n"
         "  --temp <f>           Sampling temperature (default: 0.85)\n"
+        "  --top-p <f>          Nucleus sampling (default: 1.0 = off)\n"
+        "  --seed <n>           RNG seed for reproducible chat (default: time / RABBIT_SEED)\n"
         "  --prompt <text>      Prompt for probe / bench (default: hi)\n"
         "  --runs <n>           Number of timed runs for bench (default: 5)\n"
         "  -h, --help           Show this help\n"
         "\n"
         "Examples:\n"
         "  make && make test-model\n"
-        "  ./rabbit chat --model models/tiny-test.rabbit --tokens 32\n"
+        "  ./rabbit chat --model models/tiny-test.rabbit --tokens 32 --top-p 0.9 --seed 42\n"
         "  ./rabbit stats --model models/tiny-test.rabbit\n"
         "  ./rabbit bench --model models/ref-v2.rabbit --tokens 16 --runs 10\n"
         "  ./rabbit probe-v2 --model models/mixtral-micro.rabbit --prompt hi --tokens 8\n",
@@ -215,7 +217,6 @@ static int cmd_bench(int argc, char **argv) {
     int max_ids = 512 + n_new;
     int *ids = (int *)rabbit_xmalloc(sizeof(int) * (size_t)max_ids);
 
-    /* Warm-up */
     int n = rabbit_ref_v2_greedy(m, prompt, n_new, ids, max_ids);
     int use_v2 = (n >= 0);
 
@@ -316,7 +317,6 @@ static int cmd_stats(int argc, char **argv) {
     }
     name_esc[j] = 0;
 
-    /* quant 0 = f32 — do not rewrite to 16 */
     unsigned dense_q = m->hdr.dense_quant;
     unsigned expert_q = m->hdr.expert_quant;
 
@@ -398,6 +398,8 @@ int main(int argc, char **argv) {
         const char *tok_path = NULL;
         int max_tokens = 64;
         float temperature = 0.85f;
+        float top_p = 1.0f;
+        int seed = -1;
 
         for (int i = 2; i < argc; i++) {
             if ((strcmp(argv[i], "--model") == 0) && i + 1 < argc)
@@ -414,6 +416,14 @@ int main(int argc, char **argv) {
                 temperature = (float)atof(argv[++i]);
                 if (temperature < 0.0f) temperature = 0.0f;
                 if (temperature > 2.0f) temperature = 2.0f;
+            } else if ((strcmp(argv[i], "--top-p") == 0 || strcmp(argv[i], "--top_p") == 0)
+                       && i + 1 < argc) {
+                top_p = (float)atof(argv[++i]);
+                if (top_p <= 0.0f) top_p = 1.0f;
+                if (top_p > 1.0f) top_p = 1.0f;
+            } else if ((strcmp(argv[i], "--seed") == 0) && i + 1 < argc) {
+                seed = atoi(argv[++i]);
+                if (seed < 0) seed = 0;
             } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
                 print_usage(argv[0]);
                 return 0;
@@ -441,7 +451,7 @@ int main(int argc, char **argv) {
             return 1;
         }
 
-        rabbit_status st = rabbit_chat_ex(model, max_tokens, temperature);
+        rabbit_status st = rabbit_chat_ex2(model, max_tokens, temperature, top_p, seed);
         rabbit_free(model);
         return st == RABBIT_OK ? 0 : 1;
     }
