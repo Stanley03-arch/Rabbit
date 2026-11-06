@@ -17,7 +17,7 @@ TEST_BIN = tests/test_quant
 # Optional quant for live-moe (0=f32 parity, 4=group-int4 disk-friendly)
 LIVE_QUANT ?= 4
 
-.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro stream-mixtral stream-qwen smoke bench-smoke test parity parity-v2 m2 exact-f32 live-moe check version
+.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro stream-mixtral stream-qwen stream-deepseek smoke bench-smoke test parity parity-v2 m2 exact-f32 live-moe check version
 
 all: $(TARGET)
 
@@ -57,7 +57,7 @@ micro-hf:
 	python3 tools/convert_hf_to_rabbit.py --model-dir models/hf_micro_moe \
 		--out models/micro-hf-v2.rabbit --layout v2 --quant 8
 
-# GQA + Mixtral tensor names (w1/w2/w3, block_sparse_moe) — offline stand-in for TinyBrainBot
+# GQA + Mixtral tensor names (w1/w2/w3, block_sparse_moe)
 mixtral-micro: $(TARGET)
 	@mkdir -p models
 	python3 tools/create_mixtral_micro.py --out-dir models/hf_mixtral_micro --seed 7
@@ -65,13 +65,15 @@ mixtral-micro: $(TARGET)
 		--out models/mixtral-micro.rabbit --layout v2 --quant 4
 	./$(TARGET) probe-v2 --model models/mixtral-micro.rabbit --prompt hi --tokens 8
 
-# Streaming converter offline path (needs pip install safetensors)
+# Streaming converter offline paths (needs pip install safetensors)
 stream-mixtral: $(TARGET)
 	python3 tests/test_stream_mixtral.py
 
-# Qwen2/3-MoE naming (mlp.experts gate/up/down_proj)
 stream-qwen: $(TARGET)
 	python3 tests/test_stream_qwen_moe.py
+
+stream-deepseek: $(TARGET)
+	python3 tests/test_stream_deepseek.py
 
 demo-model:
 	@mkdir -p models
@@ -96,12 +98,11 @@ smoke: $(TARGET) test-model
 	@grep -q "Rabbit" /tmp/rabbit-smoke.out /tmp/rabbit-smoke.err
 	@echo "smoke: ok"
 
-# Quick bench path (works on tiny-test / probe fallback)
 bench-smoke: $(TARGET) test-model
 	./$(TARGET) bench --model models/tiny-test.rabbit --tokens 8 --runs 2
 	@echo "bench-smoke: ok"
 
-check: test smoke bench-smoke parity parity-v2 m2 exact-f32 mixtral-micro stream-mixtral stream-qwen
+check: test smoke bench-smoke parity parity-v2 m2 exact-f32 mixtral-micro stream-mixtral stream-qwen stream-deepseek
 	@echo "check: all passed"
 
 debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
@@ -111,9 +112,6 @@ clean:
 	rm -f $(OBJ) $(TARGET) $(TEST_TOOL) $(TEST_BIN)
 
 # Live Mixtral-style MoE (TinyBrainBot 360M).
-# Requires: pip install huggingface_hub safetensors numpy transformers
-# Uses streaming converter so ~1GB RAM hosts can convert the checkpoint.
-# Override quant: make live-moe LIVE_QUANT=0
 live-moe: $(TARGET)
 	@mkdir -p models/tinybrainbot
 	@python3 -c "import huggingface_hub, safetensors, numpy" 2>/dev/null || \
