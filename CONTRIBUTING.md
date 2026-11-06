@@ -27,7 +27,7 @@ python tools/rabbit_dashboard.py --model models/tiny-test.rabbit
 Full local check (recommended before a PR):
 
 ```bash
-make check   # includes unit tests, smoke, bench-smoke, parity, m2, mixtral
+make check   # includes unit tests, smoke, bench-smoke, parity, m2, mixtral, stream converters
 ```
 
 ## Code guidelines
@@ -37,7 +37,7 @@ make check   # includes unit tests, smoke, bench-smoke, parity, m2, mixtral
   Prefer the helpers in `src/utils.c`:
   - `rabbit_xmalloc` / `rabbit_xcalloc` / `rabbit_xrealloc` / `rabbit_xstrdup`
   - `rabbit_die` / `rabbit_dief` for fatal errors
-- **Format:** Match existing style (4-space or as in neighboring files; keep headers consistent with `rabbit.h`).
+- **Format:** Match existing style (as in neighboring files; keep headers consistent with `rabbit.h`).
 - **Commits:** Prefer small, focused commits with imperative messages  
   (e.g. `Add int4 GEMV path`, not `updates`).
 
@@ -45,21 +45,24 @@ make check   # includes unit tests, smoke, bench-smoke, parity, m2, mixtral
 
 | Command | Role |
 |---------|------|
-| `chat` | Interactive generation |
+| `chat` | Interactive generation (`--temp`, `--top-p`, `--seed`) |
 | `stats` | JSON model / memory report |
 | `bench` | Timed ref-v2 (or probe fallback); `--runs` |
 | `probe` / `probe-v2` | One-shot hidden / token dumps |
 | `version` | Print version string |
 
-Optional flags used across tools: `--model`, `--tokenizer`, `--tokens`, `--temp`, `--prompt`, `--runs`.
+Optional flags used across tools: `--model`, `--tokenizer`, `--tokens`, `--temp`, `--top-p`, `--seed`, `--prompt`, `--runs`.
 
 ## What is most useful right now
 
-1. Correctness tests for expert fetch / quant kernels
-2. Better HF expert-name coverage for specific model families
-3. Documentation fixes and clearer error messages
-4. Real tokenizer backends (SentencePiece / HF tokenizers) behind the existing API
-5. Live public MoE end-to-end validation (`make live-moe`)
+1. Live public MoE end-to-end validation (`make live-moe` on TinyBrainBot or similar)
+2. Optional CUDA expert GEMV (keep pure-CPU default)
+3. Stronger tokenizer backends (SentencePiece / HF) behind the existing API
+4. Clearer model-load and conversion error messages
+5. Correctness tests for expert fetch / quant kernels
+6. Documentation fixes and examples with real (small) models
+
+See [ROADMAP.md](ROADMAP.md) for the ordered list.
 
 ## Pull requests
 
