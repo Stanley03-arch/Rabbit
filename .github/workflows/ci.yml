@@ -47,5 +47,8 @@ jobs:
       - name: Qwen-MoE stream converter
         run: make stream-qwen
 
+      - name: DeepSeek shared-experts stream converter
+        run: make stream-deepseek
+
       - name: Version
         run: ./rabbit version
