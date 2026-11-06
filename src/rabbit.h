@@ -34,7 +34,7 @@ typedef struct {
     uint32_t n_layers;
     uint32_t hidden_dim;
     uint32_t vocab_size;
-    uint32_t n_experts;          /* experts per layer (config sense) */
+    uint32_t n_experts;          /* routed experts per layer (router width) */
     uint32_t experts_per_token;
     uint32_t expert_dim;
 
@@ -46,8 +46,11 @@ typedef struct {
     uint32_t expert_quant;       /* 0=f32, 4=group-int4, 8=int8 */
 
     char     name[64];
-    /* reserved[0..11]: optional GQA metadata (u32 LE each)
-     *   n_heads, n_kv_heads, head_dim  — 0 means infer (legacy square QKV) */
+    /* reserved layout (little-endian u32):
+     *   [0..11]  n_heads, n_kv_heads, head_dim  (GQA; 0 = infer)
+     *   [12..15] n_shared_experts               (DeepSeek-style always-on;
+     *            disk layout per layer = E routed + S shared when set)
+     */
     uint8_t  reserved[128];
 } RabbitHeader;
 #pragma pack(pop)
@@ -73,12 +76,12 @@ struct RabbitModel {
     void   *expert_map_base;
     size_t  expert_map_size;
     size_t  expert_size;
-    int     num_experts;          /* per layer */
+    int     num_experts;          /* routed per layer */
     int     experts_per_token;
 
     /* Expert table layout */
     int     n_expert_records;     /* total records on disk */
-    int     experts_per_layer;    /* == num_experts */
+    int     experts_per_layer;    /* E, or E+S when shared experts present */
     int     experts_shared;       /* 1 = one table for all layers */
 
     ExpertCache *cache;
