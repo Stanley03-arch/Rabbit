@@ -23,6 +23,7 @@
 - Also resolves alternate embed / norm / attention path names
 - Config accepts `n_routed_experts` as expert count fallback
 - `--name` flag, 1-based progress, elapsed time
+- Offline fixtures + tests: `make stream-mixtral`, `make stream-qwen`
 
 ### Product surface
 - `rabbit_server.py`, `rabbit_dashboard.py`, and `rabbit_ui.py` (Gradio) all accept `--tokenizer`
@@ -30,7 +31,7 @@
 
 ### Docs & polish
 - Version bumped to 0.4.12
-- README, ROADMAP, CONTRIBUTING updated for current feature set
+- README, ROADMAP, CONTRIBUTING, conversion/tensor-map docs updated
 
 ## [0.4.11] - 2026-11-03
 
