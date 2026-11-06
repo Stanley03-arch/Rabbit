@@ -8,26 +8,31 @@
 | `flat` | opaque packed | gate→up→down ordered | SwiGLU pieces |
 | **`v2` (M2)** | **structured float32** | **exact gate/up/down, per-layer** | **`ref-v2` faithful** |
 
+Streaming converter (`convert_hf_stream.py`) always writes **v2-shaped** files.
+
 ## v2 dense layout (exact)
 
 ```
 embed          [V, H] f32
 lm_head        [H, V] f32     (transposed if HF stores [V, H])
+final_norm     [H]            ← model.norm
 per layer L:
-  rms_attn     [H]            ← input_layernorm
-  rms_ffn      [H]            ← post_attention_layernorm
-  w_qkv        [3H, H]        ← stack(q_proj, k_proj, v_proj)
-  w_o          [H, H]         ← o_proj
-  w_router     [E, H]         ← mlp.gate / router
+  rms_attn     [H]            ← input_layernorm / attention_norm
+  rms_ffn      [H]            ← post_attention_layernorm / ffn_norm
+  w_q          [n_heads*hd, H]
+  w_k          [n_kv*hd, H]
+  w_v          [n_kv*hd, H]
+  w_o          [H, n_heads*hd]
+  w_router     [E, H]         ← block_sparse_moe.gate / mlp.gate / router
 ```
 
 ## v2 expert layout (exact — no square crop)
 
 ```
 Per expert record:
-  gate_proj  [I, H]  int8+scale
-  up_proj    [I, H]  int8+scale
-  down_proj  [H, I]  int8+scale
+  gate  [I, H]   f32 or group-int4
+  up    [I, H]   f32 or group-int4
+  down  [H, I]   f32 or group-int4
 
 Disk order (per-layer):
   L0E0, L0E1, … L0E{E-1}, L1E0, … L{L-1}E{E-1}
@@ -41,27 +46,41 @@ C lookup:
   rabbit_expert_ptr_layer(m, layer, e)
 ```
 
-Recognized HF names: Qwen3-MoE / Mixtral / DeepSeek-style `layers.L.mlp.experts.E.(gate|up|down)_proj`.
+## Recognized HF names
+
+Canonical table lives in `tools/rabbit_name_maps.py`.
+
+| Family | Gate / up / down | Router |
+|--------|------------------|--------|
+| **Mixtral** | `…block_sparse_moe.experts.{e}.w1` / `w3` / `w2` | `…block_sparse_moe.gate` |
+| **Qwen2/3-MoE** | `…mlp.experts.{e}.gate_proj` / `up_proj` / `down_proj` | `…mlp.gate` |
+| **moe.*** | `…moe.experts.{e}.gate_proj|w1` / … | `…moe.gate` or `…moe.router` |
+| **sparse_moe** | `…sparse_moe.experts.{e}.w1\|w3\|w2` | `…sparse_moe.gate` |
+
+Also scanned as expert markers: `.experts.`, `mlp.experts`, `moe.experts`, `feed_forward.experts`.
+
+Config expert count keys: `num_local_experts`, `num_experts`, `n_routed_experts`.
 
 Legacy models with `total_experts_size / expert_size == n_experts` stay in **shared** mode.
 
-## Micro fixture (CI, no download)
+## Micro fixtures (CI, no download)
 
 ```bash
-make micro-hf    # models/hf_micro_moe + models/micro-hf-v2.rabbit
-make m2          # convert + C↔NumPy parity on the converted file
+make micro-hf         # generic HF-like micro
+make mixtral-micro    # Mixtral names + convert + probe
+make stream-mixtral   # streaming path on Mixtral micro
+make stream-qwen      # streaming path on Qwen micro
+make m2               # convert + C↔NumPy parity
 ```
-
-Fixture and `create_ref_v2` emit **distinct experts per layer**.
 
 ## Real checkpoint
 
 ```bash
 pip install safetensors numpy
-python tools/convert_hf_to_rabbit.py \
+python tools/convert_hf_stream.py \
   --model-dir /path/to/hf \
   --out models/real-v2.rabbit \
-  --layout v2 --quant 8
+  --quant 4 --name real-moe
 ./rabbit chat --model models/real-v2.rabbit
 ```
 
