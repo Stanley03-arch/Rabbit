@@ -14,6 +14,7 @@ void rabbit_attn_reset(void);
 int  rabbit_tokenize(const char *text, int *out_ids, int max_ids);
 int  rabbit_tokenizer_vocab(void);
 void rabbit_detokenize(int id, char *out, int out_size);
+void rabbit_detokenize_seq(const int *ids, int n, char *out, int out_size);
 
 const char *rabbit_version(void) {
     return RABBIT_VERSION;
@@ -194,18 +195,32 @@ RabbitModel *rabbit_load(const char *path) {
     RabbitHeader hdr;
     ssize_t n = read(fd, &hdr, sizeof(hdr));
     if (n != (ssize_t)sizeof(hdr)) {
-        fprintf(stderr, "error: incomplete header in %s (got %zd bytes)\n", path, n);
+        fprintf(stderr, "error: incomplete header in %s (got %zd bytes, need %zu)\n",
+                path, n, sizeof(hdr));
         close(fd);
         return NULL;
     }
 
     if (memcmp(hdr.magic, RABBIT_MAGIC, 8) != 0) {
-        fprintf(stderr, "error: invalid magic in %s (not a Rabbit model)\n", path);
+        fprintf(stderr,
+                "error: invalid magic in %s (not a Rabbit model)\n"
+                "       Expected RABBIT01 — did you pass a .safetensors or HF directory?\n",
+                path);
         close(fd);
         return NULL;
     }
     if (hdr.version != 1) {
-        fprintf(stderr, "error: unsupported format version %u in %s\n", hdr.version, path);
+        fprintf(stderr,
+                "error: unsupported format version %u in %s (this build supports version 1)\n",
+                hdr.version, path);
+        close(fd);
+        return NULL;
+    }
+
+    if (hdr.n_layers == 0 || hdr.hidden_dim == 0 || hdr.vocab_size == 0) {
+        fprintf(stderr,
+                "error: corrupt header in %s (layers=%u hidden=%u vocab=%u)\n",
+                path, hdr.n_layers, hdr.hidden_dim, hdr.vocab_size);
         close(fd);
         return NULL;
     }
@@ -215,7 +230,7 @@ RabbitModel *rabbit_load(const char *path) {
     if (hdr.dense_size > budget) {
         fprintf(stderr,
                 "error: dense section (%.1f MB) exceeds memory budget (%.1f MB).\n"
-                "       Set RABBIT_MEM_BUDGET_MB higher or use a smaller model.\n",
+                "       Set RABBIT_MEM_BUDGET_MB higher or use a smaller / more-quantized model.\n",
                 hdr.dense_size / (1024.0 * 1024.0),
                 budget / (1024.0 * 1024.0));
         close(fd);
@@ -254,13 +269,16 @@ RabbitModel *rabbit_load(const char *path) {
         }
         n = read(fd, m->dense, hdr.dense_size);
         if (n != (ssize_t)hdr.dense_size) {
-            fprintf(stderr, "error: failed to read dense blob (got %zd of %llu bytes)\n",
-                    n, (unsigned long long)hdr.dense_size);
+            fprintf(stderr,
+                    "error: failed to read dense blob from %s\n"
+                    "       got %zd of %llu bytes (file truncated or wrong path?)\n",
+                    path, n, (unsigned long long)hdr.dense_size);
             free(m->dense);
             free(m);
             close(fd);
             return NULL;
         }
+ }
     }
     close(fd);
 
@@ -276,9 +294,15 @@ RabbitModel *rabbit_load(const char *path) {
             m->expert_map = (uint8_t *)base + expert_offset;
         } else {
             rabbit_munmap_file(base, map_size, map_fd);
+            if (m->n_expert_records > 0)
+                fprintf(stderr,
+                        "warning: expert region missing or truncated in %s\n"
+                        "         (offset %zu, file size %zu, records %d)\n",
+                        path, expert_offset, map_size, m->n_expert_records);
         }
     } else {
-        fprintf(stderr, "warning: could not memory-map model file (experts may be slow)\n");
+        fprintf(stderr, "warning: could not memory-map %s (experts may be slow or unavailable)\n",
+                path);
     }
 
     m->cache = rabbit_cache_create(m->cache_slots);
@@ -394,44 +418,48 @@ static void lm_head_toy(const float *hidden, int hidden_dim, float *logits, int 
     }
 }
 
+/*
+ * Faithful ref-v2 generation: use the loaded tokenizer (BPE / word / byte)
+ * for both encode and decode so real models produce readable text.
+ */
 static void generate_v2(RabbitModel *m, const char *prompt, int max_new_tokens,
                         float temperature, float top_p) {
     int vocab = m->vocab_size > 0 ? m->vocab_size : 256;
-    int max_ids = (int)strlen(prompt) + max_new_tokens + 16;
+    int max_ids = 512 + max_new_tokens + 16;
     int *tokens = (int *)rabbit_xmalloc(sizeof(int) * (size_t)max_ids);
     float *hidden = (float *)rabbit_xmalloc(sizeof(float) * (size_t)m->hidden_dim);
     float *logits = (float *)rabbit_xmalloc(sizeof(float) * (size_t)vocab);
+    char piece[256];
 
-    int n = 0;
-    for (const unsigned char *p = (const unsigned char *)prompt; *p && n < max_ids - max_new_tokens - 1; p++)
-        tokens[n++] = (int)(*p % vocab);
-    if (n == 0)
-        tokens[n++] = 1;
+    int n = rabbit_tokenize(prompt, tokens, max_ids - max_new_tokens - 1);
+    if (n <= 0) {
+        tokens[0] = 1;
+        n = 1;
+    }
+    for (int i = 0; i < n; i++) {
+        if (tokens[i] < 0) tokens[i] = 0;
+        tokens[i] %= vocab;
+    }
 
-    char piece[8];
     for (int t = 0; t < max_new_tokens && n < max_ids; t++) {
         if (rabbit_ref_v2_forward(m, tokens, n, hidden, logits) != 0) {
-            fprintf(stderr, "error: ref-v2 forward failed\n");
+            fprintf(stderr, "error: ref-v2 forward failed at step %d\n", t);
             break;
         }
+        int next;
         if (temperature <= 0.0f) {
             int best = 0;
             float bv = logits[0];
             for (int i = 1; i < vocab; i++)
                 if (logits[i] > bv) { bv = logits[i]; best = i; }
-            tokens[n++] = best;
+            next = best;
         } else {
             softmax(logits, vocab);
-            tokens[n++] = sample_token(logits, vocab, temperature, top_p);
+            next = sample_token(logits, vocab, temperature, top_p);
         }
-        int id = tokens[n - 1];
-        if (id >= 0 && id < 256) {
-            piece[0] = (char)id;
-            piece[1] = 0;
-            fputs(piece, stdout);
-        } else {
-            printf("?");
-        }
+        tokens[n++] = next;
+        rabbit_detokenize(next, piece, (int)sizeof(piece));
+        fputs(piece, stdout);
         fflush(stdout);
     }
     printf("\n\n");
