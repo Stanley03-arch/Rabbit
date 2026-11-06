@@ -8,22 +8,35 @@
 - Expanded help text with all commands and clearer examples
 - Consistent option handling across chat / probe / probe-v2 / bench / stats
 - `make bench-smoke` target added and included in `make check` + CI
+- **`rabbit stats` JSON** now includes:
+  - `n_shared_experts`, `experts_per_layer`, `n_expert_records`, `experts_shared_table`
+  - GQA metadata: `n_heads`, `n_kv_heads`, `head_dim`
+  - Correct `dense_quant` / `expert_quant` when value is `0` (f32; no longer rewritten to 16)
 
 ### Engine robustness
 - Clearer model-load errors: ENOENT / EACCES / strerror with path context
 - Generation, attention, MoE, and quant paths use safer alloc helpers
 - **int4 group GEMV** is now row-wise (one row buffer) instead of full-matrix dequant — lower peak RAM on constrained hosts
+- **DeepSeek-style shared experts**: always-on experts after routed top-k
+  - Header `reserved[12:16]` = `n_shared_experts`
+  - Disk layout per layer: `[E routed][S shared]` → `L × (E + S)` records
+  - Load path sets `experts_per_layer = E + S` when present
 
 ### Converters
 - Shared `tools/rabbit_name_maps.py` for HF MoE tensor name variants
 - Streaming converter auto-detects:
   - **Mixtral**: `block_sparse_moe.experts.*.w1|w2|w3` + `block_sparse_moe.gate`
   - **Qwen2/3-MoE**: `mlp.experts.*.gate_proj|up_proj|down_proj` + `mlp.gate`
+  - **DeepSeek**: `mlp.shared_experts.*` + config `n_shared_experts` / `n_routed_experts`
   - **moe / sparse_moe** alternate prefixes
 - Also resolves alternate embed / norm / attention path names
 - Config accepts `n_routed_experts` as expert count fallback
 - `--name` flag, 1-based progress, elapsed time
-- Offline fixtures + tests: `make stream-mixtral`, `make stream-qwen`
+- Offline fixtures + tests:
+  - `make stream-mixtral`
+  - `make stream-qwen`
+  - `make stream-deepseek`
+- Unit test: `tests/test_name_maps.py`
 
 ### Product surface
 - `rabbit_server.py`, `rabbit_dashboard.py`, and `rabbit_ui.py` (Gradio) all accept `--tokenizer`
@@ -32,6 +45,7 @@
 ### Docs & polish
 - Version bumped to 0.4.12
 - README, ROADMAP, CONTRIBUTING, conversion/tensor-map docs updated
+- `docs/media/` assemble script for converter demo video
 
 ## [0.4.11] - 2026-11-03
 
