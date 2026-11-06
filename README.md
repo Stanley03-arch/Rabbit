@@ -6,7 +6,7 @@ Rabbit is a pure-C engine that keeps dense weights in RAM and streams routed exp
 
 Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) — not a clone of its product or UI.
 
-> **Status:** v0.4.12 — Phase A–C product surface + Phase D quality spine (parity, GQA, Mixtral naming, streaming HF converter). OpenAI-compatible HTTP API with **SSE streaming**, `rabbit stats` / `bench`, dashboard driven by engine JSON. Safer allocation helpers and clearer model-load errors.
+> **Status:** v0.4.12 — Phase A–C product surface + Phase D quality spine (parity, GQA, Mixtral **and Qwen** naming, streaming HF converter). OpenAI-compatible HTTP API with **SSE streaming**, `rabbit stats` / `bench`, dashboard driven by engine JSON. Safer allocation helpers and clearer model-load errors.
 
 [![Dashboard in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_dashboard.ipynb)
 
@@ -82,6 +82,7 @@ export RABBIT_MEM_BUDGET_MB=1024   # default 1536
 - int4 / int8 expert GEMV + SwiGLU-style path when gate/up/down present  
 - Group-scaled int4 (group=32) + GQA metadata in header  
 - HF → `.rabbit` converter (`layout v2`) and **low-RAM streaming** converter  
+- Auto-detects **Mixtral** (`w1/w2/w3`) and **Qwen** (`gate_proj/up_proj/down_proj`) expert names  
 - OpenAI-compatible HTTP API with SSE streaming  
 - Dashboard metrics from `rabbit stats`  
 - `rabbit bench` for quick throughput measurement  
@@ -98,9 +99,13 @@ pip install safetensors numpy
 python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf \
   --out models/m.rabbit --layout v2 --quant 4
 
-# Low-RAM streaming (Mixtral-style w1/w3/w2 + multi-shard)
+# Low-RAM streaming — auto-detects Mixtral / Qwen / moe.* names
 python tools/convert_hf_stream.py --model-dir /path/to/hf \
-  --out models/m.rabbit --quant 4
+  --out models/m.rabbit --quant 4 --name my-moe
+
+# Offline naming checks
+make stream-mixtral   # block_sparse_moe + w1/w2/w3
+make stream-qwen      # mlp.experts + gate/up/down_proj
 ```
 
 Live public Mixtral-style model (downloads TinyBrainBot):
