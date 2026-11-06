@@ -44,5 +44,8 @@ jobs:
       - name: Mixtral micro + stream converter
         run: make mixtral-micro && make stream-mixtral
 
+      - name: Qwen-MoE stream converter
+        run: make stream-qwen
+
       - name: Version
         run: ./rabbit version
