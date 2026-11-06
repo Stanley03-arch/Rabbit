@@ -6,9 +6,34 @@ Rabbit is a pure-C engine that keeps dense weights in RAM and streams routed exp
 
 Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) — not a clone of its product or UI.
 
-> **Status:** v0.4.12 — Phase A–C product surface + Phase D quality spine (parity, GQA, Mixtral **and Qwen** naming, streaming HF converter + DeepSeek shared experts). OpenAI-compatible HTTP API with **SSE streaming**, `rabbit stats` / `bench`, dashboard driven by engine JSON. Safer allocation helpers and clearer model-load errors.
+> **Status:** v0.4.13 — Phase A–C product surface + Phase D quality spine (parity, GQA, Mixtral / Qwen / DeepSeek naming, streaming HF converter, shared experts). OpenAI-compatible HTTP API with SSE streaming, nucleus sampling, `rabbit stats` / `bench`, dashboard driven by engine JSON.
 
+[![CI](https://github.com/Stanley03-arch/Rabbit/actions/workflows/ci.yml/badge.svg)](https://github.com/Stanley03-arch/Rabbit/actions/workflows/ci.yml)
 [![Dashboard in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_dashboard.ipynb)
+
+---
+
+## Quick start
+
+```bash
+git clone https://github.com/Stanley03-arch/Rabbit.git
+cd Rabbit
+make
+make test-model
+./rabbit chat --model models/tiny-test.rabbit
+./rabbit stats --model models/tiny-test.rabbit
+./rabbit bench --model models/tiny-test.rabbit --tokens 16 --runs 5
+```
+
+Optional memory budget:
+```bash
+export RABBIT_MEM_BUDGET_MB=1024   # default 1536
+```
+
+Interactive chat with sampling:
+```bash
+./rabbit chat --model models/tiny-test.rabbit --temp 0.8 --top-p 0.9 --seed 42
+```
 
 ---
 
@@ -19,7 +44,7 @@ Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) �
 | **CLI** | `./rabbit chat --model …` |
 | **Stats** | `./rabbit stats --model …` (JSON) |
 | **Bench** | `./rabbit bench --model …` (avg ms + tokens/sec) |
-| **HTTP API** | OpenAI-compatible + SSE streaming |
+| **HTTP API** | OpenAI-compatible + SSE streaming + CORS |
 | **Dashboard** | Dark cockpit: chat, model/memory stats, expert cache |
 | **Gradio** | Simple browser chat (`tools/rabbit_ui.py`) |
 
@@ -41,6 +66,8 @@ curl -N http://127.0.0.1:8080/v1/chat/completions \
   -d '{"model":"rabbit","messages":[{"role":"user","content":"hello"}],"max_tokens":32,"stream":true}'
 ```
 
+Also supports `POST /v1/completions` and `GET /health`.
+
 ### Engine dashboard
 
 **Colab:**  
@@ -56,25 +83,6 @@ python tools/rabbit_dashboard.py --model models/tiny-test.rabbit
 
 ---
 
-## Build
-
-```bash
-git clone https://github.com/Stanley03-arch/Rabbit.git
-cd Rabbit
-make
-make test-model
-./rabbit chat --model models/tiny-test.rabbit
-./rabbit stats --model models/tiny-test.rabbit
-./rabbit bench --model models/tiny-test.rabbit --tokens 16 --runs 5
-```
-
-Memory budget (optional):
-```bash
-export RABBIT_MEM_BUDGET_MB=1024   # default 1536
-```
-
----
-
 ## Features
 
 - Dense RAM + expert `mmap` + LRU cache  
@@ -83,7 +91,8 @@ export RABBIT_MEM_BUDGET_MB=1024   # default 1536
 - Group-scaled int4 (group=32) + GQA metadata in header  
 - HF → `.rabbit` converter (`layout v2`) and **low-RAM streaming** converter  
 - Auto-detects **Mixtral**, **Qwen**, and **DeepSeek shared experts**  
-- OpenAI-compatible HTTP API with SSE streaming  
+- OpenAI-compatible HTTP API with SSE streaming + CORS  
+- Nucleus sampling (`--top-p`) and reproducible seed  
 - Dashboard metrics from `rabbit stats`  
 - `rabbit bench` for quick throughput measurement  
 - Exact C vs NumPy parity on frozen ref models  
@@ -128,6 +137,17 @@ See [docs/tensor-map.md](docs/tensor-map.md), [docs/conversion.md](docs/conversi
 - Dashboard is **Rabbit’s own UI**, not Colibrì’s.  
 - Large real MoEs still need aggressive quant / expert limits on 4 GB hosts.  
 - Streaming reads engine stdout as tokens are flushed; banner filtering is best-effort.  
+- GPU path is not yet in main (see open PRs / roadmap).  
+
+## Roadmap & contributing
+
+See [ROADMAP.md](ROADMAP.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Highest-value next work:
+- End-to-end live public MoE validation (`make live-moe`)
+- Optional CUDA expert GEMV
+- Stronger real-tokenizer backends
+- Clearer model-load / conversion error messages
 
 ## License
 
