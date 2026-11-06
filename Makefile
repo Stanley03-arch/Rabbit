@@ -17,7 +17,7 @@ TEST_BIN = tests/test_quant
 # Optional quant for live-moe (0=f32 parity, 4=group-int4 disk-friendly)
 LIVE_QUANT ?= 4
 
-.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro stream-mixtral stream-qwen stream-deepseek smoke bench-smoke test parity parity-v2 m2 exact-f32 live-moe check version
+.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro stream-mixtral stream-qwen stream-deepseek smoke bench-smoke test test-name-maps parity parity-v2 m2 exact-f32 live-moe check version
 
 all: $(TARGET)
 
@@ -38,6 +38,9 @@ version: $(TARGET)
 
 test: $(TEST_BIN)
 	./$(TEST_BIN)
+
+test-name-maps:
+	python3 tests/test_name_maps.py
 
 test-model: $(TEST_TOOL)
 	@mkdir -p models
@@ -102,7 +105,7 @@ bench-smoke: $(TARGET) test-model
 	./$(TARGET) bench --model models/tiny-test.rabbit --tokens 8 --runs 2
 	@echo "bench-smoke: ok"
 
-check: test smoke bench-smoke parity parity-v2 m2 exact-f32 mixtral-micro stream-mixtral stream-qwen stream-deepseek
+check: test test-name-maps smoke bench-smoke parity parity-v2 m2 exact-f32 mixtral-micro stream-mixtral stream-qwen stream-deepseek
 	@echo "check: all passed"
 
 debug: CFLAGS += -g -O0 -DRABBIT_DEBUG
