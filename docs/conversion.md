@@ -22,48 +22,72 @@ pip install safetensors numpy
 
 The model directory must contain `config.json` and one or more `.safetensors` files.
 
+### In-memory converter
+
 ```bash
 python3 tools/convert_hf_to_rabbit.py \
   --model-dir /path/to/hf-model \
   --out models/model.rabbit \
   --quant 4 \
-  --layout square \
+  --layout v2 \
   --max-experts 32
+```
+
+### Low-RAM streaming converter (preferred for large MoEs)
+
+Loads tensors on demand from single-file or multi-shard safetensors.
+
+```bash
+python3 tools/convert_hf_stream.py \
+  --model-dir /path/to/hf-model \
+  --out models/model.rabbit \
+  --quant 4 \
+  --name my-moe
+```
+
+**Auto-detected expert schemes** (see `tools/rabbit_name_maps.py`):
+
+| Family | Experts | Router |
+|--------|---------|--------|
+| Mixtral | `block_sparse_moe.experts.*.w1\|w2\|w3` | `block_sparse_moe.gate` |
+| Qwen2/3-MoE | `mlp.experts.*.gate_proj\|up_proj\|down_proj` | `mlp.gate` |
+| moe.* | `moe.experts.*` (proj or w1/w2/w3) | `moe.gate` / `moe.router` |
+| sparse_moe | `sparse_moe.experts.*.w1\|w2\|w3` | `sparse_moe.gate` |
+
+Offline checks:
+
+```bash
+make stream-mixtral   # Mixtral micro fixture
+make stream-qwen      # Qwen micro fixture
 ```
 
 ### Options
 
 | Option | Description |
 |--------|-------------|
-| `--quant {4,8}` | Expert weight bit-width (default: 4) |
-| `--layout square` | Reshape each expert to `[hidden, hidden]` for current kernels (prefers `down_proj` / `w2`) |
-| `--layout flat` | Concatenate expert tensors without reshaping |
-| `--max-experts N` | Keep only the first N experts (recommended on low-RAM hosts) |
+| `--quant {0,4,8}` | Expert quant: `0`=f32 (stream/v2), `4`=group-int4, `8`=int8 |
+| `--layout square\|flat\|v2` | In-memory converter only; prefer `v2` for fidelity |
+| `--max-experts N` | Keep only the first N experts (in-memory path) |
+| `--name` | Header model name (streaming path) |
 
-## Expert record layout
+## Expert record layout (v2)
 
-Each expert is stored as:
-
-```
-float32 scale
-packed weights    # int8 or int4 according to header.expert_quant
-```
+Each expert is stored as gate / up / down matrices (f32 or group-int4).
 
 Records are padded to a uniform size so the engine can index them as  
-`base + expert_id * expert_size`.
+`base + (layer * n_experts + expert_id) * expert_size`.
 
 ## Low-memory guidance
 
 For ~4 GB systems:
 
-1. Prefer `--quant 4`
-2. Prefer `--layout square`
-3. Set `--max-experts` conservatively
+1. Prefer `convert_hf_stream.py` over the in-memory path
+2. Prefer `--quant 4`
+3. Prefer `--layout v2` when using the in-memory converter
 4. Ensure the dense section remains within available RAM after OS overhead
 
 ## Limitations
 
-- Expert tensor detection is heuristic (covers common DeepSeek / Qwen / Mixtral naming).
-- Dense weights are packed with a simple absmax scheme; not all architectures are reconstructed exactly.
-- Current kernels apply a single square matrix per expert; full gate/up/down (SwiGLU) is Phase B.
+- Expert tensor detection covers common Mixtral / Qwen / DeepSeek-style names; unusual layouts may need a template in `rabbit_name_maps.py`.
+- Dense reconstruction is exact only on the v2 path for supported attention/router tensors.
 - Very large checkpoints may still be impractical without further pruning or quantization.
