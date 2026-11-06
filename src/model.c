@@ -128,7 +128,6 @@ static void setup_expert_table(RabbitModel *m) {
     if (m->expert_size > 0 && m->hdr.total_experts_size > 0)
         nrec = (int)(m->hdr.total_experts_size / m->expert_size);
 
-    /* DeepSeek-style: per layer = routed (E) + shared (S) */
     if (epl > 0 && n_shared > 0 && nrec == (epl + (int)n_shared) * layers) {
         m->n_expert_records = nrec;
         m->experts_shared = 0;
@@ -313,7 +312,8 @@ static void softmax(float *logits, int n) {
             logits[i] /= sum;
 }
 
-static int sample_token(const float *probs, int n, float temperature) {
+/* Nucleus (top-p) sampling on a probability distribution already temperature-scaled. */
+static int sample_token(const float *probs, int n, float temperature, float top_p) {
     if (temperature <= 0.0f) {
         int best = 0;
         float best_p = probs[0];
@@ -321,13 +321,58 @@ static int sample_token(const float *probs, int n, float temperature) {
             if (probs[i] > best_p) { best_p = probs[i]; best = i; }
         return best;
     }
+
     float *tmp = (float *)rabbit_xmalloc(sizeof(float) * (size_t)n);
-    for (int i = 0; i < n; i++)
+    int *idx = (int *)rabbit_xmalloc(sizeof(int) * (size_t)n);
+
+    for (int i = 0; i < n; i++) {
         tmp[i] = powf(probs[i], 1.0f / temperature);
+        idx[i] = i;
+    }
     float sum = 0.0f;
     for (int i = 0; i < n; i++) sum += tmp[i];
     if (sum > 0.0f)
         for (int i = 0; i < n; i++) tmp[i] /= sum;
+
+    /* Sort indices by probability descending (simple insertion for small n / partial) */
+    if (top_p < 1.0f && top_p > 0.0f) {
+        for (int i = 1; i < n; i++) {
+            int key = idx[i];
+            float kp = tmp[key];
+            int j = i - 1;
+            while (j >= 0 && tmp[idx[j]] < kp) {
+                idx[j + 1] = idx[j];
+                j--;
+            }
+            idx[j + 1] = key;
+        }
+        float cum = 0.0f;
+        int cutoff = n;
+        for (int i = 0; i < n; i++) {
+            cum += tmp[idx[i]];
+            if (cum >= top_p) {
+                cutoff = i + 1;
+                break;
+            }
+        }
+        if (cutoff < 1) cutoff = 1;
+        /* Renormalize nucleus */
+        float nuc = 0.0f;
+        for (int i = 0; i < cutoff; i++) nuc += tmp[idx[i]];
+        float r = (float)rand() / (float)RAND_MAX;
+        float cdf = 0.0f;
+        int chosen = idx[cutoff - 1];
+        if (nuc > 0.0f) {
+            for (int i = 0; i < cutoff; i++) {
+                cdf += tmp[idx[i]] / nuc;
+                if (r <= cdf) { chosen = idx[i]; break; }
+            }
+        }
+        free(tmp);
+        free(idx);
+        return chosen;
+    }
+
     float r = (float)rand() / (float)RAND_MAX;
     float cdf = 0.0f;
     int chosen = n - 1;
@@ -336,6 +381,7 @@ static int sample_token(const float *probs, int n, float temperature) {
         if (r <= cdf) { chosen = i; break; }
     }
     free(tmp);
+    free(idx);
     return chosen;
 }
 
@@ -348,7 +394,8 @@ static void lm_head_toy(const float *hidden, int hidden_dim, float *logits, int 
     }
 }
 
-static void generate_v2(RabbitModel *m, const char *prompt, int max_new_tokens, float temperature) {
+static void generate_v2(RabbitModel *m, const char *prompt, int max_new_tokens,
+                        float temperature, float top_p) {
     int vocab = m->vocab_size > 0 ? m->vocab_size : 256;
     int max_ids = (int)strlen(prompt) + max_new_tokens + 16;
     int *tokens = (int *)rabbit_xmalloc(sizeof(int) * (size_t)max_ids);
@@ -375,7 +422,7 @@ static void generate_v2(RabbitModel *m, const char *prompt, int max_new_tokens, 
             tokens[n++] = best;
         } else {
             softmax(logits, vocab);
-            tokens[n++] = sample_token(logits, vocab, temperature);
+            tokens[n++] = sample_token(logits, vocab, temperature, top_p);
         }
         int id = tokens[n - 1];
         if (id >= 0 && id < 256) {
@@ -391,9 +438,10 @@ static void generate_v2(RabbitModel *m, const char *prompt, int max_new_tokens, 
     free(tokens); free(hidden); free(logits);
 }
 
-static void generate(RabbitModel *m, const char *prompt, int max_new_tokens, float temperature) {
+static void generate(RabbitModel *m, const char *prompt, int max_new_tokens,
+                     float temperature, float top_p) {
     if (is_ref_v2_model(m)) {
-        generate_v2(m, prompt, max_new_tokens, temperature);
+        generate_v2(m, prompt, max_new_tokens, temperature, top_p);
         return;
     }
 
@@ -424,7 +472,7 @@ static void generate(RabbitModel *m, const char *prompt, int max_new_tokens, flo
     for (int t = 0; t < max_new_tokens; t++) {
         lm_head_toy(hidden, dim, logits, vocab);
         softmax(logits, vocab);
-        int next = sample_token(logits, vocab, temperature);
+        int next = sample_token(logits, vocab, temperature, top_p);
         rabbit_detokenize(next, piece, sizeof(piece));
         fputs(piece, stdout);
         fflush(stdout);
@@ -444,8 +492,25 @@ rabbit_status rabbit_chat(RabbitModel *model) {
 }
 
 rabbit_status rabbit_chat_ex(RabbitModel *model, int max_tokens, float temperature) {
+    return rabbit_chat_ex2(model, max_tokens, temperature, 1.0f, -1);
+}
+
+rabbit_status rabbit_chat_ex2(RabbitModel *model, int max_tokens, float temperature,
+                              float top_p, int seed) {
     if (!model) return RABBIT_ERR_ARGS;
-    srand((unsigned)time(NULL));
+
+    if (seed >= 0)
+        srand((unsigned)seed);
+    else {
+        const char *env = getenv("RABBIT_SEED");
+        if (env && env[0])
+            srand((unsigned)strtoul(env, NULL, 10));
+        else
+            srand((unsigned)time(NULL));
+    }
+
+    if (top_p <= 0.0f) top_p = 1.0f;
+    if (top_p > 1.0f) top_p = 1.0f;
 
     printf("\nRabbit %s\n", rabbit_version());
     printf("----------------------------------------\n");
@@ -457,6 +522,9 @@ rabbit_status rabbit_chat_ex(RabbitModel *model, int max_tokens, float temperatu
     printf("----------------------------------------\n");
     printf("  max_tokens         %d\n", max_tokens);
     printf("  temperature        %.2f\n", temperature);
+    printf("  top_p              %.2f\n", top_p);
+    if (seed >= 0)
+        printf("  seed               %d\n", seed);
     printf("  tokenizer_vocab    %d\n", rabbit_tokenizer_vocab());
     printf("----------------------------------------\n\n");
     printf("Enter text (quit to exit).\n\n");
@@ -470,7 +538,7 @@ rabbit_status rabbit_chat_ex(RabbitModel *model, int max_tokens, float temperatu
         if (len && line[len - 1] == '\n') line[len - 1] = 0;
         if (strcmp(line, "quit") == 0 || strcmp(line, "exit") == 0) break;
         if (line[0] == 0) continue;
-        generate(model, line, max_tokens, temperature);
+        generate(model, line, max_tokens, temperature, top_p);
     }
     return RABBIT_OK;
 }
