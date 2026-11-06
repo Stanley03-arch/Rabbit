@@ -278,7 +278,6 @@ RabbitModel *rabbit_load(const char *path) {
             close(fd);
             return NULL;
         }
- }
     }
     close(fd);
 
@@ -358,7 +357,6 @@ static int sample_token(const float *probs, int n, float temperature, float top_
     if (sum > 0.0f)
         for (int i = 0; i < n; i++) tmp[i] /= sum;
 
-    /* Sort indices by probability descending (simple insertion for small n / partial) */
     if (top_p < 1.0f && top_p > 0.0f) {
         for (int i = 1; i < n; i++) {
             int key = idx[i];
@@ -380,7 +378,6 @@ static int sample_token(const float *probs, int n, float temperature, float top_
             }
         }
         if (cutoff < 1) cutoff = 1;
-        /* Renormalize nucleus */
         float nuc = 0.0f;
         for (int i = 0; i < cutoff; i++) nuc += tmp[idx[i]];
         float r = (float)rand() / (float)RAND_MAX;
