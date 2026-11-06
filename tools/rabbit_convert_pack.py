@@ -37,6 +37,10 @@ def write_header(f, **kw) -> None:
     head_dim = int(kw.get("head_dim") or 0)
     if n_heads and head_dim:
         struct.pack_into("<III", reserved, 0, n_heads, n_kv_heads or n_heads, head_dim)
+    # DeepSeek-style shared experts: reserved[12:16] = n_shared_experts (u32 LE)
+    n_shared = int(kw.get("n_shared_experts") or 0)
+    if n_shared > 0:
+        struct.pack_into("<I", reserved, 12, n_shared)
     n_records = kw.get("n_expert_records", kw["n_experts"])
     total_experts_size = n_records * kw["expert_size"]
     header = struct.pack(
