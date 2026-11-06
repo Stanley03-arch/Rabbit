@@ -10,18 +10,20 @@ Families covered (weight suffixes):
     model.layers.{L}.mlp.gate.weight
     model.layers.{L}.mlp.experts.{E}.gate_proj|up_proj|down_proj.weight
 
-  DeepSeek-style (routed experts under mlp):
-    model.layers.{L}.mlp.gate.weight  (or .moe.gate)
+  DeepSeek-style (routed + shared experts):
+    model.layers.{L}.mlp.gate.weight
     model.layers.{L}.mlp.experts.{E}.gate_proj|up_proj|down_proj.weight
+    model.layers.{L}.mlp.shared_experts.gate_proj|up_proj|down_proj.weight
+    (config: n_routed_experts, n_shared_experts)
 
   Alternate markers also scanned by classify_tensors / collect_experts_per_layer:
     .experts.  block_sparse_moe.experts  mlp.experts  moe.experts
 """
 from __future__ import annotations
 
-from typing import Callable, Iterable, List, Optional, Sequence, Tuple
+from typing import Callable, Iterable, List, Optional, Tuple
 
-# Markers that identify expert weight tensors in flat key lists
+# Markers that identify *routed* expert weight tensors in flat key lists
 EXPERT_MARKERS: Tuple[str, ...] = (
     ".experts.",
     "block_sparse_moe.experts",
@@ -84,6 +86,33 @@ EXPERT_TRIPLE_TEMPLATES: Tuple[Tuple[str, str, str], ...] = (
         "model.layers.{layer}.sparse_moe.experts.{expert}.w1.weight",
         "model.layers.{layer}.sparse_moe.experts.{expert}.w3.weight",
         "model.layers.{layer}.sparse_moe.experts.{expert}.w2.weight",
+    ),
+)
+
+# DeepSeek shared experts: always-on MLP (no expert index in path).
+# Placeholders: {layer}
+# When n_shared_experts > 1 HF often fuses intermediate_size = moe_inter * n_shared;
+# we still expect one triple of matrices (fused width handled by inter dim).
+SHARED_EXPERT_TEMPLATES: Tuple[Tuple[str, str, str], ...] = (
+    (
+        "model.layers.{layer}.mlp.shared_experts.gate_proj.weight",
+        "model.layers.{layer}.mlp.shared_experts.up_proj.weight",
+        "model.layers.{layer}.mlp.shared_experts.down_proj.weight",
+    ),
+    (
+        "model.layers.{layer}.mlp.shared_expert.gate_proj.weight",
+        "model.layers.{layer}.mlp.shared_expert.up_proj.weight",
+        "model.layers.{layer}.mlp.shared_expert.down_proj.weight",
+    ),
+    (
+        "layers.{layer}.mlp.shared_experts.gate_proj.weight",
+        "layers.{layer}.mlp.shared_experts.up_proj.weight",
+        "layers.{layer}.mlp.shared_experts.down_proj.weight",
+    ),
+    (
+        "model.layers.{layer}.moe.shared_experts.gate_proj.weight",
+        "model.layers.{layer}.moe.shared_experts.up_proj.weight",
+        "model.layers.{layer}.moe.shared_experts.down_proj.weight",
     ),
 )
 
@@ -159,6 +188,13 @@ def resolve_expert_triple_names(layer: int, expert: int) -> List[Tuple[str, str,
     ]
 
 
+def resolve_shared_expert_names(layer: int) -> List[Tuple[str, str, str]]:
+    return [
+        (g.format(layer=layer), u.format(layer=layer), d.format(layer=layer))
+        for g, u, d in SHARED_EXPERT_TEMPLATES
+    ]
+
+
 def detect_expert_scheme(has_tensor: Callable[[str], bool], layer: int = 0, expert: int = 0) -> Optional[str]:
     """Return a short label for the first matching expert naming scheme."""
     labels = (
@@ -174,3 +210,10 @@ def detect_expert_scheme(has_tensor: Callable[[str], bool], layer: int = 0, expe
         if has_tensor(g) and has_tensor(u) and has_tensor(d):
             return label
     return None
+
+
+def detect_shared_experts(has_tensor: Callable[[str], bool], layer: int = 0) -> bool:
+    for g, u, d in resolve_shared_expert_names(layer):
+        if has_tensor(g) and has_tensor(u) and has_tensor(d):
+            return True
+    return False
