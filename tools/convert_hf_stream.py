@@ -7,7 +7,14 @@ checkpoint into RAM.
 Expert / router naming (auto-detected):
   Mixtral:  block_sparse_moe.experts.{e}.w1|w2|w3  + block_sparse_moe.gate
   Qwen:     mlp.experts.{e}.gate_proj|up_proj|down_proj  + mlp.gate
+  DeepSeek: mlp.experts.* + mlp.shared_experts.gate/up/down_proj
+            (config: n_routed_experts, n_shared_experts)
   Other:    moe.experts / sparse_moe variants (see rabbit_name_maps.py)
+
+Disk layout when n_shared > 0:
+  per layer: [E routed][S shared]  →  L * (E + S) expert records
+  header.n_experts = E (router width)
+  reserved[12:16]  = S
 """
 from __future__ import annotations
 
@@ -17,7 +24,7 @@ import struct
 import sys
 import time
 from pathlib import Path
-from typing import Callable, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 
@@ -34,9 +41,11 @@ from rabbit_name_maps import (
     LM_HEAD_TEMPLATES,
     POST_NORM_TEMPLATES,
     detect_expert_scheme,
+    detect_shared_experts,
     first_present,
     resolve_expert_triple_names,
     resolve_router_name,
+    resolve_shared_expert_names,
 )
 
 try:
@@ -172,6 +181,14 @@ def pack_expert(g: np.ndarray, u: np.ndarray, d: np.ndarray, quant: int) -> byte
     )
 
 
+def write_padded_expert(f, blob: bytes, expert_size: int, where: str) -> None:
+    if len(blob) < expert_size:
+        blob = blob + b"\0" * (expert_size - len(blob))
+    elif len(blob) > expert_size:
+        raise SystemExit(f"expert blob too large: {len(blob)} > {expert_size} ({where})")
+    f.write(blob)
+
+
 def load_expert(
     shards: ShardIndex,
     layer: int,
@@ -180,7 +197,7 @@ def load_expert(
     H: int,
     scheme_index: Optional[int],
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, int]:
-    """Load gate/up/down for one expert; return arrays + matching scheme index."""
+    """Load gate/up/down for one routed expert; return arrays + matching scheme index."""
     triples = resolve_expert_triple_names(layer, expert)
     order = list(range(len(triples)))
     if scheme_index is not None:
@@ -201,9 +218,31 @@ def load_expert(
     )
 
 
+def load_shared_expert(
+    shards: ShardIndex,
+    layer: int,
+    inter: int,
+    H: int,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Load DeepSeek-style always-on shared_experts MLP for one layer.
+
+    HF may fuse width as moe_intermediate * n_shared; we crop/pad to inter×H.
+    """
+    for g_name, u_name, d_name in resolve_shared_expert_names(layer):
+        g = shards.get(g_name)
+        u = shards.get(u_name)
+        d = shards.get(d_name)
+        if g is not None and u is not None and d is not None:
+            return fit2d(g, inter, H), fit2d(u, inter, H), fit2d(d, H, inter)
+    raise SystemExit(
+        f"Missing shared_experts weights for layer={layer}\n"
+        f"  Tried: {[t[0] for t in resolve_shared_expert_names(layer)[:3]]}"
+    )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Stream HF MoE (Mixtral / Qwen / variants) → .rabbit (low RAM)"
+        description="Stream HF MoE (Mixtral / Qwen / DeepSeek) → .rabbit (low RAM)"
     )
     ap.add_argument("--model-dir", required=True)
     ap.add_argument("--out", required=True)
@@ -240,6 +279,7 @@ def main() -> None:
         raise SystemExit(
             "config: num_local_experts / num_experts / n_routed_experts missing"
         )
+    n_shared_cfg = int(config.get("n_shared_experts") or 0)
     top_k = int(config.get("num_experts_per_tok") or config.get("moe_top_k") or 2)
     inter = int(
         config.get("moe_intermediate_size")
@@ -254,23 +294,35 @@ def main() -> None:
     quant = int(args.quant)
     model_name = (args.name or model_dir.name)[:60]
 
+    shards = ShardIndex(model_dir)
+    scheme = detect_expert_scheme(shards.has, layer=0, expert=0)
+    has_shared = detect_shared_experts(shards.has, layer=0)
+    # Prefer tensors when present; fall back to config count (at least 1 if tensors exist)
+    n_shared = 0
+    if has_shared:
+        n_shared = max(1, n_shared_cfg)
+    elif n_shared_cfg > 0:
+        # Config claims shared experts but tensors not found under known names
+        print(
+            f"[warn] config n_shared_experts={n_shared_cfg} but no shared_experts tensors found"
+        )
+
     expert_size = expert_nbytes(inter, H, quant=quant)
     dense_size = (V * H + H * V + H) * 4
     dense_size += L * (
         H * 2 + q_dim * H + kv_dim * H + kv_dim * H + H * q_dim + E * H
     ) * 4
+    n_records = L * (E + n_shared)
+
     print(
-        f"[config] name={model_name!r} H={H} L={L} V={V} E={E} inter={inter} "
-        f"heads={n_heads}/{n_kv}/{head_dim} quant={quant}"
+        f"[config] name={model_name!r} H={H} L={L} V={V} E={E} shared={n_shared} "
+        f"inter={inter} heads={n_heads}/{n_kv}/{head_dim} quant={quant}"
     )
     print(
         f"[plan] dense={dense_size/1e6:.1f}MB expert={expert_size/1e3:.1f}KB "
-        f"records={L*E}"
+        f"records={n_records} (L*(E+S))"
     )
-
-    shards = ShardIndex(model_dir)
-    scheme = detect_expert_scheme(shards.has, layer=0, expert=0)
-    print(f"[scheme] experts={scheme or 'auto-probe per layer'}")
+    print(f"[scheme] experts={scheme or 'auto-probe per layer'}  shared={has_shared}")
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -292,19 +344,18 @@ def main() -> None:
             dense_quant=0,
             expert_quant=quant,
             name=model_name,
-            n_expert_records=L * E,
+            n_expert_records=n_records,
             n_heads=n_heads,
             n_kv_heads=n_kv,
             head_dim=head_dim,
+            n_shared_experts=n_shared,
         )
 
-        _, embed = shards.require_any(
-            [t for t in EMBED_TEMPLATES]
-        )
+        _, embed = shards.require_any(list(EMBED_TEMPLATES))
         emb = fit2d(embed, V, H)
         f.write(emb.tobytes())
 
-        lm_name, lm = first_present(shards.get, LM_HEAD_TEMPLATES)
+        _, lm = first_present(shards.get, LM_HEAD_TEMPLATES)
         if lm is not None:
             lm_w = fit2d(lm, V, H).T.copy()
             f.write(lm_w.astype(np.float32).tobytes())
@@ -348,7 +399,7 @@ def main() -> None:
             if router is None:
                 raise SystemExit(
                     f"Missing router/gate for layer {layer} "
-                    f"(tried Mixtral block_sparse_moe.gate / Qwen mlp.gate / …)"
+                    f"(tried Mixtral / Qwen / moe gate names)"
                 )
             f.write(fit2d(router, E, H).tobytes())
             print(f"  dense {layer + 1}/{L}  router={r_name}", flush=True)
@@ -359,17 +410,19 @@ def main() -> None:
                     shards, layer, e, inter, H, scheme_index
                 )
                 blob = pack_expert(g, u, d, quant)
-                if len(blob) < expert_size:
-                    blob += b"\0" * (expert_size - len(blob))
-                elif len(blob) > expert_size:
-                    raise SystemExit(
-                        f"expert blob too large: {len(blob)} > {expert_size} "
-                        f"(L={layer} e={e})"
-                    )
-                f.write(blob)
+                write_padded_expert(f, blob, expert_size, f"L={layer} e={e}")
                 del g, u, d, blob
+
+            for s in range(n_shared):
+                # HF typically stores one fused shared MLP; replicate S times if S>1
+                g, u, d = load_shared_expert(shards, layer, inter, H)
+                blob = pack_expert(g, u, d, quant)
+                write_padded_expert(f, blob, expert_size, f"L={layer} shared={s}")
+                del g, u, d, blob
+
             elapsed = time.time() - t0
-            print(f"  experts {layer + 1}/{L}  ({elapsed:.1f}s)", flush=True)
+            extra = f" +{n_shared} shared" if n_shared else ""
+            print(f"  experts {layer + 1}/{L}{extra}  ({elapsed:.1f}s)", flush=True)
 
     shards.close()
     elapsed = time.time() - t0
