@@ -46,6 +46,7 @@
         <div class="kv"><span>errors</span><b id="met-err">0</b></div>
         <div class="kv"><span>avg latency</span><b id="met-avg">—</b></div>
         <div class="kv"><span>tokens est.</span><b id="met-tok">0</b></div>
+        <div class="kv"><span>last speed</span><b id="met-tps">—</b></div>
       </section>
 
       <section class="panel">
@@ -67,6 +68,7 @@
         <h3>Voice</h3>
         <label class="check"><input type="checkbox" id="voice-auto-send" checked /> Auto-send after speech</label>
         <label class="check"><input type="checkbox" id="voice-speak" checked /> Speak replies (TTS)</label>
+        <label class="check"><input type="checkbox" id="voice-continuous" /> Continuous listen</label>
         <label>Lang
           <select id="voice-lang">
             <option value="en-US" selected>en-US</option>
@@ -81,13 +83,14 @@
         <label>TTS rate <input type="number" id="voice-rate" value="1" min="0.5" max="2" step="0.1" /></label>
         <div class="kv"><span>mic</span><b id="voice-mic-status">idle</b></div>
         <div class="kv"><span>last cmd</span><b id="voice-cmd-log">—</b></div>
-        <p class="hint" id="voice-hint">Say a command alone (or “rabbit clear”).</p>
+        <p class="hint" id="voice-hint">Say a command alone (or “rabbit clear”). Settings auto-save.</p>
         <ul class="cmd-list">
           <li><code>clear</code> / <code>new chat</code></li>
           <li><code>stop</code> / <code>cancel</code></li>
           <li><code>mute</code> / <code>be quiet</code></li>
           <li><code>speak on</code> / <code>speak off</code></li>
           <li><code>stream on</code> / <code>stream off</code></li>
+          <li><code>listen on</code> / <code>listen off</code></li>
           <li><code>copy</code> · <code>export</code> · <code>refresh</code></li>
           <li><code>repeat</code> · <code>send</code> · <code>help</code></li>
         </ul>
@@ -113,6 +116,7 @@
         </div>
         <input type="file" id="import-file" accept="application/json,.json" hidden />
         <div class="kv latency"><span>last latency</span><b id="latency">—</b></div>
+        <div class="kv"><span>tok/s est.</span><b id="tps">—</b></div>
       </section>
     </aside>
 
@@ -120,7 +124,7 @@
       <header class="top">
         <div>
           <h1>Chat</h1>
-          <p class="muted">Voice commands · dense in RAM · experts from disk</p>
+          <p class="muted">Voice · SSE · settings saved in browser</p>
         </div>
         <div class="status-pill" id="status-pill">idle</div>
       </header>
@@ -150,7 +154,7 @@
         <button type="button" class="btn-tts-stop" id="tts-stop" hidden title="Stop speaking">🔇</button>
         <button type="submit" id="send">Send</button>
       </form>
-      <p class="footer-note">Voice commands run in the browser and are not sent to the engine. Try saying “help”.</p>
+      <p class="footer-note">Generation settings and voice prefs persist in localStorage.</p>
     </main>
   </div>
   <script src="/static/app.js"></script>
