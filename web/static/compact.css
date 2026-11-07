@@ -1,0 +1,17 @@
+/* Compact density mode (toggled via body.compact) */
+body.compact .panel {
+  padding: 0.55rem 0.65rem;
+  margin-bottom: 0.55rem;
+}
+body.compact .sidebar { padding: 0.7rem; }
+body.compact .bubble {
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+}
+body.compact .chat {
+  padding: 0.75rem;
+  gap: 0.55rem;
+}
+body.compact .top { padding: 0.65rem 1rem; }
+body.compact .composer { padding: 0.55rem 1rem; }
+body.compact .chips { padding: 0.45rem 1rem 0; }
