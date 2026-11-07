@@ -146,21 +146,26 @@
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
           <p class="hint">Say <strong>regenerate</strong> or use the sidebar button.</p>
-          <p class="hint">Keys: <kbd>Enter</kbd> send · <kbd>M</kbd> mic · <kbd>Esc</kbd> focus</p>
+          <p class="hint">Keys: <kbd>Enter</kbd> send · <kbd>Ctrl+R</kbd> regen · <kbd>M</kbd> mic</p>
         </div>
       </div>
 
+      <div class="composer-tools">
+        <label class="check inline"><input type="checkbox" id="auto-scroll" checked /> Auto-scroll</label>
+        <span class="composer-count" id="composer-count">0 chars · ~0 tok</span>
+        <button type="button" class="linkish" id="save-prompt" title="Save current text as a chip">Save prompt</button>
+      </div>
       <form class="composer" id="form">
         <button type="button" class="btn-mic" id="mic" title="Voice input (M)">
           <span class="mic-icon" aria-hidden="true">🎙</span>
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
-        <input id="prompt" autocomplete="off" placeholder="Message or voice command…" />
+        <textarea id="prompt" rows="2" autocomplete="off" placeholder="Message or voice command… (Enter send · Shift+Enter newline)"></textarea>
         <button type="button" class="btn-stop" id="stop" hidden title="Stop request">Stop</button>
         <button type="button" class="btn-tts-stop" id="tts-stop" hidden title="Stop speaking">🔇</button>
         <button type="submit" id="send">Send</button>
       </form>
-      <p class="footer-note">Chat can persist in localStorage. Engine stays on the server.</p>
+      <p class="footer-note">Shortcuts: <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · <kbd>Ctrl+L</kbd> clear · <kbd>Ctrl+R</kbd> regenerate · <kbd>M</kbd> mic</p>
     </main>
   </div>
   <script src="/static/app-extras.js"></script>
