@@ -2,15 +2,11 @@
 """
 Rabbit engine dashboard
 
-Original dark UI: chat + model stats + expert-cache metrics.
-Phase C: model/memory metrics come from `rabbit stats` (engine JSON),
-not only log scraping.
+Dark UI: chat + model stats + expert-cache metrics.
+Advanced: SSE token streaming, system prompt, request metrics.
 
   pip install flask
   python tools/rabbit_dashboard.py --model models/tiny-test.rabbit
-  python tools/rabbit_dashboard.py --model models/m.rabbit --tokenizer models/m.tok
-
-Colab: use notebooks/rabbit_colab_dashboard.ipynb
 """
 
 from __future__ import annotations
@@ -22,10 +18,11 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 from pathlib import Path
-from typing import Optional
+from typing import Generator, Optional
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, Response, jsonify, request, send_from_directory, stream_with_context
 
 REPO_CANDIDATES = [
     Path(__file__).resolve().parent.parent,
@@ -42,6 +39,13 @@ _state = {
     "last_reply": "",
     "model_meta": {},
     "engine_stats": {},
+    "metrics": {
+        "requests": 0,
+        "errors": 0,
+        "tokens_est": 0,
+        "total_ms": 0.0,
+        "last_ms": 0.0,
+    },
 }
 
 
@@ -114,16 +118,30 @@ def extract_reply(stdout: str) -> str:
     return text or "[no generation captured]"
 
 
-def run_generation(
+def _is_banner_line(line: str) -> bool:
+    s = line.strip()
+    if not s:
+        return True
+    if s.startswith("Rabbit ") or s.startswith("--") or s.startswith("Enter text"):
+        return True
+    if line.startswith("  ") or line.startswith(">"):
+        return True
+    if "cache hit" in s or "cache miss" in s or "hit rate" in s:
+        return True
+    if re.match(r"^[\-\=]{3,}$", s):
+        return True
+    return False
+
+
+def build_chat_cmd(
     rabbit: Path,
     model: Path,
-    message: str,
     tokens: int,
     temp: float,
-    tokenizer: Optional[Path] = None,
-    top_p: float = 1.0,
-    seed: Optional[int] = None,
-) -> str:
+    tokenizer: Optional[Path],
+    top_p: float,
+    seed: Optional[int],
+) -> list:
     cmd = [
         str(rabbit),
         "chat",
@@ -140,26 +158,27 @@ def run_generation(
         cmd.extend(["--seed", str(int(seed))])
     if tokenizer and tokenizer.is_file():
         cmd.extend(["--tokenizer", str(tokenizer)])
+    return cmd
 
-    stdin = (message.strip() + "\nquit\n").encode("utf-8", errors="replace")
-    proc = subprocess.run(cmd, input=stdin, capture_output=True, timeout=180)
-    combined = proc.stdout.decode("utf-8", errors="replace") + "\n" + proc.stderr.decode(
-        "utf-8", errors="replace"
-    )
 
+def compose_prompt(system: str, message: str) -> str:
+    system = (system or "").strip()
+    message = (message or "").strip()
+    if system:
+        return f"[system] {system}\n{message}"
+    return message
+
+
+def update_cache_state(combined: str, rabbit: Path, model: Path, reply: str) -> None:
     cache = parse_cache_stats(combined)
-    reply = extract_reply(proc.stdout.decode("utf-8", errors="replace"))
-
     try:
         engine = run_engine_stats(rabbit, model)
     except Exception:
         engine = {}
-
     n = int(engine.get("n_experts") or 8)
     warm = list(range(min(4, n)))
     if cache.get("cache_inserts", 0):
         warm = list({(i * 3 + cache["cache_inserts"]) % n for i in range(min(6, n))})
-
     with _state_lock:
         _state["engine_stats"] = engine
         _state["cache_hits"] = cache.get("cache_hits", _state["cache_hits"])
@@ -168,7 +187,161 @@ def run_generation(
         _state["warm_experts"] = warm
         _state["last_reply"] = reply
 
-    return reply
+
+def record_metrics(ok: bool, ms: float, reply: str) -> None:
+    with _state_lock:
+        m = _state["metrics"]
+        m["requests"] += 1
+        if not ok:
+            m["errors"] += 1
+        m["last_ms"] = ms
+        m["total_ms"] += ms
+        m["tokens_est"] += max(1, len((reply or "").split()))
+
+
+def run_generation(
+    rabbit: Path,
+    model: Path,
+    message: str,
+    tokens: int,
+    temp: float,
+    tokenizer: Optional[Path] = None,
+    top_p: float = 1.0,
+    seed: Optional[int] = None,
+    system: str = "",
+) -> str:
+    cmd = build_chat_cmd(rabbit, model, tokens, temp, tokenizer, top_p, seed)
+    prompt = compose_prompt(system, message)
+    stdin = (prompt + "\nquit\n").encode("utf-8", errors="replace")
+    t0 = time.perf_counter()
+    try:
+        proc = subprocess.run(cmd, input=stdin, capture_output=True, timeout=180)
+        combined = proc.stdout.decode("utf-8", errors="replace") + "\n" + proc.stderr.decode(
+            "utf-8", errors="replace"
+        )
+        reply = extract_reply(proc.stdout.decode("utf-8", errors="replace"))
+        update_cache_state(combined, rabbit, model, reply)
+        record_metrics(True, (time.perf_counter() - t0) * 1000.0, reply)
+        return reply
+    except Exception:
+        record_metrics(False, (time.perf_counter() - t0) * 1000.0, "")
+        raise
+
+
+def iter_generation(
+    rabbit: Path,
+    model: Path,
+    message: str,
+    tokens: int,
+    temp: float,
+    tokenizer: Optional[Path] = None,
+    top_p: float = 1.0,
+    seed: Optional[int] = None,
+    system: str = "",
+) -> Generator[str, None, None]:
+    """Yield text pieces as the engine prints them."""
+    cmd = build_chat_cmd(rabbit, model, tokens, temp, tokenizer, top_p, seed)
+    prompt = compose_prompt(system, message)
+    stdin = (prompt + "\nquit\n").encode("utf-8", errors="replace")
+    t0 = time.perf_counter()
+    proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=0,
+    )
+    assert proc.stdin is not None and proc.stdout is not None
+    try:
+        proc.stdin.write(stdin)
+        proc.stdin.close()
+    except BrokenPipeError:
+        pass
+
+    buf = ""
+    past_banner = False
+    yielded = False
+    pieces: list[str] = []
+    deadline = time.time() + 180.0
+    stderr_chunks: list[bytes] = []
+
+    try:
+        while True:
+            if time.time() > deadline:
+                proc.kill()
+                break
+            chunk = proc.stdout.read(64)
+            if not chunk:
+                if proc.poll() is not None:
+                    break
+                time.sleep(0.01)
+                continue
+            text = chunk.decode("utf-8", errors="replace")
+            buf += text
+
+            if not past_banner:
+                if ">" in buf or "Enter text" in buf:
+                    idx = buf.rfind(">")
+                    if idx >= 0:
+                        buf = buf[idx + 1 :]
+                    past_banner = True
+                elif len(buf) > 8000:
+                    past_banner = True
+                else:
+                    continue
+
+            while "\n" in buf:
+                line, buf = buf.split("\n", 1)
+                if _is_banner_line(line):
+                    if yielded:
+                        buf = ""
+                        proc.kill()
+                        break
+                    continue
+                if line:
+                    yielded = True
+                    pieces.append(line)
+                    yield line
+            else:
+                if past_banner and buf and not buf.endswith(" "):
+                    if len(buf) >= 4 or yielded:
+                        if not _is_banner_line(buf):
+                            yielded = True
+                            pieces.append(buf)
+                            yield buf
+                        buf = ""
+
+            if proc.poll() is not None and not chunk:
+                break
+
+        if past_banner and buf.strip() and not _is_banner_line(buf):
+            pieces.append(buf.strip())
+            yield buf.strip()
+    finally:
+        try:
+            if proc.stderr:
+                stderr_chunks.append(proc.stderr.read() or b"")
+            if proc.poll() is None:
+                proc.kill()
+            proc.wait(timeout=2)
+        except Exception:
+            pass
+
+    reply = "".join(pieces).strip()
+    if not reply:
+        try:
+            reply = run_generation(
+                rabbit, model, message, tokens, temp, tokenizer, top_p, seed, system
+            )
+            yield reply
+            return
+        except Exception as e:
+            yield f"[error: {e}]"
+            return
+
+    combined = reply + "\n" + b"".join(stderr_chunks).decode("utf-8", errors="replace")
+    update_cache_state(combined, rabbit, model, reply)
+    record_metrics(True, (time.perf_counter() - t0) * 1000.0, reply)
 
 
 def create_app(
@@ -194,6 +367,12 @@ def create_app(
     def info():
         with _state_lock:
             engine = dict(_state["engine_stats"])
+            metrics = dict(_state["metrics"])
+            avg = (
+                metrics["total_ms"] / metrics["requests"]
+                if metrics["requests"]
+                else 0.0
+            )
             payload = {
                 "version": f"Rabbit {engine.get('version', '')}".strip() or "Rabbit",
                 "model_path": str(model),
@@ -227,6 +406,13 @@ def create_app(
                 "over_budget": engine.get("over_budget"),
                 "tokenizer": str(tokenizer) if tokenizer else None,
                 "source": "rabbit stats",
+                "metrics": {
+                    "requests": metrics["requests"],
+                    "errors": metrics["errors"],
+                    "tokens_est": metrics["tokens_est"],
+                    "avg_ms": round(avg, 1),
+                    "last_ms": round(metrics["last_ms"], 1),
+                },
             }
         try:
             v = subprocess.run([str(rabbit), "version"], capture_output=True, text=True, timeout=5)
@@ -237,12 +423,25 @@ def create_app(
             pass
         return jsonify(payload)
 
-    @app.post("/api/chat")
-    def chat():
-        data = request.get_json(force=True, silent=True) or {}
+    @app.get("/api/metrics")
+    def metrics():
+        with _state_lock:
+            m = dict(_state["metrics"])
+        avg = m["total_ms"] / m["requests"] if m["requests"] else 0.0
+        return jsonify(
+            {
+                "requests": m["requests"],
+                "errors": m["errors"],
+                "tokens_est": m["tokens_est"],
+                "avg_ms": round(avg, 2),
+                "last_ms": round(m["last_ms"], 2),
+                "total_ms": round(m["total_ms"], 2),
+            }
+        )
+
+    def _parse_gen_body(data: dict):
         message = (data.get("message") or "").strip()
-        if not message:
-            return jsonify({"error": "empty message"}), 400
+        system = (data.get("system") or "").strip()
         tokens = int(data.get("tokens") or 48)
         temp = float(data.get("temperature") if data.get("temperature") is not None else 0.8)
         top_p = float(data.get("top_p") if data.get("top_p") is not None else 1.0)
@@ -251,15 +450,50 @@ def create_app(
         tokens = max(8, min(256, tokens))
         temp = max(0.0, min(2.0, temp))
         top_p = max(0.05, min(1.0, top_p))
+        return message, system, tokens, temp, top_p, seed_i
+
+    @app.post("/api/chat")
+    def chat():
+        data = request.get_json(force=True, silent=True) or {}
+        message, system, tokens, temp, top_p, seed_i = _parse_gen_body(data)
+        if not message:
+            return jsonify({"error": "empty message"}), 400
         try:
             reply = run_generation(
-                rabbit, model, message, tokens, temp, tokenizer, top_p, seed_i
+                rabbit, model, message, tokens, temp, tokenizer, top_p, seed_i, system
             )
             return jsonify({"reply": reply})
         except subprocess.TimeoutExpired:
             return jsonify({"error": "generation timed out"}), 504
         except Exception as e:
             return jsonify({"error": str(e)}), 500
+
+    @app.post("/api/chat/stream")
+    def chat_stream():
+        data = request.get_json(force=True, silent=True) or {}
+        message, system, tokens, temp, top_p, seed_i = _parse_gen_body(data)
+        if not message:
+            return jsonify({"error": "empty message"}), 400
+
+        def gen():
+            try:
+                for piece in iter_generation(
+                    rabbit, model, message, tokens, temp, tokenizer, top_p, seed_i, system
+                ):
+                    yield f"data: {json.dumps({'type': 'token', 'text': piece})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+        return Response(
+            stream_with_context(gen()),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     return app
 
@@ -310,6 +544,8 @@ def main():
     if tokenizer:
         print(f"Tokenizer     : {tokenizer}")
     print(f"Dashboard     : http://127.0.0.1:{args.port}/")
+    print(f"Stream API    : POST /api/chat/stream (SSE)")
+    print(f"Metrics       : GET  /api/metrics")
     if args.share_hint:
         print("On Colab, use the UI output URL or a localtunnel/ngrok if needed.")
     app.run(host=args.host, port=args.port, debug=False, threaded=True)
