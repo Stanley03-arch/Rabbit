@@ -63,6 +63,26 @@
         <p class="hint">Warm = recently routed · shared experts always-on</p>
       </section>
 
+      <section class="panel voice-panel">
+        <h3>Voice</h3>
+        <label class="check"><input type="checkbox" id="voice-auto-send" checked /> Auto-send after speech</label>
+        <label class="check"><input type="checkbox" id="voice-speak" checked /> Speak replies (TTS)</label>
+        <label>Lang
+          <select id="voice-lang">
+            <option value="en-US" selected>en-US</option>
+            <option value="en-GB">en-GB</option>
+            <option value="sw-KE">sw-KE</option>
+            <option value="fr-FR">fr-FR</option>
+            <option value="es-ES">es-ES</option>
+            <option value="de-DE">de-DE</option>
+            <option value="zh-CN">zh-CN</option>
+          </select>
+        </label>
+        <label>TTS rate <input type="number" id="voice-rate" value="1" min="0.5" max="2" step="0.1" /></label>
+        <div class="kv"><span>mic</span><b id="voice-mic-status">idle</b></div>
+        <p class="hint" id="voice-hint">Uses browser Web Speech API (best in Chrome / Edge).</p>
+      </section>
+
       <section class="panel controls">
         <h3>Generation</h3>
         <label>Tokens <input type="number" id="tokens" value="48" min="8" max="256" /></label>
@@ -90,7 +110,7 @@
       <header class="top">
         <div>
           <h1>Chat</h1>
-          <p class="muted">Dense in RAM · experts streamed from disk · SSE optional</p>
+          <p class="muted">Voice in/out · dense in RAM · experts from disk</p>
         </div>
         <div class="status-pill" id="status-pill">idle</div>
       </header>
@@ -104,18 +124,23 @@
 
       <div class="chat" id="chat">
         <div class="empty-state" id="empty-state">
-          <p>Send a message to exercise the engine path.</p>
-          <p class="hint">Enable <strong>Stream tokens</strong> for live SSE output.</p>
-          <p class="hint">Shortcuts: <kbd>Enter</kbd> send · <kbd>Esc</kbd> focus</p>
+          <p>Send a message or hold the mic to talk.</p>
+          <p class="hint">Enable <strong>Speak replies</strong> for TTS. Mic uses the Web Speech API.</p>
+          <p class="hint">Shortcuts: <kbd>Enter</kbd> send · <kbd>M</kbd> toggle mic · <kbd>Esc</kbd> focus</p>
         </div>
       </div>
 
       <form class="composer" id="form">
-        <input id="prompt" autocomplete="off" placeholder="Message Rabbit… (Enter to send)" />
+        <button type="button" class="btn-mic" id="mic" title="Voice input (M)">
+          <span class="mic-icon" aria-hidden="true">🎙</span>
+          <span class="mic-pulse" aria-hidden="true"></span>
+        </button>
+        <input id="prompt" autocomplete="off" placeholder="Message Rabbit… or use the mic" />
         <button type="button" class="btn-stop" id="stop" hidden title="Stop request">Stop</button>
+        <button type="button" class="btn-tts-stop" id="tts-stop" hidden title="Stop speaking">🔇</button>
         <button type="submit" id="send">Send</button>
       </form>
-      <p class="footer-note">Synthetic weights produce non-linguistic output — dashboard validates the engine path.</p>
+      <p class="footer-note">Voice runs in the browser (SpeechRecognition + SpeechSynthesis). Engine text is still synthetic on test weights.</p>
     </main>
   </div>
   <script src="/static/app.js"></script>
