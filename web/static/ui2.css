@@ -1,0 +1,15 @@
+.chat.drop-target {
+  outline: 2px dashed var(--accent-2);
+  outline-offset: -6px;
+  background: rgba(56, 189, 248, 0.06);
+}
+.controls select {
+  width: 100%;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.35rem 0.45rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
