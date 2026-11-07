@@ -121,6 +121,8 @@ def run_generation(
     tokens: int,
     temp: float,
     tokenizer: Optional[Path] = None,
+    top_p: float = 1.0,
+    seed: Optional[int] = None,
 ) -> str:
     cmd = [
         str(rabbit),
@@ -131,7 +133,11 @@ def run_generation(
         str(tokens),
         "--temp",
         str(temp),
+        "--top-p",
+        str(top_p),
     ]
+    if seed is not None:
+        cmd.extend(["--seed", str(int(seed))])
     if tokenizer and tokenizer.is_file():
         cmd.extend(["--tokenizer", str(tokenizer)])
 
@@ -173,6 +179,13 @@ def create_app(
 ) -> Flask:
     app = Flask(__name__, static_folder=str(repo / "web" / "static"), static_url_path="/static")
 
+    @app.after_request
+    def add_cors(resp):
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        return resp
+
     @app.get("/")
     def index():
         return send_from_directory(str(repo / "web"), "index.html")
@@ -188,7 +201,11 @@ def create_app(
                 "layers": engine.get("layers"),
                 "hidden_dim": engine.get("hidden_dim"),
                 "experts": engine.get("n_experts"),
+                "n_shared_experts": engine.get("n_shared_experts", 0),
                 "top_k": engine.get("experts_per_token"),
+                "n_heads": engine.get("n_heads"),
+                "n_kv_heads": engine.get("n_kv_heads"),
+                "head_dim": engine.get("head_dim"),
                 "expert_quant": engine.get("expert_quant"),
                 "dense": (
                     f"{engine['dense_bytes'] / (1024*1024):.2f} MB"
@@ -227,11 +244,17 @@ def create_app(
         if not message:
             return jsonify({"error": "empty message"}), 400
         tokens = int(data.get("tokens") or 48)
-        temp = float(data.get("temperature") or 0.8)
+        temp = float(data.get("temperature") if data.get("temperature") is not None else 0.8)
+        top_p = float(data.get("top_p") if data.get("top_p") is not None else 1.0)
+        seed = data.get("seed")
+        seed_i = int(seed) if seed is not None and str(seed).strip() != "" else None
         tokens = max(8, min(256, tokens))
-        temp = max(0.0, min(1.5, temp))
+        temp = max(0.0, min(2.0, temp))
+        top_p = max(0.05, min(1.0, top_p))
         try:
-            reply = run_generation(rabbit, model, message, tokens, temp, tokenizer)
+            reply = run_generation(
+                rabbit, model, message, tokens, temp, tokenizer, top_p, seed_i
+            )
             return jsonify({"reply": reply})
         except subprocess.TimeoutExpired:
             return jsonify({"error": "generation timed out"}), 504
