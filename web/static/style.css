@@ -142,6 +142,19 @@ kbd {
   background: var(--panel-2);
 }
 
+.cmd-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.cmd-list code {
+  font-family: var(--mono);
+  font-size: 0.95em;
+  color: var(--accent-2);
+}
+
 .controls label,
 .voice-panel label {
   display: flex;
