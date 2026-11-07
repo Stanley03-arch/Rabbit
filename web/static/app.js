@@ -14,10 +14,23 @@ const emptyState = document.getElementById("empty-state");
 const latencyEl = document.getElementById("latency");
 const streamEl = document.getElementById("stream");
 const systemEl = document.getElementById("system");
+const micBtn = document.getElementById("mic");
+const ttsStopBtn = document.getElementById("tts-stop");
+const voiceAutoSend = document.getElementById("voice-auto-send");
+const voiceSpeak = document.getElementById("voice-speak");
+const voiceLang = document.getElementById("voice-lang");
+const voiceRate = document.getElementById("voice-rate");
+const voiceMicStatus = document.getElementById("voice-mic-status");
+const voiceHint = document.getElementById("voice-hint");
 
 let lastReply = "";
 let abortCtrl = null;
-let history = []; // {role, content, ts, ms?}
+let history = [];
+let recognition = null;
+let listening = false;
+let interimTranscript = "";
+
+/* ---------- UI helpers ---------- */
 
 function hideEmpty() {
   if (emptyState) emptyState.style.display = "none";
@@ -87,6 +100,163 @@ function quantLabel(q) {
   return `${q}-bit`;
 }
 
+/* ---------- Voice: TTS ---------- */
+
+function stopSpeaking() {
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+  if (ttsStopBtn) ttsStopBtn.hidden = true;
+}
+
+function speakText(text) {
+  if (!voiceSpeak || !voiceSpeak.checked) return;
+  if (!window.speechSynthesis) return;
+  const clean = String(text || "")
+    .replace(/\[error[^\]]*\]/gi, "")
+    .replace(/\[stopped\]/gi, "")
+    .replace(/---[\s\S]*$/m, "")
+    .replace(/\*+/g, "")
+    .trim();
+  if (!clean) return;
+  stopSpeaking();
+  const u = new SpeechSynthesisUtterance(clean.slice(0, 1500));
+  u.lang = (voiceLang && voiceLang.value) || "en-US";
+  const rate = Number(voiceRate && voiceRate.value);
+  u.rate = Number.isFinite(rate) ? Math.min(2, Math.max(0.5, rate)) : 1;
+  u.pitch = 1;
+  u.onstart = () => {
+    if (ttsStopBtn) ttsStopBtn.hidden = false;
+  };
+  u.onend = () => {
+    if (ttsStopBtn) ttsStopBtn.hidden = true;
+  };
+  u.onerror = () => {
+    if (ttsStopBtn) ttsStopBtn.hidden = true;
+  };
+  window.speechSynthesis.speak(u);
+}
+
+if (ttsStopBtn) ttsStopBtn.addEventListener("click", stopSpeaking);
+
+/* ---------- Voice: STT ---------- */
+
+function setMicUI(on) {
+  listening = on;
+  if (micBtn) micBtn.classList.toggle("listening", on);
+  if (voiceMicStatus) voiceMicStatus.textContent = on ? "listening" : "idle";
+  if (on) setStatus("busy", "listening");
+}
+
+function initSpeechRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    if (voiceHint)
+      voiceHint.textContent =
+        "Speech recognition not supported in this browser. Use Chrome or Edge.";
+    if (micBtn) {
+      micBtn.disabled = true;
+      micBtn.title = "Speech recognition unavailable";
+    }
+    if (voiceMicStatus) voiceMicStatus.textContent = "unsupported";
+    return null;
+  }
+  const rec = new SR();
+  rec.continuous = false;
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
+
+  rec.onstart = () => {
+    setMicUI(true);
+    interimTranscript = "";
+  };
+
+  rec.onresult = (event) => {
+    let interim = "";
+    let final = "";
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const t = event.results[i][0].transcript;
+      if (event.results[i].isFinal) final += t;
+      else interim += t;
+    }
+    if (interim) {
+      interimTranscript = interim;
+      promptEl.value = (promptEl.dataset.committed || "") + interim;
+      setStatus("busy", "listening…");
+    }
+    if (final) {
+      const base = promptEl.dataset.committed || "";
+      const next = (base + final).trim();
+      promptEl.dataset.committed = next + " ";
+      promptEl.value = next;
+      interimTranscript = "";
+    }
+  };
+
+  rec.onerror = (ev) => {
+    setMicUI(false);
+    const err = ev.error || "error";
+    if (err === "not-allowed") {
+      setStatus("", "mic denied");
+      if (voiceHint)
+        voiceHint.textContent = "Microphone permission denied. Allow mic access and retry.";
+    } else if (err !== "aborted" && err !== "no-speech") {
+      setStatus("", "mic: " + err);
+    } else {
+      setStatus("ok", "ready");
+    }
+  };
+
+  rec.onend = () => {
+    setMicUI(false);
+    delete promptEl.dataset.committed;
+    const text = (promptEl.value || "").trim();
+    if (text && voiceAutoSend && voiceAutoSend.checked) {
+      setStatus("ok", "ready");
+      form.requestSubmit();
+    } else if (text) {
+      setStatus("ok", "ready");
+      promptEl.focus();
+    } else {
+      setStatus("ok", "ready");
+    }
+  };
+
+  return rec;
+}
+
+function startListening() {
+  stopSpeaking();
+  if (!recognition) recognition = initSpeechRecognition();
+  if (!recognition) return;
+  try {
+    recognition.lang = (voiceLang && voiceLang.value) || "en-US";
+    promptEl.dataset.committed = "";
+    recognition.start();
+  } catch (e) {
+    // Already started
+    console.warn(e);
+  }
+}
+
+function stopListening() {
+  if (recognition && listening) {
+    try {
+      recognition.stop();
+    } catch {}
+  }
+  setMicUI(false);
+}
+
+function toggleMic() {
+  if (listening) stopListening();
+  else startListening();
+}
+
+if (micBtn) micBtn.addEventListener("click", toggleMic);
+
+/* ---------- Stats / chat utilities ---------- */
+
 async function refreshInfo() {
   try {
     const r = await fetch("/api/info");
@@ -155,6 +325,8 @@ function clearChat() {
     abortCtrl.abort();
     abortCtrl = null;
   }
+  stopListening();
+  stopSpeaking();
   chatEl.querySelectorAll(".bubble").forEach((b) => b.remove());
   showEmpty();
   lastReply = "";
@@ -206,11 +378,12 @@ function importChatFile(file) {
       if (data.system) systemEl.value = data.system;
       const msgs = data.messages || data.history || [];
       msgs.forEach((m) => {
-        const role = m.role === "user" || m.role === "assistant" || m.role === "bot"
-          ? m.role === "assistant"
-            ? "bot"
-            : m.role
-          : "bot";
+        const role =
+          m.role === "user" || m.role === "assistant" || m.role === "bot"
+            ? m.role === "assistant"
+              ? "bot"
+              : m.role
+            : "bot";
         addBubble(role === "user" ? "user" : "bot", m.content || m.text || "");
       });
       setStatus("ok", "imported");
@@ -244,11 +417,27 @@ document.getElementById("chips").addEventListener("click", (ev) => {
 if (stopBtn) {
   stopBtn.addEventListener("click", () => {
     if (abortCtrl) abortCtrl.abort();
+    stopListening();
+    stopSpeaking();
   });
 }
 
 document.addEventListener("keydown", (ev) => {
-  if (ev.key === "Escape") promptEl.focus();
+  if (ev.key === "Escape") {
+    stopListening();
+    promptEl.focus();
+  }
+  if (
+    (ev.key === "m" || ev.key === "M") &&
+    !ev.ctrlKey &&
+    !ev.metaKey &&
+    !ev.altKey &&
+    document.activeElement !== promptEl &&
+    document.activeElement !== systemEl
+  ) {
+    ev.preventDefault();
+    toggleMic();
+  }
 });
 
 function genParams() {
@@ -304,9 +493,7 @@ async function sendStream(message, params, signal, onToken) {
     const parts = buf.split("\n\n");
     buf = parts.pop() || "";
     for (const block of parts) {
-      const line = block
-        .split("\n")
-        .find((l) => l.startsWith("data: "));
+      const line = block.split("\n").find((l) => l.startsWith("data: "));
       if (!line) continue;
       try {
         const obj = JSON.parse(line.slice(6));
@@ -326,6 +513,8 @@ async function sendStream(message, params, signal, onToken) {
 
 form.addEventListener("submit", async (ev) => {
   ev.preventDefault();
+  stopListening();
+  stopSpeaking();
   const message = promptEl.value.trim();
   if (!message) return;
 
@@ -346,7 +535,6 @@ form.addEventListener("submit", async (ev) => {
     const bubble = addBubble("bot", "…");
     botBody = bubble.body;
     botMeta = bubble.meta;
-    // remove premature history entry for streaming placeholder — we'll fix below
     history.pop();
   }
 
@@ -376,6 +564,7 @@ form.addEventListener("submit", async (ev) => {
       addBubble("bot", reply, ms);
     }
     setStatus("ok", "ready");
+    speakText(reply);
     await refreshInfo();
   } catch (e) {
     if (e.name === "AbortError") {
@@ -395,6 +584,7 @@ form.addEventListener("submit", async (ev) => {
   }
 });
 
+recognition = initSpeechRecognition();
 refreshInfo();
 setInterval(refreshInfo, 8000);
 setStatus("ok", "ready");
