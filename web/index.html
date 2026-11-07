@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/static/style.css" />
   <link rel="stylesheet" href="/static/compact.css" />
   <link rel="stylesheet" href="/static/ui2.css" />
+  <link rel="stylesheet" href="/static/voice-toggle.css" />
 </head>
 <body>
   <div class="app">
@@ -154,6 +155,10 @@
           <p class="muted">Voice · SSE · local history</p>
         </div>
         <div class="top-right">
+          <button type="button" class="btn-voice-top" id="voice-toggle-top" title="Toggle voice (Ctrl+M)" aria-pressed="false">
+            <span class="voice-top-icon" aria-hidden="true">🎙</span>
+            <span class="voice-top-label" id="voice-toggle-label">Voice</span>
+          </button>
           <span class="conn" id="conn-status">…</span>
           <div class="status-pill" id="status-pill">idle</div>
         </div>
@@ -192,6 +197,7 @@
       <p class="footer-note">Shortcuts: <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · <kbd>Ctrl+L</kbd> clear · <kbd>Ctrl+R</kbd> regen · <kbd>Esc</kbd> stop · <kbd>Ctrl+M</kbd> mic · <kbd>M</kbd>/<kbd>V</kbd> mic · <kbd>Ctrl+K</kbd> focus</p>
     </main>
   </div>
+  <button type="button" class="btn-voice-fab" id="voice-toggle-fab" title="Toggle voice (Ctrl+M)" aria-label="Toggle voice">🎙</button>
   <script src="/static/app-extras.js"></script>
   <script src="/static/app-extras-more.js"></script>
   <script src="/static/app-extras-ui2.js"></script>
