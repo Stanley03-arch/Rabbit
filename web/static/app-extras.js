@@ -1,4 +1,4 @@
-/* Rabbit dashboard extras — settings, history, connection, tok/s */
+/* Rabbit dashboard extras — settings, history, connection, regenerate, tok/s */
 (function () {
   const SETTINGS_KEY = "rabbit-dashboard-v1";
   const HISTORY_KEY = "rabbit-dashboard-history-v1";
@@ -14,8 +14,14 @@
   const persistChatEl = document.getElementById("persist-chat");
   const connEl = document.getElementById("conn-status");
   const regenBtn = document.getElementById("regen-last");
+  const chatEl = document.getElementById("chat");
+  const form = document.getElementById("form");
+  const promptEl = document.getElementById("prompt");
+  const emptyState = document.getElementById("empty-state");
 
   window.rabbitContinuousArmed = false;
+  let restoring = false;
+  let observed = false;
 
   function loadSettings() {
     try {
@@ -102,60 +108,93 @@
     return !!(persistChatEl && persistChatEl.checked);
   }
 
-  window.rabbitOnHistoryChange = function (hist) {
-    if (!shouldPersistChat()) {
-      try {
-        localStorage.removeItem(HISTORY_KEY);
-      } catch (e) {}
-      return;
-    }
+  function readBubbles() {
+    if (!chatEl) return [];
+    return Array.from(chatEl.querySelectorAll(".bubble")).map(function (div) {
+      const role = div.classList.contains("user") ? "user" : "bot";
+      const body = div.querySelector(".body");
+      return { role: role, content: body ? body.textContent : "", ts: Date.now() };
+    });
+  }
+
+  function saveHistoryFromDom() {
+    if (restoring || !shouldPersistChat()) return;
     try {
-      const slim = (hist || []).slice(-80).map(function (m) {
-        return {
-          role: m.role,
-          content: m.content,
-          ts: m.ts || Date.now(),
-          ms: m.ms != null ? m.ms : null,
-        };
-      });
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(slim));
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(readBubbles().slice(-80)));
     } catch (e) {
-      console.warn("history save failed", e);
+      console.warn(e);
     }
-  };
+  }
+
+  function injectBubble(role, text) {
+    if (!chatEl) return;
+    if (emptyState) emptyState.style.display = "none";
+    const div = document.createElement("div");
+    div.className = "bubble " + role;
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = (role === "user" ? "you" : "rabbit") + " \u00b7 restored";
+    const body = document.createElement("div");
+    body.className = "body";
+    body.textContent = text || "";
+    div.appendChild(meta);
+    div.appendChild(body);
+    chatEl.appendChild(div);
+  }
 
   function restoreHistory() {
-    if (!shouldPersistChat()) return;
-    if (!window.rabbitChat) return;
+    if (!shouldPersistChat() || !chatEl) return;
+    if (chatEl.querySelector(".bubble")) return;
     try {
       const raw = localStorage.getItem(HISTORY_KEY);
       if (!raw) return;
       const msgs = JSON.parse(raw);
       if (!Array.isArray(msgs) || !msgs.length) return;
+      restoring = true;
       msgs.forEach(function (m) {
-        const role = m.role === "user" ? "user" : "bot";
-        window.rabbitChat.addBubble(role, m.content || "", m.ms);
+        injectBubble(m.role === "user" ? "user" : "bot", m.content || "");
       });
-      const lastBot = msgs
-        .slice()
-        .reverse()
-        .find(function (m) {
-          return m.role === "bot" || m.role === "assistant";
-        });
-      if (lastBot && window.rabbitChat.setLastReply)
-        window.rabbitChat.setLastReply(lastBot.content || "");
+      restoring = false;
+      chatEl.scrollTop = chatEl.scrollHeight;
     } catch (e) {
-      console.warn("history restore failed", e);
+      restoring = false;
+      console.warn(e);
     }
+  }
+
+  function regenerateLast() {
+    if (!chatEl || !form || !promptEl) return;
+    const bubbles = Array.from(chatEl.querySelectorAll(".bubble"));
+    if (!bubbles.length) return;
+    let lastUserIdx = -1;
+    for (let i = bubbles.length - 1; i >= 0; i--) {
+      if (bubbles[i].classList.contains("user")) {
+        lastUserIdx = i;
+        break;
+      }
+    }
+    if (lastUserIdx < 0) return;
+    const body = bubbles[lastUserIdx].querySelector(".body");
+    const msg = body ? body.textContent : "";
+    if (!msg.trim()) return;
+    for (let i = bubbles.length - 1; i >= lastUserIdx; i--) bubbles[i].remove();
+    if (!chatEl.querySelector(".bubble") && emptyState) emptyState.style.display = "";
+    promptEl.value = msg.trim();
+    form.requestSubmit();
+  }
+
+  function ensureObserver() {
+    if (observed || !chatEl) return;
+    observed = true;
+    const obs = new MutationObserver(function () {
+      saveHistoryFromDom();
+    });
+    obs.observe(chatEl, { childList: true, subtree: true, characterData: true });
   }
 
   window.rabbitOnAppReady = function () {
     restoreHistory();
-    if (regenBtn && window.rabbitChat) {
-      regenBtn.addEventListener("click", function () {
-        window.rabbitChat.regenerateLast();
-      });
-    }
+    ensureObserver();
   };
 
   async function pingConnection() {
@@ -202,13 +241,20 @@
         try {
           localStorage.removeItem(HISTORY_KEY);
         } catch (e) {}
-      } else if (window.rabbitChat) {
-        window.rabbitOnHistoryChange(window.rabbitChat.getHistory());
-      }
+      } else saveHistoryFromDom();
     });
   }
+
+  if (regenBtn) regenBtn.addEventListener("click", regenerateLast);
 
   loadSettings();
   pingConnection();
   setInterval(pingConnection, 10000);
+
+  window.addEventListener("load", function () {
+    setTimeout(function () {
+      restoreHistory();
+      ensureObserver();
+    }, 400);
+  });
 })();
