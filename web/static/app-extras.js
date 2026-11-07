@@ -1,6 +1,7 @@
-/* Rabbit dashboard extras — settings, continuous listen helpers, tok/s */
+/* Rabbit dashboard extras — settings, history, connection, tok/s */
 (function () {
   const SETTINGS_KEY = "rabbit-dashboard-v1";
+  const HISTORY_KEY = "rabbit-dashboard-history-v1";
   const tpsEl = document.getElementById("tps");
   const voiceContinuous = document.getElementById("voice-continuous");
   const streamEl = document.getElementById("stream");
@@ -10,6 +11,9 @@
   const voiceLang = document.getElementById("voice-lang");
   const voiceRate = document.getElementById("voice-rate");
   const latencyEl = document.getElementById("latency");
+  const persistChatEl = document.getElementById("persist-chat");
+  const connEl = document.getElementById("conn-status");
+  const regenBtn = document.getElementById("regen-last");
 
   window.rabbitContinuousArmed = false;
 
@@ -32,6 +36,8 @@
         voiceContinuous.checked = s.voice_continuous;
       if (s.voice_lang && voiceLang) voiceLang.value = s.voice_lang;
       if (s.voice_rate != null && voiceRate) voiceRate.value = s.voice_rate;
+      if (typeof s.persist_chat === "boolean" && persistChatEl)
+        persistChatEl.checked = s.persist_chat;
     } catch (e) {
       console.warn(e);
     }
@@ -53,6 +59,7 @@
           voice_continuous: !!(voiceContinuous && voiceContinuous.checked),
           voice_lang: voiceLang ? voiceLang.value : "en-US",
           voice_rate: voiceRate ? Number(voiceRate.value) : 1,
+          persist_chat: !!(persistChatEl && persistChatEl.checked),
         })
       );
     } catch (e) {
@@ -91,6 +98,83 @@
     );
   };
 
+  function shouldPersistChat() {
+    return !!(persistChatEl && persistChatEl.checked);
+  }
+
+  window.rabbitOnHistoryChange = function (hist) {
+    if (!shouldPersistChat()) {
+      try {
+        localStorage.removeItem(HISTORY_KEY);
+      } catch (e) {}
+      return;
+    }
+    try {
+      const slim = (hist || []).slice(-80).map(function (m) {
+        return {
+          role: m.role,
+          content: m.content,
+          ts: m.ts || Date.now(),
+          ms: m.ms != null ? m.ms : null,
+        };
+      });
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(slim));
+    } catch (e) {
+      console.warn("history save failed", e);
+    }
+  };
+
+  function restoreHistory() {
+    if (!shouldPersistChat()) return;
+    if (!window.rabbitChat) return;
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      if (!raw) return;
+      const msgs = JSON.parse(raw);
+      if (!Array.isArray(msgs) || !msgs.length) return;
+      msgs.forEach(function (m) {
+        const role = m.role === "user" ? "user" : "bot";
+        window.rabbitChat.addBubble(role, m.content || "", m.ms);
+      });
+      const lastBot = msgs
+        .slice()
+        .reverse()
+        .find(function (m) {
+          return m.role === "bot" || m.role === "assistant";
+        });
+      if (lastBot && window.rabbitChat.setLastReply)
+        window.rabbitChat.setLastReply(lastBot.content || "");
+    } catch (e) {
+      console.warn("history restore failed", e);
+    }
+  }
+
+  window.rabbitOnAppReady = function () {
+    restoreHistory();
+    if (regenBtn && window.rabbitChat) {
+      regenBtn.addEventListener("click", function () {
+        window.rabbitChat.regenerateLast();
+      });
+    }
+  };
+
+  async function pingConnection() {
+    if (!connEl) return;
+    try {
+      const r = await fetch("/api/info", { cache: "no-store" });
+      if (r.ok) {
+        connEl.textContent = "online";
+        connEl.className = "conn online";
+      } else {
+        connEl.textContent = "error " + r.status;
+        connEl.className = "conn offline";
+      }
+    } catch (e) {
+      connEl.textContent = "offline";
+      connEl.className = "conn offline";
+    }
+  }
+
   [
     "tokens",
     "temp",
@@ -103,6 +187,7 @@
     "voice-continuous",
     "voice-lang",
     "voice-rate",
+    "persist-chat",
   ].forEach(function (id) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -110,5 +195,20 @@
     el.addEventListener("input", saveSettings);
   });
 
+  if (persistChatEl) {
+    persistChatEl.addEventListener("change", function () {
+      saveSettings();
+      if (!persistChatEl.checked) {
+        try {
+          localStorage.removeItem(HISTORY_KEY);
+        } catch (e) {}
+      } else if (window.rabbitChat) {
+        window.rabbitOnHistoryChange(window.rabbitChat.getHistory());
+      }
+    });
+  }
+
   loadSettings();
+  pingConnection();
+  setInterval(pingConnection, 10000);
 })();
