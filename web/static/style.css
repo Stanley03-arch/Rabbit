@@ -115,7 +115,6 @@ body {
   place-items: center;
   color: var(--muted);
   font-family: var(--mono);
-  transition: background 0.3s, border-color 0.3s, color 0.3s;
 }
 .expert-cell.warm {
   background: rgba(110, 231, 183, 0.18);
@@ -221,7 +220,6 @@ kbd {
   padding: 0.45rem 0.6rem;
   font-size: 0.8rem;
   cursor: pointer;
-  transition: color 0.2s, border-color 0.2s;
 }
 .btn-row .btn-secondary { margin-top: 0; }
 .btn-secondary:hover {
@@ -303,13 +301,19 @@ kbd {
   padding: 0.35rem 0.75rem;
   font-size: 0.78rem;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
 .chip:hover {
   color: var(--text);
   border-color: var(--accent-2);
   background: var(--panel-2);
 }
+.chip.custom { border-style: dashed; }
+.chip .chip-x {
+  margin-left: 0.35rem;
+  opacity: 0.6;
+  font-size: 0.85em;
+}
+.chip .chip-x:hover { opacity: 1; color: var(--danger); }
 
 .chat {
   flex: 1;
@@ -358,7 +362,6 @@ kbd {
   gap: 0.35rem;
   margin-top: 0.45rem;
   opacity: 0.55;
-  transition: opacity 0.15s;
 }
 .bubble:hover .bubble-actions { opacity: 1; }
 .bubble-act {
@@ -371,10 +374,39 @@ kbd {
   font-family: var(--mono);
   cursor: pointer;
 }
-.bubble-act:hover {
-  color: var(--text);
-  border-color: var(--accent-2);
+
+.composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.45rem 1.25rem 0;
+  flex-wrap: wrap;
 }
+.composer-tools .check.inline {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  gap: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+}
+.composer-count {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-left: auto;
+}
+.linkish {
+  background: none;
+  border: none;
+  color: var(--accent-2);
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.linkish:hover { color: var(--accent); }
 
 .composer {
   display: flex;
@@ -382,18 +414,23 @@ kbd {
   padding: 0.9rem 1.25rem;
   border-top: 1px solid var(--border);
   background: rgba(12, 15, 20, 0.9);
-  align-items: center;
+  align-items: flex-end;
 }
-.composer input {
+.composer textarea {
   flex: 1;
   background: var(--panel);
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 12px;
-  padding: 0.85rem 1rem;
+  padding: 0.75rem 1rem;
   font-size: 1rem;
+  font-family: var(--font);
+  resize: vertical;
+  min-height: 48px;
+  max-height: 180px;
+  line-height: 1.4;
 }
-.composer input:focus { outline: 1px solid var(--accent-2); }
+.composer textarea:focus { outline: 1px solid var(--accent-2); }
 .composer button[type="submit"] {
   background: linear-gradient(135deg, #2dd4bf, #38bdf8);
   color: #062016;
