@@ -25,10 +25,7 @@
   box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.2);
   animation: voice-top-pulse 1.2s ease-in-out infinite;
 }
-.btn-voice-top .voice-top-icon {
-  font-size: 1rem;
-  line-height: 1;
-}
+.btn-voice-top .voice-top-icon { font-size: 1rem; line-height: 1; }
 @keyframes voice-top-pulse {
   0%, 100% { box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.15); }
   50% { box-shadow: 0 0 0 6px rgba(248, 113, 113, 0.08); }
@@ -58,4 +55,8 @@
 }
 @media (min-width: 901px) {
   .btn-voice-fab { right: max(1.25rem, calc((100vw - 1400px) / 2 + 1.25rem)); }
+}
+
+.composer .btn-mic {
+  order: 5;
 }

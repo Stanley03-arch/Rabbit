@@ -1,4 +1,4 @@
-/* Voice keyboard shortcuts — Ctrl+M always, M/V when not typing */
+/* Voice keyboard shortcuts + right-side toggles */
 (function () {
   function findToggle() {
     if (typeof toggleMic === "function") return toggleMic;
@@ -6,6 +6,7 @@
     if (btn) return function () { btn.click(); };
     return null;
   }
+
   document.addEventListener(
     "keydown",
     function (ev) {
@@ -59,10 +60,14 @@
     }
     ["voice-toggle-top", "voice-toggle-fab"].forEach(function (id) {
       const el = document.getElementById(id);
-      if (el) el.addEventListener("click", fire);
+      if (el && !el.dataset.bound) {
+        el.dataset.bound = "1";
+        el.addEventListener("click", fire);
+      }
     });
     const mic = document.getElementById("mic");
-    if (mic) {
+    if (mic && !mic.dataset.voiceObs) {
+      mic.dataset.voiceObs = "1";
       const obs = new MutationObserver(syncVoiceButtons);
       obs.observe(mic, { attributes: true, attributeFilter: ["class"] });
     }
@@ -75,6 +80,6 @@
     bindVoiceSideButtons();
   }
   window.addEventListener("load", function () {
-    setTimeout(bindVoiceSideButtons, 300);
+    setTimeout(bindVoiceSideButtons, 400);
   });
 })();
