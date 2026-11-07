@@ -22,6 +22,7 @@ const voiceLang = document.getElementById("voice-lang");
 const voiceRate = document.getElementById("voice-rate");
 const voiceMicStatus = document.getElementById("voice-mic-status");
 const voiceHint = document.getElementById("voice-hint");
+const voiceCmdLog = document.getElementById("voice-cmd-log");
 
 let lastReply = "";
 let abortCtrl = null;
@@ -29,6 +30,7 @@ let history = [];
 let recognition = null;
 let listening = false;
 let interimTranscript = "";
+let skipAutoSendOnce = false;
 
 /* ---------- UI helpers ---------- */
 
@@ -100,6 +102,146 @@ function quantLabel(q) {
   return `${q}-bit`;
 }
 
+function logVoiceCmd(name) {
+  if (voiceCmdLog) voiceCmdLog.textContent = name;
+  setStatus("ok", "cmd: " + name);
+}
+
+/* ---------- Voice command shortcuts ---------- */
+
+function normalizeVoiceText(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/[.,!?;:]+/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Map spoken phrases → action id. Exact match after normalize. */
+const VOICE_COMMANDS = [
+  { id: "clear", phrases: ["clear", "clear chat", "reset chat", "new chat", "start over"] },
+  { id: "stop", phrases: ["stop", "stop generating", "cancel", "abort"] },
+  { id: "mute", phrases: ["mute", "be quiet", "stop talking", "shut up", "silence"] },
+  { id: "speak_on", phrases: ["speak on", "enable speech", "turn on speech", "voice on"] },
+  { id: "speak_off", phrases: ["speak off", "disable speech", "turn off speech", "voice off"] },
+  { id: "stream_on", phrases: ["stream on", "enable stream", "streaming on"] },
+  { id: "stream_off", phrases: ["stream off", "disable stream", "streaming off"] },
+  { id: "copy", phrases: ["copy", "copy reply", "copy last", "copy that"] },
+  { id: "export", phrases: ["export", "export chat", "save chat", "download chat"] },
+  { id: "refresh", phrases: ["refresh", "refresh stats", "update stats", "reload stats"] },
+  { id: "repeat", phrases: ["repeat", "say again", "read again", "speak again"] },
+  { id: "help", phrases: ["help", "voice help", "commands", "what can i say"] },
+  { id: "send", phrases: ["send", "submit", "go"] },
+];
+
+function matchVoiceCommand(text) {
+  const n = normalizeVoiceText(text);
+  if (!n) return null;
+  for (const cmd of VOICE_COMMANDS) {
+    for (const p of cmd.phrases) {
+      if (n === p) return cmd.id;
+    }
+  }
+  // Allow short prefix: "rabbit clear", "hey rabbit mute"
+  const stripped = n
+    .replace(/^(hey |ok |okay )?rabbit\s+/, "")
+    .replace(/^computer\s+/, "")
+    .trim();
+  if (stripped && stripped !== n) {
+    for (const cmd of VOICE_COMMANDS) {
+      for (const p of cmd.phrases) {
+        if (stripped === p) return cmd.id;
+      }
+    }
+  }
+  return null;
+}
+
+function runVoiceCommand(id) {
+  switch (id) {
+    case "clear":
+      clearChat();
+      logVoiceCmd("clear");
+      return true;
+    case "stop":
+      if (abortCtrl) abortCtrl.abort();
+      stopListening();
+      stopSpeaking();
+      logVoiceCmd("stop");
+      return true;
+    case "mute":
+      stopSpeaking();
+      logVoiceCmd("mute");
+      return true;
+    case "speak_on":
+      if (voiceSpeak) voiceSpeak.checked = true;
+      logVoiceCmd("speak on");
+      return true;
+    case "speak_off":
+      if (voiceSpeak) voiceSpeak.checked = false;
+      stopSpeaking();
+      logVoiceCmd("speak off");
+      return true;
+    case "stream_on":
+      if (streamEl) streamEl.checked = true;
+      logVoiceCmd("stream on");
+      return true;
+    case "stream_off":
+      if (streamEl) streamEl.checked = false;
+      logVoiceCmd("stream off");
+      return true;
+    case "copy":
+      copyLast();
+      logVoiceCmd("copy");
+      return true;
+    case "export":
+      exportChat();
+      logVoiceCmd("export");
+      return true;
+    case "refresh":
+      refreshInfo();
+      logVoiceCmd("refresh");
+      return true;
+    case "repeat":
+      if (lastReply) speakText(lastReply);
+      else setStatus("", "nothing to repeat");
+      logVoiceCmd("repeat");
+      return true;
+    case "help": {
+      const list =
+        "Voice commands: clear, stop, mute, speak on, speak off, stream on, stream off, copy, export, refresh, repeat, send, help. Say rabbit before a command, e.g. rabbit clear.";
+      addBubble("bot", list);
+      if (voiceSpeak && voiceSpeak.checked) speakText(list);
+      logVoiceCmd("help");
+      return true;
+    }
+    case "send": {
+      const t = (promptEl.value || "").trim();
+      if (t) form.requestSubmit();
+      else setStatus("", "nothing to send");
+      logVoiceCmd("send");
+      return true;
+    }
+    default:
+      return false;
+  }
+}
+
+/**
+ * If the entire utterance is a voice command, run it and return true
+ * (caller should not auto-send as chat).
+ */
+function tryHandleAsVoiceCommand(text) {
+  const id = matchVoiceCommand(text);
+  if (!id) return false;
+  promptEl.value = "";
+  delete promptEl.dataset.committed;
+  skipAutoSendOnce = true;
+  runVoiceCommand(id);
+  return true;
+}
+
 /* ---------- Voice: TTS ---------- */
 
 function stopSpeaking() {
@@ -169,6 +311,7 @@ function initSpeechRecognition() {
   rec.onstart = () => {
     setMicUI(true);
     interimTranscript = "";
+    skipAutoSendOnce = false;
   };
 
   rec.onresult = (event) => {
@@ -185,6 +328,11 @@ function initSpeechRecognition() {
       setStatus("busy", "listening…");
     }
     if (final) {
+      // Fast-path: pure command on final segment
+      if (matchVoiceCommand(final.trim())) {
+        tryHandleAsVoiceCommand(final.trim());
+        return;
+      }
       const base = promptEl.dataset.committed || "";
       const next = (base + final).trim();
       promptEl.dataset.committed = next + " ";
@@ -211,6 +359,18 @@ function initSpeechRecognition() {
     setMicUI(false);
     delete promptEl.dataset.committed;
     const text = (promptEl.value || "").trim();
+
+    if (skipAutoSendOnce) {
+      skipAutoSendOnce = false;
+      promptEl.value = "";
+      setStatus("ok", "ready");
+      return;
+    }
+
+    if (text && tryHandleAsVoiceCommand(text)) {
+      return;
+    }
+
     if (text && voiceAutoSend && voiceAutoSend.checked) {
       setStatus("ok", "ready");
       form.requestSubmit();
@@ -234,7 +394,6 @@ function startListening() {
     promptEl.dataset.committed = "";
     recognition.start();
   } catch (e) {
-    // Already started
     console.warn(e);
   }
 }
@@ -517,6 +676,9 @@ form.addEventListener("submit", async (ev) => {
   stopSpeaking();
   const message = promptEl.value.trim();
   if (!message) return;
+
+  // Typed voice-command phrases also work from the box
+  if (tryHandleAsVoiceCommand(message)) return;
 
   addBubble("user", message);
   promptEl.value = "";
