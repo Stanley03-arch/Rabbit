@@ -105,6 +105,8 @@
         <label>Seed <input type="number" id="seed" value="" placeholder="random" min="0" step="1" /></label>
         <label class="check"><input type="checkbox" id="stream" checked /> Stream tokens (SSE)</label>
         <label class="check"><input type="checkbox" id="persist-chat" checked /> Persist chat in browser</label>
+        <label class="check"><input type="checkbox" id="completion-sound" /> Sound on reply</label>
+        <label class="check"><input type="checkbox" id="compact-ui" /> Compact UI</label>
         <label class="sys-label">System prompt
           <textarea id="system" rows="2" placeholder="Optional system instruction…"></textarea>
         </label>
@@ -113,10 +115,13 @@
           <button type="button" class="btn-secondary" id="copy-last">Copy</button>
         </div>
         <div class="btn-row">
-          <button type="button" class="btn-secondary" id="export-chat">Export</button>
+          <button type="button" class="btn-secondary" id="export-chat">Export JSON</button>
           <button type="button" class="btn-secondary" id="import-chat">Import</button>
         </div>
-        <button type="button" class="btn-secondary" id="regen-last">Regenerate last</button>
+        <div class="btn-row">
+          <button type="button" class="btn-secondary" id="export-md">Export MD</button>
+          <button type="button" class="btn-secondary" id="regen-last">Regenerate</button>
+        </div>
         <input type="file" id="import-file" accept="application/json,.json" hidden />
         <div class="kv latency"><span>last latency</span><b id="latency">—</b></div>
         <div class="kv"><span>tok/s est.</span><b id="tps">—</b></div>
@@ -146,7 +151,7 @@
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
           <p class="hint">Say <strong>regenerate</strong> or use the sidebar button.</p>
-          <p class="hint">Keys: <kbd>Enter</kbd> send · <kbd>Ctrl+R</kbd> regen · <kbd>M</kbd> mic</p>
+          <p class="hint">Keys: <kbd>Enter</kbd> send · <kbd>Ctrl+R</kbd> regen · <kbd>Esc</kbd> stop</p>
         </div>
       </div>
 
@@ -165,7 +170,7 @@
         <button type="button" class="btn-tts-stop" id="tts-stop" hidden title="Stop speaking">🔇</button>
         <button type="submit" id="send">Send</button>
       </form>
-      <p class="footer-note">Shortcuts: <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · <kbd>Ctrl+L</kbd> clear · <kbd>Ctrl+R</kbd> regenerate · <kbd>M</kbd> mic</p>
+      <p class="footer-note">Shortcuts: <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · <kbd>Ctrl+L</kbd> clear · <kbd>Ctrl+R</kbd> regen · <kbd>Esc</kbd> stop · <kbd>M</kbd> mic</p>
     </main>
   </div>
   <script src="/static/app-extras.js"></script>
