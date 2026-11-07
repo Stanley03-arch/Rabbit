@@ -142,7 +142,8 @@ kbd {
   background: var(--panel-2);
 }
 
-.controls label {
+.controls label,
+.voice-panel label {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -150,7 +151,9 @@ kbd {
   color: var(--muted);
   margin-bottom: 0.45rem;
 }
-.controls input[type="number"] {
+.controls input[type="number"],
+.voice-panel input[type="number"],
+.voice-panel select {
   width: 88px;
   background: var(--panel-2);
   border: 1px solid var(--border);
@@ -159,12 +162,18 @@ kbd {
   padding: 0.35rem 0.45rem;
   font-family: var(--mono);
 }
-.controls label.check {
+.voice-panel select { width: 110px; }
+.controls label.check,
+.voice-panel label.check {
   justify-content: flex-start;
   gap: 0.5rem;
-  margin: 0.55rem 0;
+  margin: 0.45rem 0;
 }
-.controls label.check input { width: auto; accent-color: var(--accent); }
+.controls label.check input,
+.voice-panel label.check input {
+  width: auto;
+  accent-color: var(--accent);
+}
 .controls label.sys-label {
   flex-direction: column;
   align-items: stretch;
@@ -315,10 +324,11 @@ kbd {
 
 .composer {
   display: flex;
-  gap: 0.6rem;
+  gap: 0.55rem;
   padding: 0.9rem 1.25rem;
   border-top: 1px solid var(--border);
   background: rgba(12, 15, 20, 0.9);
+  align-items: center;
 }
 .composer input {
   flex: 1;
@@ -330,7 +340,7 @@ kbd {
   font-size: 1rem;
 }
 .composer input:focus { outline: 1px solid var(--accent-2); }
-.composer button {
+.composer button[type="submit"] {
   background: linear-gradient(135deg, #2dd4bf, #38bdf8);
   color: #062016;
   border: none;
@@ -338,6 +348,7 @@ kbd {
   padding: 0 1.25rem;
   font-weight: 700;
   cursor: pointer;
+  height: 48px;
 }
 .composer button:disabled { opacity: 0.5; cursor: not-allowed; }
 .composer .btn-stop {
@@ -345,9 +356,70 @@ kbd {
   border: 1px solid var(--danger);
   color: var(--danger);
   font-weight: 600;
+  border-radius: 12px;
+  padding: 0 0.9rem;
+  height: 48px;
+  cursor: pointer;
 }
 .composer .btn-stop:hover {
   background: rgba(248, 113, 113, 0.12);
+}
+.composer .btn-tts-stop {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 12px;
+  width: 48px;
+  height: 48px;
+  cursor: pointer;
+  font-size: 1.1rem;
+}
+.composer .btn-tts-stop:hover {
+  border-color: var(--accent-2);
+  color: var(--text);
+}
+
+.btn-mic {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.btn-mic:hover {
+  border-color: var(--accent-2);
+}
+.btn-mic.listening {
+  border-color: var(--danger);
+  background: rgba(248, 113, 113, 0.15);
+  box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.2);
+}
+.btn-mic:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.mic-icon { position: relative; z-index: 1; font-size: 1.15rem; }
+.mic-pulse {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  pointer-events: none;
+}
+.btn-mic.listening .mic-pulse {
+  border-color: rgba(248, 113, 113, 0.55);
+  animation: pulse-ring 1.2s ease-out infinite;
+}
+@keyframes pulse-ring {
+  0% { transform: scale(0.92); opacity: 1; }
+  100% { transform: scale(1.25); opacity: 0; }
 }
 
 .footer-note {
