@@ -7,11 +7,17 @@ const statusPill = document.getElementById("status-pill");
 const clearBtn = document.getElementById("clear-chat");
 const copyBtn = document.getElementById("copy-last");
 const refreshBtn = document.getElementById("refresh-stats");
+const exportBtn = document.getElementById("export-chat");
+const importBtn = document.getElementById("import-chat");
+const importFile = document.getElementById("import-file");
 const emptyState = document.getElementById("empty-state");
 const latencyEl = document.getElementById("latency");
+const streamEl = document.getElementById("stream");
+const systemEl = document.getElementById("system");
 
 let lastReply = "";
 let abortCtrl = null;
+let history = []; // {role, content, ts, ms?}
 
 function hideEmpty() {
   if (emptyState) emptyState.style.display = "none";
@@ -27,17 +33,24 @@ function addBubble(role, text, ms) {
   div.className = `bubble ${role}`;
   const meta = document.createElement("div");
   meta.className = "meta";
-  const ts = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const ts = new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
   let label = role === "user" ? "you" : "rabbit";
   if (ms != null && role === "bot") label += ` · ${ms} ms`;
   meta.textContent = `${label} · ${ts}`;
   const body = document.createElement("div");
+  body.className = "body";
   body.textContent = text;
   div.appendChild(meta);
   div.appendChild(body);
   chatEl.appendChild(div);
   chatEl.scrollTop = chatEl.scrollHeight;
   if (role === "bot") lastReply = text;
+  history.push({ role, content: text, ts: Date.now(), ms: ms ?? null });
+  return { div, body, meta };
 }
 
 function setStatus(mode, label) {
@@ -125,6 +138,13 @@ async function refreshInfo() {
     document.getElementById("c-inserts").textContent = j.cache_inserts || 0;
     document.getElementById("c-rate").textContent = total ? rate.toFixed(1) + "%" : "—";
     document.getElementById("c-bar").style.width = Math.min(100, rate) + "%";
+
+    const met = j.metrics || {};
+    document.getElementById("met-req").textContent = met.requests ?? 0;
+    document.getElementById("met-err").textContent = met.errors ?? 0;
+    document.getElementById("met-avg").textContent =
+      met.avg_ms != null ? `${met.avg_ms} ms` : "—";
+    document.getElementById("met-tok").textContent = met.tokens_est ?? 0;
   } catch (e) {
     console.warn(e);
   }
@@ -135,10 +155,10 @@ function clearChat() {
     abortCtrl.abort();
     abortCtrl = null;
   }
-  const bubbles = chatEl.querySelectorAll(".bubble");
-  bubbles.forEach((b) => b.remove());
+  chatEl.querySelectorAll(".bubble").forEach((b) => b.remove());
   showEmpty();
   lastReply = "";
+  history = [];
   latencyEl.textContent = "—";
   setStatus("ok", "ready");
   sendBtn.disabled = false;
@@ -160,9 +180,59 @@ async function copyLast() {
   }
 }
 
+function exportChat() {
+  const payload = {
+    exported_at: new Date().toISOString(),
+    system: systemEl.value || "",
+    messages: history,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json",
+  });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `rabbit-chat-${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  setStatus("ok", "exported");
+}
+
+function importChatFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      clearChat();
+      if (data.system) systemEl.value = data.system;
+      const msgs = data.messages || data.history || [];
+      msgs.forEach((m) => {
+        const role = m.role === "user" || m.role === "assistant" || m.role === "bot"
+          ? m.role === "assistant"
+            ? "bot"
+            : m.role
+          : "bot";
+        addBubble(role === "user" ? "user" : "bot", m.content || m.text || "");
+      });
+      setStatus("ok", "imported");
+    } catch (e) {
+      setStatus("", "import failed");
+      console.warn(e);
+    }
+  };
+  reader.readAsText(file);
+}
+
 if (clearBtn) clearBtn.addEventListener("click", clearChat);
 if (copyBtn) copyBtn.addEventListener("click", copyLast);
 if (refreshBtn) refreshBtn.addEventListener("click", () => refreshInfo());
+if (exportBtn) exportBtn.addEventListener("click", exportChat);
+if (importBtn)
+  importBtn.addEventListener("click", () => importFile && importFile.click());
+if (importFile)
+  importFile.addEventListener("change", () => {
+    if (importFile.files && importFile.files[0]) importChatFile(importFile.files[0]);
+    importFile.value = "";
+  });
 
 document.getElementById("chips").addEventListener("click", (ev) => {
   const t = ev.target.closest(".chip");
@@ -181,6 +251,79 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") promptEl.focus();
 });
 
+function genParams() {
+  const tokens = Number(document.getElementById("tokens").value) || 48;
+  const temp = Number(document.getElementById("temp").value);
+  const topP = Number(document.getElementById("top-p").value);
+  const seedRaw = document.getElementById("seed").value;
+  const seed = seedRaw === "" ? null : Number(seedRaw);
+  return {
+    tokens,
+    temperature: Number.isFinite(temp) ? temp : 0.8,
+    top_p: Number.isFinite(topP) ? topP : 1.0,
+    seed,
+    system: (systemEl.value || "").trim(),
+  };
+}
+
+async function sendNonStream(message, params, signal) {
+  const r = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, ...params }),
+    signal,
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || "request failed");
+  return j.reply || "[empty]";
+}
+
+async function sendStream(message, params, signal, onToken) {
+  const r = await fetch("/api/chat/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, ...params }),
+    signal,
+  });
+  if (!r.ok) {
+    let err = "stream failed";
+    try {
+      const j = await r.json();
+      err = j.error || err;
+    } catch {}
+    throw new Error(err);
+  }
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  let full = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const parts = buf.split("\n\n");
+    buf = parts.pop() || "";
+    for (const block of parts) {
+      const line = block
+        .split("\n")
+        .find((l) => l.startsWith("data: "));
+      if (!line) continue;
+      try {
+        const obj = JSON.parse(line.slice(6));
+        if (obj.type === "token" && obj.text) {
+          full += obj.text;
+          onToken(full);
+        } else if (obj.type === "error") {
+          throw new Error(obj.error || "stream error");
+        }
+      } catch (e) {
+        if (e.message && !e.message.includes("JSON")) throw e;
+      }
+    }
+  }
+  return full || "[empty]";
+}
+
 form.addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const message = promptEl.value.trim();
@@ -192,41 +335,56 @@ form.addEventListener("submit", async (ev) => {
   stopBtn.hidden = false;
   setStatus("busy", "generating");
 
-  const tokens = Number(document.getElementById("tokens").value) || 48;
-  const temp = Number(document.getElementById("temp").value);
-  const topP = Number(document.getElementById("top-p").value);
-  const seedRaw = document.getElementById("seed").value;
-  const seed = seedRaw === "" ? null : Number(seedRaw);
-
+  const params = genParams();
+  const useStream = streamEl && streamEl.checked;
   abortCtrl = new AbortController();
   const t0 = performance.now();
 
+  let botBody = null;
+  let botMeta = null;
+  if (useStream) {
+    const bubble = addBubble("bot", "…");
+    botBody = bubble.body;
+    botMeta = bubble.meta;
+    // remove premature history entry for streaming placeholder — we'll fix below
+    history.pop();
+  }
+
   try {
-    const r = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message,
-        tokens,
-        temperature: Number.isFinite(temp) ? temp : 0.8,
-        top_p: Number.isFinite(topP) ? topP : 1.0,
-        seed,
-      }),
-      signal: abortCtrl.signal,
-    });
-    const j = await r.json();
-    const ms = Math.round(performance.now() - t0);
-    latencyEl.textContent = `${ms} ms`;
-    if (!r.ok) throw new Error(j.error || "request failed");
-    addBubble("bot", j.reply || "[empty]", ms);
+    let reply;
+    if (useStream) {
+      reply = await sendStream(message, params, abortCtrl.signal, (full) => {
+        botBody.textContent = full;
+        lastReply = full;
+        chatEl.scrollTop = chatEl.scrollHeight;
+      });
+      botBody.textContent = reply;
+      const ms = Math.round(performance.now() - t0);
+      latencyEl.textContent = `${ms} ms`;
+      const ts = new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+      botMeta.textContent = `rabbit · ${ms} ms · ${ts}`;
+      history.push({ role: "bot", content: reply, ts: Date.now(), ms });
+      lastReply = reply;
+    } else {
+      reply = await sendNonStream(message, params, abortCtrl.signal);
+      const ms = Math.round(performance.now() - t0);
+      latencyEl.textContent = `${ms} ms`;
+      addBubble("bot", reply, ms);
+    }
     setStatus("ok", "ready");
     await refreshInfo();
   } catch (e) {
     if (e.name === "AbortError") {
-      addBubble("bot", "[stopped]");
+      if (botBody) botBody.textContent = (botBody.textContent || "") + " [stopped]";
+      else addBubble("bot", "[stopped]");
       setStatus("", "stopped");
     } else {
-      addBubble("bot", "[error] " + e.message);
+      if (botBody) botBody.textContent = "[error] " + e.message;
+      else addBubble("bot", "[error] " + e.message);
       setStatus("", "error");
     }
   } finally {
