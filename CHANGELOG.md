@@ -1,3 +1,20 @@
+## [0.4.14] - 2026-11-08
+
+### Dashboard / GUI
+- **SSE streaming chat** via `POST /api/chat/stream`
+- **System prompt**, top-p / seed controls, session metrics (`/api/metrics`)
+- **Export / import** chat JSON
+- **Voice input** (Web Speech API) + **TTS** for replies
+- **Voice command shortcuts**: clear, stop, mute, speak on/off, stream on/off, copy, export, refresh, repeat, send, help
+- Expert grid shows **shared experts**; GQA + tokenizer in sidebar
+
+### Windows
+- **`rabbit.bat`** — interactive menu (build, chat, stats, dashboard, Gradio)
+- **`start-dashboard.bat`** — one-click dashboard (builds model if missing)
+
+### Gradio
+- Top-p, seed, live stats panel, example prompts
+
 ## [0.4.13] - 2026-11-06
 
 ### Sampling
