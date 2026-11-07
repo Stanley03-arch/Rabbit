@@ -23,9 +23,12 @@
         <div class="kv"><span>layers</span><b id="s-layers">—</b></div>
         <div class="kv"><span>hidden</span><b id="s-hidden">—</b></div>
         <div class="kv"><span>experts</span><b id="s-experts">—</b></div>
+        <div class="kv"><span>shared</span><b id="s-shared">—</b></div>
+        <div class="kv"><span>GQA</span><b id="s-gqa">—</b></div>
         <div class="kv"><span>quant</span><b id="s-quant">—</b></div>
         <div class="kv"><span>dense</span><b id="s-dense">—</b></div>
         <div class="kv"><span>map</span><b id="s-map">—</b></div>
+        <div class="kv"><span>tokenizer</span><b id="s-tok">—</b></div>
       </section>
 
       <section class="panel">
@@ -34,6 +37,7 @@
         <div class="kv"><span>estimate</span><b id="m-est">—</b></div>
         <div class="kv"><span>cache slots</span><b id="m-slots">—</b></div>
         <div class="kv"><span>status</span><b id="m-status">—</b></div>
+        <button type="button" class="btn-secondary" id="refresh-stats">Refresh stats</button>
       </section>
 
       <section class="panel">
@@ -48,14 +52,20 @@
       <section class="panel">
         <h3>Expert activity</h3>
         <div class="expert-grid" id="expert-grid"></div>
-        <p class="hint">Warm = recently routed</p>
+        <p class="hint">Warm = recently routed · shared experts always-on</p>
       </section>
 
       <section class="panel controls">
         <h3>Generation</h3>
         <label>Tokens <input type="number" id="tokens" value="48" min="8" max="256" /></label>
-        <label>Temp <input type="number" id="temp" value="0.8" min="0" max="1.5" step="0.05" /></label>
-        <button type="button" class="btn-secondary" id="clear-chat">Clear chat</button>
+        <label>Temp <input type="number" id="temp" value="0.8" min="0" max="2" step="0.05" /></label>
+        <label>Top-p <input type="number" id="top-p" value="1.0" min="0.05" max="1" step="0.05" title="1.0 disables nucleus" /></label>
+        <label>Seed <input type="number" id="seed" value="" placeholder="random" min="0" step="1" /></label>
+        <div class="btn-row">
+          <button type="button" class="btn-secondary" id="clear-chat">Clear</button>
+          <button type="button" class="btn-secondary" id="copy-last" title="Copy last reply">Copy</button>
+        </div>
+        <div class="kv latency"><span>last latency</span><b id="latency">—</b></div>
       </section>
     </aside>
 
@@ -68,15 +78,24 @@
         <div class="status-pill" id="status-pill">idle</div>
       </header>
 
+      <div class="chips" id="chips">
+        <button type="button" class="chip" data-prompt="Hello from Rabbit">Hello</button>
+        <button type="button" class="chip" data-prompt="Explain Mixture of Experts in one sentence.">Explain MoE</button>
+        <button type="button" class="chip" data-prompt="ping">Ping engine</button>
+        <button type="button" class="chip" data-prompt="List three uses for local MoE inference.">Local MoE uses</button>
+      </div>
+
       <div class="chat" id="chat">
         <div class="empty-state" id="empty-state">
           <p>Send a message to exercise the engine path.</p>
           <p class="hint">Synthetic weights produce non-linguistic output — metrics come from <code>rabbit stats</code>.</p>
+          <p class="hint">Shortcuts: <kbd>Enter</kbd> send · <kbd>Esc</kbd> focus input</p>
         </div>
       </div>
 
       <form class="composer" id="form">
         <input id="prompt" autocomplete="off" placeholder="Message Rabbit… (Enter to send)" />
+        <button type="button" class="btn-stop" id="stop" hidden title="Stop request">Stop</button>
         <button type="submit" id="send">Send</button>
       </form>
       <p class="footer-note">Synthetic weights produce non-linguistic output — this dashboard validates the engine path. Metrics from <code>rabbit stats</code>.</p>
