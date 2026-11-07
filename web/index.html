@@ -6,6 +6,7 @@
   <title>Rabbit — Engine Dashboard</title>
   <link rel="stylesheet" href="/static/style.css" />
   <link rel="stylesheet" href="/static/compact.css" />
+  <link rel="stylesheet" href="/static/ui2.css" />
 </head>
 <body>
   <div class="app">
@@ -108,8 +109,25 @@
         <label class="check"><input type="checkbox" id="persist-chat" checked /> Persist chat in browser</label>
         <label class="check"><input type="checkbox" id="completion-sound" /> Sound on reply</label>
         <label class="check"><input type="checkbox" id="compact-ui" /> Compact UI</label>
+        <label>System preset
+          <select id="system-preset">
+            <option value="">— none —</option>
+            <option value="You are a concise technical assistant for local MoE inference.">Technical</option>
+            <option value="Explain concepts simply, as if teaching a beginner.">Teacher</option>
+            <option value="Answer in one short paragraph. Be direct.">Brief</option>
+            <option value="You are Rabbit, a local Mixture-of-Experts engine. Prefer precise, grounded answers.">Rabbit persona</option>
+          </select>
+        </label>
         <label class="sys-label">System prompt
           <textarea id="system" rows="2" placeholder="Optional system instruction…"></textarea>
+        </label>
+        <label>UI scale
+          <select id="font-scale">
+            <option value="0.9">Small</option>
+            <option value="1" selected>Normal</option>
+            <option value="1.1">Large</option>
+            <option value="1.2">XL</option>
+          </select>
         </label>
         <div class="btn-row">
           <button type="button" class="btn-secondary" id="clear-chat">Clear</button>
@@ -123,7 +141,7 @@
           <button type="button" class="btn-secondary" id="export-md">Export MD</button>
           <button type="button" class="btn-secondary" id="regen-last">Regenerate</button>
         </div>
-        <input type="file" id="import-file" accept="application/json,.json" hidden />
+        <input type="file" id="import-file" accept="application/json,.json,.md,text/markdown,text/plain" hidden />
         <div class="kv latency"><span>last latency</span><b id="latency">—</b></div>
         <div class="kv"><span>tok/s est.</span><b id="tps">—</b></div>
       </section>
@@ -148,7 +166,7 @@
         <button type="button" class="chip" data-prompt="List three uses for local MoE inference.">Local MoE uses</button>
       </div>
 
-      <div class="chat" id="chat">
+      <div class="chat" id="chat" title="Drop a chat JSON/MD export here to import">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
           <p class="hint">Say <strong>regenerate</strong> or use the sidebar button.</p>
@@ -171,11 +189,12 @@
         <button type="button" class="btn-tts-stop" id="tts-stop" hidden title="Stop speaking">🔇</button>
         <button type="submit" id="send">Send</button>
       </form>
-      <p class="footer-note">Shortcuts: <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · <kbd>Ctrl+L</kbd> clear · <kbd>Ctrl+R</kbd> regen · <kbd>Esc</kbd> stop · <kbd>M</kbd> mic</p>
+      <p class="footer-note">Shortcuts: <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · <kbd>Ctrl+L</kbd> clear · <kbd>Ctrl+R</kbd> regen · <kbd>Esc</kbd> stop · <kbd>M</kbd> mic · <kbd>Ctrl+K</kbd> focus</p>
     </main>
   </div>
   <script src="/static/app-extras.js"></script>
   <script src="/static/app-extras-more.js"></script>
+  <script src="/static/app-extras-ui2.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>
