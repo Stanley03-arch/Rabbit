@@ -85,7 +85,7 @@
         <label>TTS rate <input type="number" id="voice-rate" value="1" min="0.5" max="2" step="0.1" /></label>
         <div class="kv"><span>mic</span><b id="voice-mic-status">idle</b></div>
         <div class="kv"><span>last cmd</span><b id="voice-cmd-log">—</b></div>
-        <p class="hint" id="voice-hint">Say a command alone (or “rabbit clear”).</p>
+        <p class="hint" id="voice-hint">Say a command alone (or “rabbit clear”). <kbd>Ctrl+M</kbd> toggles mic.</p>
         <ul class="cmd-list">
           <li><code>clear</code> / <code>new chat</code></li>
           <li><code>stop</code> / <code>cancel</code></li>
@@ -170,7 +170,7 @@
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
           <p class="hint">Say <strong>regenerate</strong> or use the sidebar button.</p>
-          <p class="hint">Keys: <kbd>Enter</kbd> send · <kbd>Ctrl+R</kbd> regen · <kbd>Esc</kbd> stop</p>
+          <p class="hint">Keys: <kbd>Enter</kbd> send · <kbd>Ctrl+M</kbd> mic · <kbd>Esc</kbd> stop</p>
         </div>
       </div>
 
@@ -180,7 +180,7 @@
         <button type="button" class="linkish" id="save-prompt" title="Save current text as a chip">Save prompt</button>
       </div>
       <form class="composer" id="form">
-        <button type="button" class="btn-mic" id="mic" title="Voice input (M)">
+        <button type="button" class="btn-mic" id="mic" title="Voice input (Ctrl+M or M/V)">
           <span class="mic-icon" aria-hidden="true">🎙</span>
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
@@ -189,12 +189,13 @@
         <button type="button" class="btn-tts-stop" id="tts-stop" hidden title="Stop speaking">🔇</button>
         <button type="submit" id="send">Send</button>
       </form>
-      <p class="footer-note">Shortcuts: <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · <kbd>Ctrl+L</kbd> clear · <kbd>Ctrl+R</kbd> regen · <kbd>Esc</kbd> stop · <kbd>M</kbd> mic · <kbd>Ctrl+K</kbd> focus</p>
+      <p class="footer-note">Shortcuts: <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · <kbd>Ctrl+L</kbd> clear · <kbd>Ctrl+R</kbd> regen · <kbd>Esc</kbd> stop · <kbd>Ctrl+M</kbd> mic · <kbd>M</kbd>/<kbd>V</kbd> mic · <kbd>Ctrl+K</kbd> focus</p>
     </main>
   </div>
   <script src="/static/app-extras.js"></script>
   <script src="/static/app-extras-more.js"></script>
   <script src="/static/app-extras-ui2.js"></script>
   <script src="/static/app.js"></script>
+  <script src="/static/voice-keys.js"></script>
 </body>
 </html>
