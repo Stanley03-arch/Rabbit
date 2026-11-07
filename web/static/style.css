@@ -73,6 +73,7 @@ body {
   font-size: 0.95rem;
   margin-bottom: 0.5rem;
   color: var(--accent);
+  word-break: break-all;
 }
 .kv {
   display: flex;
@@ -83,6 +84,8 @@ body {
   color: var(--muted);
 }
 .kv b { color: var(--text); font-weight: 600; font-family: var(--mono); font-size: 0.82rem; }
+.kv.latency { margin-top: 0.5rem; }
+.warn-text { color: var(--warn) !important; }
 
 .bar {
   margin-top: 0.55rem;
@@ -124,7 +127,20 @@ body {
   border-color: rgba(56, 189, 248, 0.55);
   color: var(--accent-2);
 }
+.expert-cell.shared {
+  background: rgba(251, 191, 36, 0.15);
+  border-color: rgba(251, 191, 36, 0.45);
+  color: var(--warn);
+}
 .hint { font-size: 0.7rem; color: var(--muted); margin: 0.55rem 0 0; }
+kbd {
+  font-family: var(--mono);
+  font-size: 0.75em;
+  padding: 0.1em 0.35em;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel-2);
+}
 
 .controls label {
   display: flex;
@@ -144,6 +160,12 @@ body {
   font-family: var(--mono);
 }
 
+.btn-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+}
 .btn-secondary {
   width: 100%;
   margin-top: 0.55rem;
@@ -156,6 +178,7 @@ body {
   cursor: pointer;
   transition: color 0.2s, border-color 0.2s;
 }
+.btn-row .btn-secondary { margin-top: 0; }
 .btn-secondary:hover {
   color: var(--text);
   border-color: var(--accent-2);
@@ -197,6 +220,28 @@ body {
   border-color: rgba(110, 231, 183, 0.4);
 }
 
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding: 0.75rem 1.25rem 0;
+}
+.chip {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 99px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.chip:hover {
+  color: var(--text);
+  border-color: var(--accent-2);
+  background: var(--panel-2);
+}
+
 .chat {
   flex: 1;
   overflow-y: auto;
@@ -210,7 +255,7 @@ body {
   margin: auto;
   text-align: center;
   color: var(--muted);
-  max-width: 360px;
+  max-width: 400px;
   padding: 2rem 1rem;
 }
 .empty-state p { margin: 0.4rem 0; line-height: 1.5; }
@@ -272,6 +317,15 @@ body {
   cursor: pointer;
 }
 .composer button:disabled { opacity: 0.5; cursor: not-allowed; }
+.composer .btn-stop {
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-weight: 600;
+}
+.composer .btn-stop:hover {
+  background: rgba(248, 113, 113, 0.12);
+}
 
 .footer-note {
   margin: 0;
@@ -282,6 +336,6 @@ body {
 
 @media (max-width: 900px) {
   .app { grid-template-columns: 1fr; height: auto; min-height: 100vh; }
-  .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+  .sidebar { border-right: none; border-bottom: 1px solid var(--border); max-height: 50vh; }
   .main { height: auto; min-height: 70vh; }
 }
