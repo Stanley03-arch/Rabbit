@@ -1,7 +1,7 @@
 /* Rabbit dashboard — load main bundle */
 (function () {
   var s = document.createElement("script");
-  s.src = "/static/app-p0.js?v=5";
+  s.src = "/static/app-p0.js?v=6";
   s.onload = function () {
     if (typeof rabbitOnAppReady === "function") {
       try {
