@@ -1,7 +1,9 @@
-/* Rabbit dashboard extras — settings, history, connection, regenerate, tok/s */
+/* Rabbit dashboard extras — settings, history, connection, regenerate, prompts, composer */
 (function () {
   const SETTINGS_KEY = "rabbit-dashboard-v1";
   const HISTORY_KEY = "rabbit-dashboard-history-v1";
+  const PROMPTS_KEY = "rabbit-dashboard-prompts-v1";
+
   const tpsEl = document.getElementById("tps");
   const voiceContinuous = document.getElementById("voice-continuous");
   const streamEl = document.getElementById("stream");
@@ -18,6 +20,10 @@
   const form = document.getElementById("form");
   const promptEl = document.getElementById("prompt");
   const emptyState = document.getElementById("empty-state");
+  const autoScrollEl = document.getElementById("auto-scroll");
+  const composerCount = document.getElementById("composer-count");
+  const savePromptBtn = document.getElementById("save-prompt");
+  const chipsEl = document.getElementById("chips");
 
   window.rabbitContinuousArmed = false;
   let restoring = false;
@@ -44,6 +50,8 @@
       if (s.voice_rate != null && voiceRate) voiceRate.value = s.voice_rate;
       if (typeof s.persist_chat === "boolean" && persistChatEl)
         persistChatEl.checked = s.persist_chat;
+      if (typeof s.auto_scroll === "boolean" && autoScrollEl)
+        autoScrollEl.checked = s.auto_scroll;
     } catch (e) {
       console.warn(e);
     }
@@ -66,6 +74,7 @@
           voice_lang: voiceLang ? voiceLang.value : "en-US",
           voice_rate: voiceRate ? Number(voiceRate.value) : 1,
           persist_chat: !!(persistChatEl && persistChatEl.checked),
+          auto_scroll: !!(autoScrollEl && autoScrollEl.checked),
         })
       );
     } catch (e) {
@@ -106,6 +115,10 @@
 
   function shouldPersistChat() {
     return !!(persistChatEl && persistChatEl.checked);
+  }
+
+  function shouldAutoScroll() {
+    return !autoScrollEl || autoScrollEl.checked;
   }
 
   function readBubbles() {
@@ -155,7 +168,7 @@
         injectBubble(m.role === "user" ? "user" : "bot", m.content || "");
       });
       restoring = false;
-      chatEl.scrollTop = chatEl.scrollHeight;
+      if (shouldAutoScroll()) chatEl.scrollTop = chatEl.scrollHeight;
     } catch (e) {
       restoring = false;
       console.warn(e);
@@ -180,6 +193,7 @@
     for (let i = bubbles.length - 1; i >= lastUserIdx; i--) bubbles[i].remove();
     if (!chatEl.querySelector(".bubble") && emptyState) emptyState.style.display = "";
     promptEl.value = msg.trim();
+    updateComposerCount();
     form.requestSubmit();
   }
 
@@ -188,6 +202,7 @@
     observed = true;
     const obs = new MutationObserver(function () {
       saveHistoryFromDom();
+      if (shouldAutoScroll()) chatEl.scrollTop = chatEl.scrollHeight;
     });
     obs.observe(chatEl, { childList: true, subtree: true, characterData: true });
   }
@@ -196,6 +211,89 @@
     restoreHistory();
     ensureObserver();
   };
+
+  function updateComposerCount() {
+    if (!composerCount || !promptEl) return;
+    const t = promptEl.value || "";
+    const chars = t.length;
+    const toks = t.trim() ? window.rabbitEstimateTokens(t) : 0;
+    composerCount.textContent = chars + " chars \u00b7 ~" + toks + " tok";
+  }
+
+  if (promptEl) {
+    promptEl.addEventListener("input", updateComposerCount);
+    promptEl.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" && !ev.shiftKey) {
+        ev.preventDefault();
+        if (form) form.requestSubmit();
+      }
+    });
+  }
+
+  function loadSavedPrompts() {
+    try {
+      const raw = localStorage.getItem(PROMPTS_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function storeSavedPrompts(list) {
+    try {
+      localStorage.setItem(PROMPTS_KEY, JSON.stringify(list.slice(0, 24)));
+    } catch (e) {
+      console.warn(e);
+    }
+  }
+
+  function renderSavedPrompts() {
+    if (!chipsEl) return;
+    chipsEl.querySelectorAll(".chip.custom").forEach(function (c) {
+      c.remove();
+    });
+    loadSavedPrompts().forEach(function (p, idx) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "chip custom";
+      btn.setAttribute("data-prompt", p);
+      const label = p.length > 28 ? p.slice(0, 28) + "\u2026" : p;
+      btn.appendChild(document.createTextNode(label));
+      const x = document.createElement("span");
+      x.className = "chip-x";
+      x.textContent = "\u00d7";
+      x.title = "Remove saved prompt";
+      x.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        const list = loadSavedPrompts();
+        list.splice(idx, 1);
+        storeSavedPrompts(list);
+        renderSavedPrompts();
+      });
+      btn.appendChild(x);
+      btn.addEventListener("click", function (ev) {
+        if (ev.target === x) return;
+        if (promptEl) {
+          promptEl.value = p;
+          updateComposerCount();
+          promptEl.focus();
+        }
+      });
+      chipsEl.appendChild(btn);
+    });
+  }
+
+  if (savePromptBtn) {
+    savePromptBtn.addEventListener("click", function () {
+      const t = ((promptEl && promptEl.value) || "").trim();
+      if (!t) return;
+      const list = loadSavedPrompts();
+      if (list.indexOf(t) >= 0) return;
+      list.unshift(t);
+      storeSavedPrompts(list);
+      renderSavedPrompts();
+    });
+  }
 
   async function pingConnection() {
     if (!connEl) return;
@@ -214,6 +312,26 @@
     }
   }
 
+  document.addEventListener("keydown", function (ev) {
+    if (ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+      if (ev.key === "l" || ev.key === "L") {
+        const clearBtn = document.getElementById("clear-chat");
+        if (clearBtn) {
+          ev.preventDefault();
+          clearBtn.click();
+        }
+      }
+      if (ev.key === "r" || ev.key === "R") {
+        ev.preventDefault();
+        regenerateLast();
+      }
+      if ((ev.key === "s" || ev.key === "S") && promptEl && document.activeElement === promptEl) {
+        ev.preventDefault();
+        if (savePromptBtn) savePromptBtn.click();
+      }
+    }
+  });
+
   [
     "tokens",
     "temp",
@@ -227,6 +345,7 @@
     "voice-lang",
     "voice-rate",
     "persist-chat",
+    "auto-scroll",
   ].forEach(function (id) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -248,6 +367,8 @@
   if (regenBtn) regenBtn.addEventListener("click", regenerateLast);
 
   loadSettings();
+  renderSavedPrompts();
+  updateComposerCount();
   pingConnection();
   setInterval(pingConnection, 10000);
 
@@ -255,6 +376,7 @@
     setTimeout(function () {
       restoreHistory();
       ensureObserver();
+      updateComposerCount();
     }, 400);
   });
 })();
