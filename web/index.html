@@ -83,7 +83,7 @@
         <label>TTS rate <input type="number" id="voice-rate" value="1" min="0.5" max="2" step="0.1" /></label>
         <div class="kv"><span>mic</span><b id="voice-mic-status">idle</b></div>
         <div class="kv"><span>last cmd</span><b id="voice-cmd-log">—</b></div>
-        <p class="hint" id="voice-hint">Say a command alone (or “rabbit clear”). Settings auto-save.</p>
+        <p class="hint" id="voice-hint">Say a command alone (or “rabbit clear”).</p>
         <ul class="cmd-list">
           <li><code>clear</code> / <code>new chat</code></li>
           <li><code>stop</code> / <code>cancel</code></li>
@@ -91,6 +91,7 @@
           <li><code>speak on</code> / <code>speak off</code></li>
           <li><code>stream on</code> / <code>stream off</code></li>
           <li><code>listen on</code> / <code>listen off</code></li>
+          <li><code>regenerate</code> / <code>try again</code></li>
           <li><code>copy</code> · <code>export</code> · <code>refresh</code></li>
           <li><code>repeat</code> · <code>send</code> · <code>help</code></li>
         </ul>
@@ -103,6 +104,7 @@
         <label>Top-p <input type="number" id="top-p" value="1.0" min="0.05" max="1" step="0.05" /></label>
         <label>Seed <input type="number" id="seed" value="" placeholder="random" min="0" step="1" /></label>
         <label class="check"><input type="checkbox" id="stream" checked /> Stream tokens (SSE)</label>
+        <label class="check"><input type="checkbox" id="persist-chat" checked /> Persist chat in browser</label>
         <label class="sys-label">System prompt
           <textarea id="system" rows="2" placeholder="Optional system instruction…"></textarea>
         </label>
@@ -114,6 +116,7 @@
           <button type="button" class="btn-secondary" id="export-chat">Export</button>
           <button type="button" class="btn-secondary" id="import-chat">Import</button>
         </div>
+        <button type="button" class="btn-secondary" id="regen-last">Regenerate last</button>
         <input type="file" id="import-file" accept="application/json,.json" hidden />
         <div class="kv latency"><span>last latency</span><b id="latency">—</b></div>
         <div class="kv"><span>tok/s est.</span><b id="tps">—</b></div>
@@ -124,9 +127,12 @@
       <header class="top">
         <div>
           <h1>Chat</h1>
-          <p class="muted">Voice · SSE · settings saved in browser</p>
+          <p class="muted">Voice · SSE · local history</p>
         </div>
-        <div class="status-pill" id="status-pill">idle</div>
+        <div class="top-right">
+          <span class="conn" id="conn-status">…</span>
+          <div class="status-pill" id="status-pill">idle</div>
+        </div>
       </header>
 
       <div class="chips" id="chips">
@@ -139,7 +145,7 @@
       <div class="chat" id="chat">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint">Voice shortcuts: say <strong>clear</strong>, <strong>mute</strong>, <strong>help</strong>…</p>
+          <p class="hint">Say <strong>regenerate</strong> or use the sidebar button.</p>
           <p class="hint">Keys: <kbd>Enter</kbd> send · <kbd>M</kbd> mic · <kbd>Esc</kbd> focus</p>
         </div>
       </div>
@@ -154,7 +160,7 @@
         <button type="button" class="btn-tts-stop" id="tts-stop" hidden title="Stop speaking">🔇</button>
         <button type="submit" id="send">Send</button>
       </form>
-      <p class="footer-note">Generation settings and voice prefs persist in localStorage.</p>
+      <p class="footer-note">Chat can persist in localStorage. Engine stays on the server.</p>
     </main>
   </div>
   <script src="/static/app-extras.js"></script>
