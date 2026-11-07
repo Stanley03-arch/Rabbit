@@ -80,7 +80,17 @@
         </label>
         <label>TTS rate <input type="number" id="voice-rate" value="1" min="0.5" max="2" step="0.1" /></label>
         <div class="kv"><span>mic</span><b id="voice-mic-status">idle</b></div>
-        <p class="hint" id="voice-hint">Uses browser Web Speech API (best in Chrome / Edge).</p>
+        <div class="kv"><span>last cmd</span><b id="voice-cmd-log">—</b></div>
+        <p class="hint" id="voice-hint">Say a command alone (or “rabbit clear”).</p>
+        <ul class="cmd-list">
+          <li><code>clear</code> / <code>new chat</code></li>
+          <li><code>stop</code> / <code>cancel</code></li>
+          <li><code>mute</code> / <code>be quiet</code></li>
+          <li><code>speak on</code> / <code>speak off</code></li>
+          <li><code>stream on</code> / <code>stream off</code></li>
+          <li><code>copy</code> · <code>export</code> · <code>refresh</code></li>
+          <li><code>repeat</code> · <code>send</code> · <code>help</code></li>
+        </ul>
       </section>
 
       <section class="panel controls">
@@ -110,7 +120,7 @@
       <header class="top">
         <div>
           <h1>Chat</h1>
-          <p class="muted">Voice in/out · dense in RAM · experts from disk</p>
+          <p class="muted">Voice commands · dense in RAM · experts from disk</p>
         </div>
         <div class="status-pill" id="status-pill">idle</div>
       </header>
@@ -124,9 +134,9 @@
 
       <div class="chat" id="chat">
         <div class="empty-state" id="empty-state">
-          <p>Send a message or hold the mic to talk.</p>
-          <p class="hint">Enable <strong>Speak replies</strong> for TTS. Mic uses the Web Speech API.</p>
-          <p class="hint">Shortcuts: <kbd>Enter</kbd> send · <kbd>M</kbd> toggle mic · <kbd>Esc</kbd> focus</p>
+          <p>Send a message or use the mic.</p>
+          <p class="hint">Voice shortcuts: say <strong>clear</strong>, <strong>mute</strong>, <strong>help</strong>…</p>
+          <p class="hint">Keys: <kbd>Enter</kbd> send · <kbd>M</kbd> mic · <kbd>Esc</kbd> focus</p>
         </div>
       </div>
 
@@ -135,12 +145,12 @@
           <span class="mic-icon" aria-hidden="true">🎙</span>
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
-        <input id="prompt" autocomplete="off" placeholder="Message Rabbit… or use the mic" />
+        <input id="prompt" autocomplete="off" placeholder="Message or voice command…" />
         <button type="button" class="btn-stop" id="stop" hidden title="Stop request">Stop</button>
         <button type="button" class="btn-tts-stop" id="tts-stop" hidden title="Stop speaking">🔇</button>
         <button type="submit" id="send">Send</button>
       </form>
-      <p class="footer-note">Voice runs in the browser (SpeechRecognition + SpeechSynthesis). Engine text is still synthetic on test weights.</p>
+      <p class="footer-note">Voice commands run in the browser and are not sent to the engine. Try saying “help”.</p>
     </main>
   </div>
   <script src="/static/app.js"></script>
