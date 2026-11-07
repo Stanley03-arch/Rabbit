@@ -245,6 +245,30 @@ kbd {
 .top h1 { margin: 0; font-size: 1.15rem; }
 .muted { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.85rem; }
 
+.top-right {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+.conn {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.conn.online {
+  color: var(--accent);
+  border-color: rgba(110, 231, 183, 0.45);
+}
+.conn.offline {
+  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.45);
+}
+
 .status-pill {
   font-family: var(--mono);
   font-size: 0.75rem;
@@ -304,11 +328,6 @@ kbd {
   padding: 2rem 1rem;
 }
 .empty-state p { margin: 0.4rem 0; line-height: 1.5; }
-.empty-state code {
-  font-family: var(--mono);
-  font-size: 0.85em;
-  color: var(--accent-2);
-}
 
 .bubble {
   max-width: 720px;
@@ -333,6 +352,28 @@ kbd {
   color: var(--muted);
   margin-bottom: 0.35rem;
   font-family: var(--mono);
+}
+.bubble-actions {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.bubble:hover .bubble-actions { opacity: 1; }
+.bubble-act {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.68rem;
+  font-family: var(--mono);
+  cursor: pointer;
+}
+.bubble-act:hover {
+  color: var(--text);
+  border-color: var(--accent-2);
 }
 
 .composer {
@@ -374,9 +415,6 @@ kbd {
   height: 48px;
   cursor: pointer;
 }
-.composer .btn-stop:hover {
-  background: rgba(248, 113, 113, 0.12);
-}
 .composer .btn-tts-stop {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -386,10 +424,6 @@ kbd {
   height: 48px;
   cursor: pointer;
   font-size: 1.1rem;
-}
-.composer .btn-tts-stop:hover {
-  border-color: var(--accent-2);
-  color: var(--text);
 }
 
 .btn-mic {
@@ -404,21 +438,12 @@ kbd {
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
-}
-.btn-mic:hover {
-  border-color: var(--accent-2);
 }
 .btn-mic.listening {
   border-color: var(--danger);
   background: rgba(248, 113, 113, 0.15);
   box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.2);
 }
-.btn-mic:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-.mic-icon { position: relative; z-index: 1; font-size: 1.15rem; }
 .mic-pulse {
   position: absolute;
   inset: -4px;
