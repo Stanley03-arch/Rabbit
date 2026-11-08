@@ -18,71 +18,123 @@ typedef enum {
     RABBIT_ERR_IO,
     RABBIT_ERR_MEM,
     RABBIT_ERR_FORMAT,
-    RABBIT_ERR_ARG,
-    RABBIT_ERR_UNSUPPORTED
-} RabbitStatus;
+    RABBIT_ERR_UNSUPPORTED,
+    RABBIT_ERR_ARGS
+} rabbit_status;
 
-typedef struct RabbitHeader {
+typedef struct RabbitModel RabbitModel;
+typedef struct ExpertCache ExpertCache;
+
+#pragma pack(push, 1)
+typedef struct {
     char     magic[8];
     uint32_t version;
-    uint32_t hidden_dim;
+    uint32_t header_size;
+
     uint32_t n_layers;
-    uint32_t n_heads;
-    uint32_t n_kv_heads;
-    uint32_t head_dim;
-    uint32_t intermediate_size;
-    uint32_t n_experts;
-    uint32_t top_k;
+    uint32_t hidden_dim;
     uint32_t vocab_size;
-    uint32_t max_seq_len;
-    uint32_t expert_quant;      /* 0=f32, 4=group-int4, 8=int8 */
-    uint32_t n_shared_experts;  /* DeepSeek-style; 0 = none */
-    float    rope_theta;
-    float    rms_eps;
-    uint32_t reserved[16];
+    uint32_t n_experts;          /* routed experts per layer (router width) */
+    uint32_t experts_per_token;
+    uint32_t expert_dim;
+
+    uint64_t dense_size;
+    uint64_t expert_size;
+    uint64_t total_experts_size; /* n_expert_records * expert_size */
+
+    uint32_t dense_quant;
+    uint32_t expert_quant;       /* 0=f32, 4=group-int4, 8=int8 */
+
+    char     name[64];
+    /* reserved layout (little-endian u32):
+     *   [0..11]  n_heads, n_kv_heads, head_dim  (GQA; 0 = infer)
+     *   [12..15] n_shared_experts               (DeepSeek-style always-on;
+     *            disk layout per layer = E routed + S shared when set)
+     */
+    uint8_t  reserved[128];
 } RabbitHeader;
+#pragma pack(pop)
 
-typedef struct ExpertCache ExpertCache;
-typedef struct RabbitModel RabbitModel;
+typedef struct {
+    size_t dense_bytes;
+    size_t cache_bytes;
+    size_t kv_bytes;
+    size_t total_estimate;
+    size_t budget_bytes;
+    int    cache_slots;
+    int    over_budget;
+} RabbitMemoryReport;
 
-/* Load / free */
-RabbitModel *rabbit_load(const char *path);
-void         rabbit_free(RabbitModel *m);
-RabbitStatus rabbit_status(const RabbitModel *m);
+struct RabbitModel {
+    RabbitHeader hdr;
 
-/* Metadata accessors */
-const RabbitHeader *rabbit_header(const RabbitModel *m);
-int  rabbit_n_layers(const RabbitModel *m);
-int  rabbit_hidden_dim(const RabbitModel *m);
-int  rabbit_n_experts(const RabbitModel *m);
-int  rabbit_n_shared_experts(const RabbitModel *m);
-int  rabbit_top_k(const RabbitModel *m);
-int  rabbit_vocab_size(const RabbitModel *m);
-void rabbit_print_stats(const RabbitModel *m);
+    void   *dense;
+    size_t  dense_size;
 
-/* Generation */
-int rabbit_chat(RabbitModel *m, const char *prompt, int max_tokens, float temperature);
-int rabbit_chat_ex(RabbitModel *m, const char *prompt, int max_tokens, float temperature, float top_p);
-int rabbit_chat_ex2(RabbitModel *m, const char *prompt, int max_tokens, float temperature, float top_p, uint64_t seed);
+    int     expert_fd;
+    void   *expert_map;
+    void   *expert_map_base;
+    size_t  expert_map_size;
+    size_t  expert_size;
+    int     num_experts;          /* routed per layer */
+    int     experts_per_token;
 
-/* Probe / debug path for layout v2 */
-int rabbit_probe_v2(RabbitModel *m, const char *prompt, int tokens);
+    /* Expert table layout */
+    int     n_expert_records;     /* total records on disk */
+    int     experts_per_layer;    /* E, or E+S when shared experts present */
+    int     experts_shared;       /* 1 = one table for all layers */
 
-/* Expert cache */
-ExpertCache *rabbit_cache_create(size_t budget_bytes, int n_slots);
+    ExpertCache *cache;
+
+    int     n_layers;
+    int     hidden_dim;
+    int     vocab_size;
+    char    name[128];
+
+    size_t  mem_budget;
+    int     cache_slots;
+};
+
+/* Utilities */
+void  rabbit_die(const char *msg);
+void  rabbit_dief(const char *fmt, ...);
+void *rabbit_xmalloc(size_t n);
+void *rabbit_xcalloc(size_t n, size_t size);
+void *rabbit_xrealloc(void *ptr, size_t n);
+char *rabbit_xstrdup(const char *s);
+
+/* Lifecycle */
+RabbitModel  *rabbit_load(const char *path);
+void          rabbit_free(RabbitModel *model);
+rabbit_status rabbit_chat(RabbitModel *model);
+rabbit_status rabbit_chat_ex(RabbitModel *model, int max_tokens, float temperature);
+/* seed < 0 → RABBIT_SEED env or time(NULL); top_p in (0,1], 1.0 = disabled */
+rabbit_status rabbit_chat_ex2(RabbitModel *model, int max_tokens, float temperature,
+                              float top_p, int seed);
+const char   *rabbit_version(void);
+void          rabbit_print_info(const RabbitModel *model);
+
+/* Memory */
+void          rabbit_memory_report(const RabbitModel *m, RabbitMemoryReport *out);
+void          rabbit_print_memory(const RabbitModel *m);
+size_t        rabbit_default_mem_budget(void);
+
+/* Cache — keys are global expert record ids */
+ExpertCache *rabbit_cache_create(int n_slots);
 void         rabbit_cache_free(ExpertCache *c);
-int          rabbit_cache_get(ExpertCache *c, int expert_id, void **out_ptr);
-int          rabbit_cache_put(ExpertCache *c, int expert_id, const void *src);
+void         rabbit_cache_set_expert_size(ExpertCache *c, size_t size);
+void        *rabbit_cache_get(ExpertCache *c, int expert_id);
+void        *rabbit_cache_put(ExpertCache *c, int expert_id, const void *src);
 void         rabbit_cache_stats(const ExpertCache *c, uint64_t *hits, uint64_t *misses, uint64_t *inserts);
 
-/* mmap helpers */
+/* Mapping */
 int          rabbit_mmap_file(const char *path, void **base, size_t *size, int *fd);
 void         rabbit_munmap_file(void *base, size_t size, int fd);
 const void  *rabbit_expert_ptr(const RabbitModel *m, int global_expert_id);
 const void  *rabbit_expert_ptr_layer(const RabbitModel *m, int layer, int local_expert_id);
 int          rabbit_expert_global_id(const RabbitModel *m, int layer, int local_expert_id);
 
-/* MoE / layer steps */
+/* MoE / layers */
 const void *rabbit_fetch_expert(RabbitModel *m, int global_expert_id, int promote);
 const void *rabbit_fetch_expert_layer(RabbitModel *m, int layer, int local_expert_id, int promote);
 int         rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim);
