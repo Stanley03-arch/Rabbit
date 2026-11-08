@@ -16,6 +16,16 @@
 #define V2_MAX_CTX 256
 #define V2_MAX_HEADS 32
 
+/* Optional: RABBIT_REF_V2_CTX=N (16..256) shrinks per-layer KV to save RAM. */
+static int rabbit_v2_max_ctx(void) {
+    const char *env = getenv("RABBIT_REF_V2_CTX");
+    if (!env || !env[0]) return V2_MAX_CTX;
+    long n = strtol(env, NULL, 10);
+    if (n < 16) n = 16;
+    if (n > V2_MAX_CTX) n = V2_MAX_CTX;
+    return (int)n;
+}
+
 typedef struct {
     const float *embed;
     const float *lm_head;
@@ -376,7 +386,6 @@ static void moe_step(const RabbitModel *m, const RefV2Weights *w, int layer, flo
         expert_swiglu(m, layer, ids[i], xn, delta, H, w->inter, weights[i]);
     }
 
-    /* DeepSeek-style always-on shared experts: local ids E .. E+S-1 */
     {
         uint32_t n_shared = 0;
         memcpy(&n_shared, m->hdr.reserved + 12, 4);
@@ -425,10 +434,11 @@ int rabbit_ref_v2_forward(RabbitModel *m, const int *token_ids, int n_tokens,
     int H = w.hidden;
     RefV2KV kv[32];
     memset(kv, 0, sizeof(kv));
+    int max_ctx = rabbit_v2_max_ctx();
     for (int L = 0; L < w.n_layers; L++) {
-        kv[L].max_len = V2_MAX_CTX;
-        kv[L].k = (float *)calloc((size_t)V2_MAX_CTX * w.kv_dim, sizeof(float));
-        kv[L].v = (float *)calloc((size_t)V2_MAX_CTX * w.kv_dim, sizeof(float));
+        kv[L].max_len = max_ctx;
+        kv[L].k = (float *)calloc((size_t)max_ctx * w.kv_dim, sizeof(float));
+        kv[L].v = (float *)calloc((size_t)max_ctx * w.kv_dim, sizeof(float));
         if (!kv[L].k || !kv[L].v) {
             for (int j = 0; j <= L; j++) {
                 free(kv[j].k); free(kv[j].v);
@@ -445,8 +455,13 @@ int rabbit_ref_v2_forward(RabbitModel *m, const int *token_ids, int n_tokens,
         return -1;
     }
 
+    int tok_off = 0;
+    if (n_tokens > max_ctx) {
+        tok_off = n_tokens - max_ctx;
+        n_tokens = max_ctx;
+    }
     for (int pos = 0; pos < n_tokens; pos++) {
-        int tid = token_ids[pos] % w.vocab;
+        int tid = token_ids[tok_off + pos] % w.vocab;
         if (tid < 0) tid = 0;
         memcpy(h, w.embed + (size_t)tid * H, sizeof(float) * (size_t)H);
 
