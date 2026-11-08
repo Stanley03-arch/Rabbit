@@ -42,6 +42,14 @@ See [docs/PHASE_D.md](docs/PHASE_D.md).
   - Dashboard parses cache evictions / bytes_copied / pinned (v0.4.18+)
   - Tokenizer export: pure tokenizer.json merges (v0.4.20); GQA ref-v2 detection
 
+## Phase E — Scale & polish (in progress)
+
+- [x] Dashboard: cache evictions / bytes_copied / pinned (v0.4.22)
+- [x] `RABBIT_REF_V2_CTX` configurable KV window for low-RAM ref-v2 (v0.4.22)
+- [ ] Incremental ref-v2 decode (reuse KV across tokens; avoid O(n²) re-prefill)
+- [ ] Optional mmap-free expert load path for broken FUSE/CDN hosts
+- [ ] Larger public MoE (≥1B) convert+chat recipe
+
 ## Non-goals
 
 - Claiming Colibrì parity without real-model transformers parity
