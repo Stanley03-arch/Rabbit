@@ -40,6 +40,7 @@ See [docs/PHASE_D.md](docs/PHASE_D.md).
   - Chat: 12L / H=768 / 24 experts top-4 / 32k BPE; expert cache 99%+ hit rate with 32 slots
   - Download: prefer `curl` when HF Xet leaves 0-byte placeholders
   - Dashboard parses cache evictions / bytes_copied / pinned (v0.4.18+)
+  - Tokenizer export: pure tokenizer.json merges (v0.4.20); GQA ref-v2 detection
 
 ## Non-goals
 

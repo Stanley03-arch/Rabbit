@@ -1,3 +1,9 @@
+## [0.4.20] - 2026-11-08
+
+### Tokenizer + ref-v2 detection
+- **export_hf_tokenizer.py**: pure `tokenizer.json` path (no `transformers` required); reads `model.merges` (64k merges for TinyBrainBot)
+- **is_ref_v2_model**: GQA-aware dense size check (Q/K/V/O with n_kv_heads × head_dim)
+
 ## [0.4.19] - 2026-11-08
 
 ### Live public MoE
@@ -21,13 +27,3 @@
 ### Conversion / low-RAM
 - **Streaming safetensors reader** in `convert_hf_stream.py`: pure header-parse + seek/read — no full-file mmap
 - Peak RAM ≈ largest single tensor (not the whole checkpoint); enables convert on ~1–2 GB free hosts
-- Supports F32 / F16 / BF16 / integer dtypes; BF16 decoded without torch
-- Micro fixture writers (`create_*_micro.py`) now emit `.safetensors` with a pure writer (no `safetensors` package required)
-- Offline stream tests (Mixtral / Qwen / DeepSeek) no longer require the safetensors package
-
-## [0.4.16] - 2026-11-08
-
-### Live MoE / conversion
-- **Harden `make live-moe`**: validate `model.safetensors` size after HF download; curl fallback when Xet leaves a 0-byte placeholder; clearer progress messages
-- **Converter** (`convert_hf_stream.py`): early reject of empty/tiny safetensors files with actionable Xet/CDN guidance; warn when a shard is >500 MB
-- ROADMAP: live TinyBrainBot completed in 0.4.19
