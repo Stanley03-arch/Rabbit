@@ -23,6 +23,8 @@ make parity-v2
 
 ### Live public MoE (in progress)
 
+> **2026-11-08:** `make live-moe` now validates download size and falls back to curl when HF Xet leaves a 0-byte file. Converter rejects empty shards and warns about large-mmap RAM needs (~3 GB free recommended for the 1.5 GB checkpoint).
+
 Target: **[nkthebass/tinybrainbot-360m-a75m-v4.1-moe-base](https://huggingface.co/nkthebass/tinybrainbot-360m-a75m-v4.1-moe-base)**
 
 | Field | Value |
