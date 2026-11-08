@@ -190,24 +190,47 @@ static void setup_expert_table(RabbitModel *m) {
 
 static int is_ref_v2_model(const RabbitModel *m) {
     if (!m || !m->dense) return 0;
+
+    const char *force = getenv("RABBIT_FORCE_LEGACY");
+    if (force && force[0] == '1') return 0;
+    const char *force_v2 = getenv("RABBIT_FORCE_REF_V2");
+    if (force_v2 && force_v2[0] == '1') return 1;
+
     if (strncmp(m->name, "ref-v2", 6) == 0) return 1;
     if (strncmp(m->name, "micro-hf", 8) == 0) return 1;
     if (m->hdr.dense_quant != 0) return 0;
     if (m->hdr.expert_dim == 0) return 0;
+
     int H = m->hidden_dim;
     int V = m->vocab_size;
     int L = m->n_layers;
     int E = m->num_experts;
     if (H <= 0 || V <= 0 || L <= 0) return 0;
-    size_t need = (size_t)V * H + (size_t)H * V;
+
+    uint32_t n_heads = 0, n_kv = 0, head_dim = 0;
+    memcpy(&n_heads, m->hdr.reserved + 0, 4);
+    memcpy(&n_kv,    m->hdr.reserved + 4, 4);
+    memcpy(&head_dim,m->hdr.reserved + 8, 4);
+    if (n_heads == 0) n_heads = 1;
+    if (head_dim == 0) head_dim = (uint32_t)(H / (int)n_heads);
+    if (n_kv == 0) n_kv = n_heads;
+
+    size_t q_dim = (size_t)n_heads * (size_t)head_dim;
+    size_t kv_dim = (size_t)n_kv * (size_t)head_dim;
+    if (q_dim == 0) q_dim = (size_t)H;
+    if (kv_dim == 0) kv_dim = (size_t)H;
+
+    size_t need = (size_t)V * (size_t)H + (size_t)H * (size_t)V + (size_t)H;
     for (int i = 0; i < L; i++) {
         need += (size_t)H * 2;
-        need += (size_t)3 * H * H;
-        need += (size_t)H * H;
-        need += (size_t)E * H;
+        need += q_dim * (size_t)H;
+        need += kv_dim * (size_t)H;
+        need += kv_dim * (size_t)H;
+        need += (size_t)H * q_dim;
+        need += (size_t)E * (size_t)H;
     }
     need *= sizeof(float);
-    return m->dense_size >= need;
+    return m->dense_size + 1024 * 1024 >= need;
 }
 
 RabbitModel *rabbit_load(const char *path) {
@@ -430,41 +453,40 @@ static void lm_head_toy(const float *hidden, int hidden_dim, float *logits, int 
 static void generate_v2(RabbitModel *m, const char *prompt, int max_new_tokens,
                         float temperature, float top_p) {
     int vocab = m->vocab_size > 0 ? m->vocab_size : 256;
-    int max_ids = (int)strlen(prompt) + max_new_tokens + 16;
+    int max_ids = 512 + max_new_tokens + 16;
     int *tokens = (int *)rabbit_xmalloc(sizeof(int) * (size_t)max_ids);
     float *hidden = (float *)rabbit_xmalloc(sizeof(float) * (size_t)m->hidden_dim);
     float *logits = (float *)rabbit_xmalloc(sizeof(float) * (size_t)vocab);
 
-    int n = 0;
-    for (const unsigned char *p = (const unsigned char *)prompt; *p && n < max_ids - max_new_tokens - 1; p++)
-        tokens[n++] = (int)(*p % vocab);
+    int n = rabbit_tokenize(prompt, tokens, max_ids - max_new_tokens - 1);
+    if (n <= 0) {
+        n = 0;
+        for (const unsigned char *p = (const unsigned char *)prompt;
+             *p && n < max_ids - max_new_tokens - 1; p++)
+            tokens[n++] = (int)(*p % vocab);
+    }
     if (n == 0)
         tokens[n++] = 1;
 
-    char piece[8];
+    char piece[256];
     for (int t = 0; t < max_new_tokens && n < max_ids; t++) {
         if (rabbit_ref_v2_forward(m, tokens, n, hidden, logits) != 0) {
             fprintf(stderr, "error: ref-v2 forward failed\n");
             break;
         }
+        int next;
         if (temperature <= 0.0f) {
-            int best = 0;
+            next = 0;
             float bv = logits[0];
             for (int i = 1; i < vocab; i++)
-                if (logits[i] > bv) { bv = logits[i]; best = i; }
-            tokens[n++] = best;
+                if (logits[i] > bv) { bv = logits[i]; next = i; }
         } else {
             softmax(logits, vocab);
-            tokens[n++] = sample_token(logits, vocab, temperature, top_p);
+            next = sample_token(logits, vocab, temperature, top_p);
         }
-        int id = tokens[n - 1];
-        if (id >= 0 && id < 256) {
-            piece[0] = (char)id;
-            piece[1] = 0;
-            fputs(piece, stdout);
-        } else {
-            printf("?");
-        }
+        tokens[n++] = next;
+        rabbit_detokenize(next, piece, sizeof(piece));
+        fputs(piece, stdout);
         fflush(stdout);
     }
     printf("\n\n");
