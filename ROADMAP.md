@@ -35,8 +35,9 @@ See [docs/PHASE_D.md](docs/PHASE_D.md).
 - [x] Streaming converter multi-shard + quant 0|4 (`tools/convert_hf_stream.py`)
 - [ ] Live public MoE end-to-end (TinyBrainBot 360M) — run `make live-moe` on a machine with HF access
   - Hardened (2026-11-08): download size validation + curl fallback for Xet 0-byte files; converter warns on large shards / low RAM
-  - Needs ~3 GB free RAM for safetensors mmap of the 1.5 GB checkpoint
-  - Target still pending a successful convert + probe on a host with enough memory
+  - Streaming reader (2026-11-08): convert_hf_stream no longer mmaps the full checkpoint; peak RAM ≈ largest tensor
+  - Needs enough free RAM for the largest tensors during convert (embed/lm_head ~100 MB for 360M model)
+  - Target still pending a successful convert + probe on a host that can download the 1.5 GB checkpoint
 
 ## Non-goals
 
