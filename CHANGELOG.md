@@ -1,3 +1,10 @@
+## [0.4.16] - 2026-11-08
+
+### Live MoE / conversion
+- **Harden `make live-moe`**: validate `model.safetensors` size after HF download; curl fallback when Xet leaves a 0-byte placeholder; clearer progress messages
+- **Converter** (`convert_hf_stream.py`): early reject of empty/tiny safetensors files with actionable Xet/CDN guidance; warn when a shard is >500 MB (mmap may bus-error on <~3 GB free RAM hosts)
+- ROADMAP note: live TinyBrainBot still needs a host with enough free memory for the 1.5 GB checkpoint
+
 ## [0.4.15] - 2026-11-08
 
 ### Dashboard / GUI
