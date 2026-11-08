@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/static/compact.css" />
   <link rel="stylesheet" href="/static/ui2.css" />
   <link rel="stylesheet" href="/static/voice-toggle.css" />
+  <link rel="stylesheet" href="/static/toast.css" />
 </head>
 <body>
   <div class="app">
@@ -110,6 +111,7 @@
         <label class="check"><input type="checkbox" id="persist-chat" checked /> Persist chat in browser</label>
         <label class="check"><input type="checkbox" id="completion-sound" /> Sound on reply</label>
         <label class="check"><input type="checkbox" id="compact-ui" /> Compact UI</label>
+        <label class="check"><input type="checkbox" id="hide-fab" /> Hide floating mic</label>
         <label>System preset
           <select id="system-preset">
             <option value="">— none —</option>
@@ -197,11 +199,13 @@
       <p class="footer-note">Shortcuts: <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · <kbd>Ctrl+L</kbd> clear · <kbd>Ctrl+R</kbd> regen · <kbd>Esc</kbd> stop · <kbd>Ctrl+M</kbd> mic · <kbd>M</kbd>/<kbd>V</kbd> mic · <kbd>Ctrl+K</kbd> focus</p>
     </main>
   </div>
+  <div id="toast-host" class="toast-host" aria-live="polite"></div>
   <button type="button" class="btn-voice-fab" id="voice-toggle-fab" title="Toggle voice (Ctrl+M)" aria-label="Toggle voice">🎙</button>
   <script src="/static/app-extras.js"></script>
   <script src="/static/app-extras-more.js"></script>
   <script src="/static/app-extras-ui2.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/voice-keys.js"></script>
+  <script src="/static/app-toasts.js"></script>
 </body>
 </html>

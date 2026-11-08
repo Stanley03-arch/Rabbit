@@ -1,3 +1,17 @@
+## [0.4.15] - 2026-11-08
+
+### Dashboard / GUI
+- **Multiline composer** (Enter send, Shift+Enter newline) + char/token counter
+- **Prompt library** (save chips in localStorage)
+- **Persist chat**, regenerate last, auto-scroll lock, connection heartbeat
+- **Markdown export**, completion sound, compact UI, UI scale
+- **System prompt presets** (Technical / Teacher / Brief / Rabbit)
+- **Drag-and-drop** import of JSON/MD chat exports
+- **Voice shortcuts**: Ctrl+M always, M/V when not typing
+- **Right-side voice controls**: header Voice button, floating FAB, mic after Send
+- **Toasts** for mic / export / clear; double-click bubble to copy; hide FAB option
+- Keyboard: Ctrl+L clear, Ctrl+R regen, Ctrl+K focus, Esc stop
+
 ## [0.4.14] - 2026-11-08
 
 ### Dashboard / GUI
@@ -38,62 +52,3 @@
 ### CLI
 - **Implemented** the `bench` command (was documented in 0.4.11 but missing from binary)
 - Expanded help text with all commands and clearer examples
-- `make bench-smoke` target added and included in `make check` + CI
-- **`rabbit stats` JSON** includes `n_shared_experts`, GQA fields, fixed quant=0
-
-### Engine robustness
-- Clearer model-load errors; safer alloc helpers; row-wise int4 GEMV
-- **DeepSeek-style shared experts** (header + disk layout + forward)
-
-### Converters
-- Shared `rabbit_name_maps.py`; Mixtral / Qwen / DeepSeek / moe variants
-- Offline tests: `stream-mixtral`, `stream-qwen`, `stream-deepseek`, `test-name-maps`
-
-### Product surface
-- Server / dashboard / Gradio `--tokenizer`; dashboard Clear chat
-
-## [0.4.11] - 2026-11-03
-
-### CLI
-- New `bench` command (timing); help examples
-
-### Robustness
-- Clearer model load errors; `rabbit_xmalloc` / `rabbit_xcalloc` in generation
-
-## [0.4.10] - 2026-10-28
-
-### Utility helpers
-- `rabbit_xcalloc`, `rabbit_xrealloc`, `rabbit_xstrdup`, `rabbit_dief`
-
-## [0.4.9] - 2026-10-27
-
-### Live MoE streaming harden
-- Multi-shard safetensors; quant 0|4; `make live-moe`
-
-## [0.4.8] - 2026-10-26
-
-### Fix f32 expert path (quant=0)
-
-## [0.4.7] - 2026-10-25
-
-### Final RMSNorm
-
-## [0.4.6] - 2026-10-25
-
-### GQA + Mixtral path
-
-## [0.4.5] - 2026-10-25
-
-### Group-scaled int4
-
-## [0.4.4] - 2026-10-25
-
-### Real BPE tokenizer (RBTTOK01)
-
-## [0.4.3] — exact f32 experts
-
-## [0.4.2] — per-layer expert tables
-
-## [0.4.1] — Phase D M1/M2 start
-
-## [0.4.0] — OpenAI API + SSE
