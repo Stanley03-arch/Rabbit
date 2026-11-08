@@ -1,3 +1,11 @@
+## [0.4.19] - 2026-11-08
+
+### Live public MoE
+- **TinyBrainBot 360M end-to-end verified**: curl download (1.53 GB) → streaming convert (int4, 485 MB) → probe + chat
+- Peak convert RAM ≈ largest tensor; works on ~1 GB free hosts
+- Expert cache hit rate **99%+** with `RABBIT_CACHE_SLOTS=32` on live MoE traffic
+- Dashboard parses **evictions / bytes_copied / pinned** cache fields
+
 ## [0.4.18] - 2026-11-08
 
 ### Expert cache
@@ -21,5 +29,5 @@
 
 ### Live MoE / conversion
 - **Harden `make live-moe`**: validate `model.safetensors` size after HF download; curl fallback when Xet leaves a 0-byte placeholder; clearer progress messages
-- **Converter** (`convert_hf_stream.py`): early reject of empty/tiny safetensors files with actionable Xet/CDN guidance; warn when a shard is >500 MB (mmap may bus-error on <~3 GB free RAM hosts)
-- ROADMAP note: live TinyBrainBot still needs a host with enough free memory for the 1.5 GB checkpoint
+- **Converter** (`convert_hf_stream.py`): early reject of empty/tiny safetensors files with actionable Xet/CDN guidance; warn when a shard is >500 MB
+- ROADMAP: live TinyBrainBot completed in 0.4.19

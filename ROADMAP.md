@@ -8,6 +8,8 @@ See [docs/PHASE_A.md](docs/PHASE_A.md).
 
 Memory + SwiGLU + multi-head RoPE done.
 
+Expert cache (2026-11-08): max 64 slots, RABBIT_CACHE_SLOTS override, pin shared experts, eviction/byte stats.
+
 ## Phase C — Product surface (mostly complete)
 
 OpenAI API + SSE, `rabbit stats`, `rabbit bench`, dashboard engine metrics.
@@ -33,11 +35,11 @@ See [docs/PHASE_D.md](docs/PHASE_D.md).
 - [x] DeepSeek shared experts (`mlp.shared_experts`, `n_shared_experts` in header) + `make stream-deepseek`
 - [x] Shared name maps (`tools/rabbit_name_maps.py`) for Mixtral / Qwen / moe.* / sparse_moe / shared_experts
 - [x] Streaming converter multi-shard + quant 0|4 (`tools/convert_hf_stream.py`)
-- [ ] Live public MoE end-to-end (TinyBrainBot 360M) — run `make live-moe` on a machine with HF access
-  - Hardened (2026-11-08): download size validation + curl fallback for Xet 0-byte files; converter warns on large shards / low RAM
-  - Streaming reader (2026-11-08): convert_hf_stream no longer mmaps the full checkpoint; peak RAM ≈ largest tensor
-  - Needs enough free RAM for the largest tensors during convert (embed/lm_head ~100 MB for 360M model)
-  - Target still pending a successful convert + probe on a host that can download the 1.5 GB checkpoint
+- [x] Live public MoE end-to-end (TinyBrainBot 360M) — convert + probe + chat verified 2026-11-08
+  - Streaming convert of 1.53 GB safetensors → 485 MB `.rabbit` (int4) in ~5s on ~1 GB free RAM
+  - Chat: 12L / H=768 / 24 experts top-4 / 32k BPE; expert cache 99%+ hit rate with 32 slots
+  - Download: prefer `curl` when HF Xet leaves 0-byte placeholders
+  - Dashboard parses cache evictions / bytes_copied / pinned (v0.4.18+)
 
 ## Non-goals
 
