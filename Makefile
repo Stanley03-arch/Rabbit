@@ -115,13 +115,30 @@ clean:
 	rm -f $(OBJ) $(TARGET) $(TEST_TOOL) $(TEST_BIN)
 
 # Live Mixtral-style MoE (TinyBrainBot 360M).
+# Requires ~3 GB free RAM for safetensors mmap + conversion (1.5 GB checkpoint).
+# HF Xet/CDN sometimes yields 0-byte files via huggingface_hub; we validate and fall back to curl.
 live-moe: $(TARGET)
 	@mkdir -p models/tinybrainbot
 	@python3 -c "import huggingface_hub, safetensors, numpy" 2>/dev/null || \
 		(echo "pip install huggingface_hub safetensors numpy transformers" && exit 1)
-	python3 -c "from huggingface_hub import snapshot_download; snapshot_download('nkthebass/tinybrainbot-360m-a75m-v4.1-moe-base', local_dir='models/tinybrainbot', allow_patterns=['config.json','*.safetensors','tokenizer.json','tokenizer.model','tokenizer_config.json','model.safetensors.index.json'])"
+	@echo "[live-moe] downloading TinyBrainBot 360M (expect ~1.5 GB model.safetensors)..."
+	@python3 -c "from huggingface_hub import snapshot_download; snapshot_download('nkthebass/tinybrainbot-360m-a75m-v4.1-moe-base', local_dir='models/tinybrainbot', allow_patterns=['config.json','*.safetensors','tokenizer.json','tokenizer.model','tokenizer_config.json','model.safetensors.index.json','generation_config.json'])" || true
+	@# Validate size; HF Xet often leaves a 0-byte placeholder without a token / proper client
+	@SZ=$$(stat -c%s models/tinybrainbot/model.safetensors 2>/dev/null || echo 0); \
+	if [ "$$SZ" -lt 100000000 ]; then \
+		echo "[live-moe] model.safetensors is missing or too small ($$SZ bytes). Falling back to curl..."; \
+		curl -L --fail --retry 3 -o models/tinybrainbot/model.safetensors \
+			"https://huggingface.co/nkthebass/tinybrainbot-360m-a75m-v4.1-moe-base/resolve/main/model.safetensors" \
+			|| (echo "Download failed. Try: HF_TOKEN=... make live-moe" && exit 1); \
+	fi
+	@SZ=$$(stat -c%s models/tinybrainbot/model.safetensors 2>/dev/null || echo 0); \
+	echo "[live-moe] model.safetensors size=$$SZ bytes"; \
+	if [ "$$SZ" -lt 1000000000 ]; then \
+		echo "ERROR: model.safetensors still too small ($$SZ). Aborting."; exit 1; \
+	fi
+	@echo "[live-moe] converting (quant=$(LIVE_QUANT)). Needs ~3 GB free RAM for mmap..."
 	python3 tools/convert_hf_stream.py --model-dir models/tinybrainbot \
-		--out models/tinybrainbot-v2.rabbit --quant $(LIVE_QUANT)
+		--out models/tinybrainbot-v2.rabbit --quant $(LIVE_QUANT) --name tinybrainbot
 	python3 tools/export_hf_tokenizer.py --hf-dir models/tinybrainbot \
 		--out models/tinybrainbot.tok || true
 	./$(TARGET) probe-v2 --model models/tinybrainbot-v2.rabbit \
