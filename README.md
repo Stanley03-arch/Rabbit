@@ -6,7 +6,7 @@ Rabbit is a pure-C engine that keeps dense weights in RAM and streams routed exp
 
 Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) — not a clone of its product or UI.
 
-> **Status:** v0.4.14 — Phase A–D quality spine + product surface. Dashboard with **SSE streaming**, **voice input/TTS**, **voice commands**, shared-expert metrics. OpenAI-compatible HTTP API, `rabbit stats` / `bench`. **Windows:** `rabbit.bat` and `start-dashboard.bat`.
+> **Status:** v0.4.16 — Phase A–D quality spine + product surface. Dashboard with **SSE streaming**, **voice input/TTS**, **voice commands**, shared-expert metrics. OpenAI-compatible HTTP API, `rabbit stats` / `bench`. **Windows:** `rabbit.bat` and `start-dashboard.bat`.
 
 [![Dashboard in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_dashboard.ipynb)
 
@@ -143,6 +143,7 @@ See [docs/tensor-map.md](docs/tensor-map.md), [docs/conversion.md](docs/conversi
 - Large real MoEs still need aggressive quant / expert limits on 4 GB hosts.  
 - Streaming reads engine stdout as tokens are flushed; banner filtering is best-effort.  
 - Voice STT needs a Chromium browser and microphone permission.  
+- `make live-moe` needs ~3 GB free RAM for the 1.5 GB TinyBrainBot checkpoint (safetensors mmap).
 
 ## License
 
