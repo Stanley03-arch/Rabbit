@@ -6,9 +6,9 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-#define RABBIT_VERSION "0.4.17"
+#define RABBIT_VERSION "0.4.18"
 #define RABBIT_MAGIC   "RABBIT01"
-#define RABBIT_MAX_CACHE_SLOTS 8
+#define RABBIT_MAX_CACHE_SLOTS 64
 #define RABBIT_INT4_GROUP 32
 
 #define RABBIT_DEFAULT_MEM_BUDGET_MB 1536
@@ -34,18 +34,23 @@ typedef struct {
     uint32_t n_layers;
     uint32_t hidden_dim;
     uint32_t vocab_size;
-    uint32_t n_experts;
+    uint32_t n_experts;          /* routed experts per layer (router width) */
     uint32_t experts_per_token;
     uint32_t expert_dim;
 
     uint64_t dense_size;
     uint64_t expert_size;
-    uint64_t total_experts_size;
+    uint64_t total_experts_size; /* n_expert_records * expert_size */
 
     uint32_t dense_quant;
-    uint32_t expert_quant;
+    uint32_t expert_quant;       /* 0=f32, 4=group-int4, 8=int8 */
 
     char     name[64];
+    /* reserved layout (little-endian u32):
+     *   [0..11]  n_heads, n_kv_heads, head_dim  (GQA; 0 = infer)
+     *   [12..15] n_shared_experts               (DeepSeek-style always-on;
+     *            disk layout per layer = E routed + S shared when set)
+     */
     uint8_t  reserved[128];
 } RabbitHeader;
 #pragma pack(pop)
@@ -71,12 +76,13 @@ struct RabbitModel {
     void   *expert_map_base;
     size_t  expert_map_size;
     size_t  expert_size;
-    int     num_experts;
+    int     num_experts;          /* routed per layer */
     int     experts_per_token;
 
-    int     n_expert_records;
-    int     experts_per_layer;
-    int     experts_shared;
+    /* Expert table layout */
+    int     n_expert_records;     /* total records on disk */
+    int     experts_per_layer;    /* E, or E+S when shared experts present */
+    int     experts_shared;       /* 1 = one table for all layers */
 
     ExpertCache *cache;
 
@@ -89,6 +95,7 @@ struct RabbitModel {
     int     cache_slots;
 };
 
+/* Utilities */
 void  rabbit_die(const char *msg);
 void  rabbit_dief(const char *fmt, ...);
 void *rabbit_xmalloc(size_t n);
@@ -96,6 +103,7 @@ void *rabbit_xcalloc(size_t n, size_t size);
 void *rabbit_xrealloc(void *ptr, size_t n);
 char *rabbit_xstrdup(const char *s);
 
+/* Lifecycle */
 RabbitModel  *rabbit_load(const char *path);
 void          rabbit_free(RabbitModel *model);
 rabbit_status rabbit_chat(RabbitModel *model);
@@ -105,23 +113,32 @@ rabbit_status rabbit_chat_ex2(RabbitModel *model, int max_tokens, float temperat
 const char   *rabbit_version(void);
 void          rabbit_print_info(const RabbitModel *model);
 
+/* Memory */
 void          rabbit_memory_report(const RabbitModel *m, RabbitMemoryReport *out);
 void          rabbit_print_memory(const RabbitModel *m);
 size_t        rabbit_default_mem_budget(void);
 
+/* Cache — keys are global expert record ids */
 ExpertCache *rabbit_cache_create(int n_slots);
 void         rabbit_cache_free(ExpertCache *c);
 void         rabbit_cache_set_expert_size(ExpertCache *c, size_t size);
 void        *rabbit_cache_get(ExpertCache *c, int expert_id);
 void        *rabbit_cache_put(ExpertCache *c, int expert_id, const void *src);
+/* Pin an already-cached or about-to-be-cached expert so LRU will not evict it. */
+int          rabbit_cache_pin(ExpertCache *c, int expert_id, const void *src_or_null);
 void         rabbit_cache_stats(const ExpertCache *c, uint64_t *hits, uint64_t *misses, uint64_t *inserts);
+void         rabbit_cache_stats_ex(const ExpertCache *c, uint64_t *hits, uint64_t *misses,
+                                  uint64_t *inserts, uint64_t *evictions, uint64_t *bytes_copied,
+                                  int *n_slots, int *n_pinned);
 
+/* Mapping */
 int          rabbit_mmap_file(const char *path, void **base, size_t *size, int *fd);
 void         rabbit_munmap_file(void *base, size_t size, int fd);
 const void  *rabbit_expert_ptr(const RabbitModel *m, int global_expert_id);
 const void  *rabbit_expert_ptr_layer(const RabbitModel *m, int layer, int local_expert_id);
 int          rabbit_expert_global_id(const RabbitModel *m, int layer, int local_expert_id);
 
+/* MoE / layers */
 const void *rabbit_fetch_expert(RabbitModel *m, int global_expert_id, int promote);
 const void *rabbit_fetch_expert_layer(RabbitModel *m, int layer, int local_expert_id, int promote);
 int         rabbit_moe_step(RabbitModel *m, float *hidden, int hidden_dim);
@@ -129,15 +146,18 @@ int         rabbit_ref_forward(RabbitModel *m, const char *prompt, float *out_hi
 void        rabbit_attn_reset(void);
 int         rabbit_layer_step(RabbitModel *m, float *hidden, int hidden_dim);
 
+/* Phase D: faithful ref-v2 forward */
 int rabbit_ref_v2_forward(RabbitModel *m, const int *token_ids, int n_tokens,
                           float *out_hidden, float *out_logits);
 int rabbit_ref_v2_greedy(RabbitModel *m, const char *prompt, int n_new,
                          int *out_ids, int max_ids);
 
+/* Quantization */
 void rabbit_dequant_int8(const int8_t *src, float *dst, int n, float scale);
 void rabbit_dequant_int4(const uint8_t *src, float *dst, int n, float scale);
 int  rabbit_pack_int4(const float *src, int n, uint8_t *dst, float *out_scale);
 
+/* Group-scaled int4 (expert_quant == 4) */
 int  rabbit_pack_int4_grouped(const float *src, int n, int group_size,
                               uint8_t *dst, int dst_cap);
 int  rabbit_dequant_int4_grouped(const uint8_t *src, float *dst, int n);
@@ -145,12 +165,13 @@ void rabbit_gemv_int4_grouped(const uint8_t *W, const float *x, float *y,
                               int out_dim, int in_dim);
 int  rabbit_int4_grouped_nbytes(int n, int group_size);
 
+/* Tokenizer */
 int  rabbit_tokenize(const char *text, int *out_ids, int max_ids);
 void rabbit_detokenize(int id, char *out, int out_size);
 void rabbit_detokenize_seq(const int *ids, int n, char *out, int out_size);
 int  rabbit_tokenizer_vocab(void);
 void rabbit_tokenizer_set_byte_mode(void);
 int  rabbit_tokenizer_load_vocab(const char *path);
-int  rabbit_tokenizer_load_bpe(const char *path);
+int  rabbit_tokenizer_load_bpe(const char *path);  /* RBTTOK01 .tok file */
 
 #endif /* RABBIT_H */
