@@ -4,11 +4,23 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Rabbit — Engine Dashboard</title>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("rabbit-theme") || "dark";
+        if (t === "system") {
+          t = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
   <link rel="stylesheet" href="/static/style.css" />
   <link rel="stylesheet" href="/static/compact.css" />
   <link rel="stylesheet" href="/static/ui2.css" />
   <link rel="stylesheet" href="/static/voice-toggle.css" />
   <link rel="stylesheet" href="/static/toast.css" />
+  <link rel="stylesheet" href="/static/theme.css" />
 </head>
 <body>
   <div class="app">
@@ -58,9 +70,6 @@
         <div class="kv"><span>hits</span><b id="c-hits">0</b></div>
         <div class="kv"><span>misses</span><b id="c-misses">0</b></div>
         <div class="kv"><span>inserts</span><b id="c-inserts">0</b></div>
-        <div class="kv"><span>evictions</span><b id="c-evict">0</b></div>
-        <div class="kv"><span>bytes copied</span><b id="c-bytes">0</b></div>
-        <div class="kv"><span>pinned</span><b id="c-pinned">0</b></div>
         <div class="kv"><span>hit rate</span><b id="c-rate">—</b></div>
         <div class="bar"><div class="bar-fill" id="c-bar" style="width:0%"></div></div>
       </section>
@@ -115,6 +124,13 @@
         <label class="check"><input type="checkbox" id="completion-sound" /> Sound on reply</label>
         <label class="check"><input type="checkbox" id="compact-ui" /> Compact UI</label>
         <label class="check"><input type="checkbox" id="hide-fab" /> Hide floating mic</label>
+        <label>Theme
+          <select id="theme-select">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+            <option value="system">System</option>
+          </select>
+        </label>
         <label>System preset
           <select id="system-preset">
             <option value="">— none —</option>
@@ -160,6 +176,9 @@
           <p class="muted">Voice · SSE · local history</p>
         </div>
         <div class="top-right">
+          <button type="button" class="btn-theme" id="theme-toggle" title="Toggle light/dark (Ctrl+Shift+D)" aria-label="Toggle theme">
+            <span id="theme-toggle-icon" aria-hidden="true">🌙</span>
+          </button>
           <button type="button" class="btn-voice-top" id="voice-toggle-top" title="Toggle voice (Ctrl+M)" aria-pressed="false">
             <span class="voice-top-icon" aria-hidden="true">🎙</span>
             <span class="voice-top-label" id="voice-toggle-label">Voice</span>
@@ -199,7 +218,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Shortcuts: <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · <kbd>Ctrl+L</kbd> clear · <kbd>Ctrl+R</kbd> regen · <kbd>Esc</kbd> stop · <kbd>Ctrl+M</kbd> mic · <kbd>M</kbd>/<kbd>V</kbd> mic · <kbd>Ctrl+K</kbd> focus</p>
+      <p class="footer-note">Shortcuts: <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · <kbd>Ctrl+L</kbd> clear · <kbd>Ctrl+R</kbd> regen · <kbd>Esc</kbd> stop · <kbd>Ctrl+M</kbd> mic · <kbd>Ctrl+Shift+D</kbd> theme · <kbd>Ctrl+K</kbd> focus</p>
     </main>
   </div>
   <div id="toast-host" class="toast-host" aria-live="polite"></div>
@@ -209,6 +228,7 @@
   <script src="/static/app-extras-ui2.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/voice-keys.js"></script>
+  <script src="/static/theme.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
