@@ -208,11 +208,13 @@
         <button type="button" class="chip" data-prompt="List three uses for local MoE inference.">Local MoE uses</button>
       </div>
 
+      <div class="pinned-strip" id="pinned-strip" hidden></div>
+
       <div class="chat" id="chat" title="Drop a chat JSON/MD export here to import">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
           <p class="hint">Say <strong>regenerate</strong> or use the sidebar button.</p>
-          <p class="hint">Keys: <kbd>Enter</kbd> send · <kbd>Ctrl+M</kbd> mic · <kbd>?</kbd> help</p>
+          <p class="hint">Keys: <kbd>Enter</kbd> send · <kbd>Ctrl+F</kbd> search · <kbd>?</kbd> help</p>
         </div>
       </div>
 
@@ -231,7 +233,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Shortcuts: <kbd>Enter</kbd> send · <kbd>Ctrl+M</kbd> mic · <kbd>Ctrl+Shift+D</kbd> theme · <kbd>Ctrl+\</kbd> sidebar · <kbd>?</kbd> help</p>
+      <p class="footer-note">Shortcuts: <kbd>Enter</kbd> send · <kbd>Ctrl+M</kbd> mic · <kbd>Ctrl+F</kbd> search · <kbd>Ctrl+Shift+D</kbd> theme · <kbd>?</kbd> help</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -243,15 +245,16 @@
       <ul class="help-list">
         <li><kbd>Enter</kbd> Send · <kbd>Shift+Enter</kbd> Newline</li>
         <li><kbd>Ctrl+M</kbd> Toggle mic · <kbd>M</kbd>/<kbd>V</kbd> mic (not typing)</li>
-        <li><kbd>Esc</kbd> Stop listening / stop generation</li>
+        <li><kbd>Esc</kbd> Stop listening / stop generation / clear search</li>
         <li><kbd>Ctrl+L</kbd> Clear · <kbd>Ctrl+R</kbd> Regenerate</li>
-        <li><kbd>Ctrl+K</kbd> Focus composer</li>
+        <li><kbd>Ctrl+K</kbd> Focus composer · <kbd>Ctrl+F</kbd> Focus search</li>
         <li><kbd>Ctrl+Shift+D</kbd> Cycle theme</li>
         <li><kbd>Ctrl+\</kbd> Collapse / expand sidebar</li>
         <li><kbd>?</kbd> This help</li>
         <li>Double-click a message to copy</li>
         <li>Double-click a session tab to rename</li>
         <li>Search box filters messages in the current chat</li>
+        <li>Click 📌 on a message to pin (shown above chat)</li>
       </ul>
     </div>
   </div>
@@ -266,6 +269,7 @@
   <script src="/static/layout-extra.js"></script>
   <script src="/static/sessions.js"></script>
   <script src="/static/features.js"></script>
+  <script src="/static/features-more.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>

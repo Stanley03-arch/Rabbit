@@ -86,7 +86,9 @@
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "session-tab" + (id === state.active ? " active" : "");
-      btn.appendChild(document.createTextNode(s.name || id));
+      const count = (s.messages && s.messages.length) || 0;
+      const label = (s.name || id) + (count ? " (" + count + ")" : "");
+      btn.appendChild(document.createTextNode(label));
       if (Object.keys(state.sessions).length > 1) {
         const x = document.createElement("span");
         x.className = "x";
