@@ -2,7 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0c0f14" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Rabbit" />
+  <link rel="manifest" href="/static/manifest.webmanifest" />
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/static/icon.svg" />
   <title>Rabbit — Engine Dashboard</title>
   <script>
     (function () {
@@ -215,8 +223,8 @@
       <div class="chat" id="chat" title="Drop a chat JSON/MD export here to import">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint">Say <strong>regenerate</strong> or use the sidebar button.</p>
-          <p class="hint">Keys: <kbd>Enter</kbd> send · <kbd>Ctrl+F</kbd> search · <kbd>?</kbd> help</p>
+          <p class="hint">Install as app from browser menu on mobile.</p>
+          <p class="hint">Keys: <kbd>Enter</kbd> send · <kbd>Ctrl+Shift+D</kbd> theme · <kbd>?</kbd> help</p>
         </div>
       </div>
 
@@ -235,7 +243,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Shortcuts: <kbd>Enter</kbd> send · <kbd>Ctrl+M</kbd> mic · <kbd>Ctrl+Shift+D</kbd> dark mode · <kbd>?</kbd> help</p>
+      <p class="footer-note">PWA-ready · <kbd>Ctrl+Shift+D</kbd> dark mode · floating 🌙 on mobile</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -245,11 +253,9 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><kbd>Enter</kbd> Send · <kbd>Shift+Enter</kbd> Newline</li>
-        <li><kbd>Ctrl+M</kbd> Toggle mic</li>
-        <li><kbd>Esc</kbd> Stop / clear search</li>
         <li><kbd>Ctrl+Shift+D</kbd> Toggle dark / light mode</li>
-        <li>On phone: floating 🌙 button (bottom-left) toggles dark mode</li>
+        <li>Mobile: floating 🌙 (bottom-left) toggles dark mode</li>
+        <li>Install: browser menu → Add to Home Screen</li>
         <li>Sidebar: <strong>Dark mode</strong> checkbox</li>
       </ul>
     </div>
@@ -263,6 +269,7 @@
   <script src="/static/app.js"></script>
   <script src="/static/voice-keys.js"></script>
   <script src="/static/theme.js"></script>
+  <script src="/static/pwa.js"></script>
   <script src="/static/layout-extra.js"></script>
   <script src="/static/sessions.js"></script>
   <script src="/static/features.js"></script>
