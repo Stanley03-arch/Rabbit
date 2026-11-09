@@ -21,6 +21,7 @@
   <link rel="stylesheet" href="/static/voice-toggle.css" />
   <link rel="stylesheet" href="/static/toast.css" />
   <link rel="stylesheet" href="/static/theme.css" />
+  <link rel="stylesheet" href="/static/layout-extra.css" />
 </head>
 <body>
   <div class="app">
@@ -31,6 +32,7 @@
           <div class="brand-name">Rabbit</div>
           <div class="brand-sub" id="version">engine</div>
         </div>
+        <button type="button" class="btn-side-toggle" id="sidebar-toggle" title="Collapse sidebar (Ctrl+\\)" aria-label="Collapse sidebar">⟨</button>
       </div>
 
       <section class="panel">
@@ -171,9 +173,12 @@
 
     <main class="main">
       <header class="top">
-        <div>
-          <h1>Chat</h1>
-          <p class="muted">Voice · SSE · local history</p>
+        <div class="top-left">
+          <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
+          <div>
+            <h1>Chat</h1>
+            <p class="muted">Voice · SSE · local history</p>
+          </div>
         </div>
         <div class="top-right">
           <button type="button" class="btn-theme" id="theme-toggle" title="Toggle light/dark (Ctrl+Shift+D)" aria-label="Toggle theme">
@@ -188,6 +193,12 @@
         </div>
       </header>
 
+      <div class="session-bar">
+        <div class="session-tabs" id="session-tabs"></div>
+        <button type="button" class="btn-session-new" id="session-new" title="New session">+ Session</button>
+        <button type="button" class="btn-help" id="help-open" title="Keyboard shortcuts (?)">?</button>
+      </div>
+
       <div class="chips" id="chips">
         <button type="button" class="chip" data-prompt="Hello from Rabbit">Hello</button>
         <button type="button" class="chip" data-prompt="Explain Mixture of Experts in one sentence.">Explain MoE</button>
@@ -199,7 +210,7 @@
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
           <p class="hint">Say <strong>regenerate</strong> or use the sidebar button.</p>
-          <p class="hint">Keys: <kbd>Enter</kbd> send · <kbd>Ctrl+M</kbd> mic · <kbd>Esc</kbd> stop</p>
+          <p class="hint">Keys: <kbd>Enter</kbd> send · <kbd>Ctrl+M</kbd> mic · <kbd>?</kbd> help</p>
         </div>
       </div>
 
@@ -218,8 +229,27 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Shortcuts: <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · <kbd>Ctrl+L</kbd> clear · <kbd>Ctrl+R</kbd> regen · <kbd>Esc</kbd> stop · <kbd>Ctrl+M</kbd> mic · <kbd>Ctrl+Shift+D</kbd> theme · <kbd>Ctrl+K</kbd> focus</p>
+      <p class="footer-note">Shortcuts: <kbd>Enter</kbd> send · <kbd>Ctrl+M</kbd> mic · <kbd>Ctrl+Shift+D</kbd> theme · <kbd>Ctrl+\</kbd> sidebar · <kbd>?</kbd> help</p>
     </main>
+  </div>
+  <div id="help-modal" class="help-modal" hidden>
+    <div class="help-card" role="dialog" aria-labelledby="help-title">
+      <header>
+        <h2 id="help-title">Keyboard shortcuts</h2>
+        <button type="button" id="help-close" aria-label="Close">×</button>
+      </header>
+      <ul class="help-list">
+        <li><kbd>Enter</kbd> Send · <kbd>Shift+Enter</kbd> Newline</li>
+        <li><kbd>Ctrl+M</kbd> Toggle mic · <kbd>M</kbd>/<kbd>V</kbd> mic (not typing)</li>
+        <li><kbd>Esc</kbd> Stop listening / stop generation</li>
+        <li><kbd>Ctrl+L</kbd> Clear · <kbd>Ctrl+R</kbd> Regenerate</li>
+        <li><kbd>Ctrl+K</kbd> Focus composer</li>
+        <li><kbd>Ctrl+Shift+D</kbd> Cycle theme</li>
+        <li><kbd>Ctrl+\</kbd> Collapse / expand sidebar</li>
+        <li><kbd>?</kbd> This help</li>
+        <li>Double-click a message to copy</li>
+      </ul>
+    </div>
   </div>
   <div id="toast-host" class="toast-host" aria-live="polite"></div>
   <button type="button" class="btn-voice-fab" id="voice-toggle-fab" title="Toggle voice (Ctrl+M)" aria-label="Toggle voice">🎙</button>
@@ -229,6 +259,8 @@
   <script src="/static/app.js"></script>
   <script src="/static/voice-keys.js"></script>
   <script src="/static/theme.js"></script>
+  <script src="/static/layout-extra.js"></script>
+  <script src="/static/sessions.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
