@@ -29,7 +29,13 @@
     return Array.from(chatEl.querySelectorAll(".bubble")).map(function (div) {
       const role = div.classList.contains("user") ? "user" : "bot";
       const body = div.querySelector(".body");
-      return { role: role, content: body ? body.textContent : "" };
+      const content =
+        body && body.dataset && body.dataset.raw != null
+          ? body.dataset.raw
+          : body
+            ? body.textContent
+            : "";
+      return { role: role, content: content };
     });
   }
 
@@ -70,6 +76,7 @@
       inject(m.role === "user" ? "user" : "bot", m.content || "");
     });
     chatEl.scrollTop = chatEl.scrollHeight;
+    if (window.rabbitFormatMarkdown) setTimeout(window.rabbitFormatMarkdown, 50);
   }
 
   function renderTabs() {
@@ -106,6 +113,16 @@
         saveStore(state);
         loadActive();
         renderTabs();
+      });
+      btn.addEventListener("dblclick", function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const name = prompt("Rename session", s.name || id);
+        if (name && name.trim()) {
+          state.sessions[id].name = name.trim().slice(0, 40);
+          saveStore(state);
+          renderTabs();
+        }
       });
       tabsEl.appendChild(btn);
     });
