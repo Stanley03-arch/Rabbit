@@ -36,3 +36,61 @@
 .bubble .body strong {
   font-weight: 700;
 }
+
+.pinned-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.45rem 1.25rem 0;
+}
+.pin-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--panel);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  cursor: pointer;
+}
+.pin-item:hover { border-color: var(--accent-2); color: var(--text); }
+.pin-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pin-rm {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+.pin-rm:hover { color: var(--danger); }
+
+.bubble-actions {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+  opacity: 0.45;
+}
+.bubble:hover .bubble-actions { opacity: 1; }
+.bubble-act {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.bubble-act:hover { color: var(--text); border-color: var(--accent-2); }
+
+html.reduce-motion .btn-mic.listening .mic-pulse,
+html.reduce-motion .btn-voice-top.listening {
+  animation: none !important;
+}
