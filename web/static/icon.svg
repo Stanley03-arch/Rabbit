@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Rabbit">
+  <rect width="512" height="512" rx="96" fill="#0c0f14"/>
+  <rect x="64" y="64" width="384" height="384" rx="72" fill="#6ee7b7"/>
+  <path fill="#062016" d="M200 150h90c40 0 70 28 70 68 0 32-18 54-46 62l52 82h-58l-48-78h-28v78h-52V150zm52 48v64h32c18 0 30-10 30-32s-12-32-30-32h-32z"/>
+</svg>
