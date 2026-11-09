@@ -1,0 +1,141 @@
+.brand { position: relative; }
+.btn-side-toggle {
+  margin-left: auto;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.btn-side-toggle:hover { color: var(--text); border-color: var(--accent-2); }
+
+body.sidebar-collapsed .sidebar {
+  display: none;
+}
+body.sidebar-collapsed .app {
+  grid-template-columns: 1fr;
+}
+.btn-side-expand {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  cursor: pointer;
+  margin-right: 0.5rem;
+  font-size: 1rem;
+}
+.top-left {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.session-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 1.25rem 0;
+  flex-wrap: wrap;
+}
+.session-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex: 1;
+  min-width: 0;
+}
+.session-tab {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-tab.active {
+  color: var(--text);
+  border-color: var(--accent-2);
+  background: var(--panel-2);
+}
+.session-tab .x {
+  margin-left: 0.35rem;
+  opacity: 0.55;
+}
+.session-tab .x:hover { opacity: 1; color: var(--danger); }
+.btn-session-new, .btn-help {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.btn-session-new:hover, .btn-help:hover {
+  color: var(--text);
+  border-color: var(--accent-2);
+}
+
+.help-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(0,0,0,0.45);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+.help-modal[hidden] { display: none !important; }
+.help-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  max-width: 420px;
+  width: 100%;
+  padding: 1rem 1.15rem 1.15rem;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.35);
+}
+.help-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+.help-card h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+.help-card header button {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 1.35rem;
+  cursor: pointer;
+  line-height: 1;
+}
+.help-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+.help-list kbd {
+  font-family: var(--mono);
+  font-size: 0.75em;
+  padding: 0.1em 0.35em;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--text);
+}
