@@ -1,4 +1,4 @@
-/* Rabbit theme: dark / light / system + Dark mode checkbox */
+/* Rabbit theme: dark / light / system + Dark mode checkbox + mobile FAB */
 (function () {
   const KEY = "rabbit-theme";
   const selectEl = document.getElementById("theme-select");
@@ -6,6 +6,7 @@
   const icon = document.getElementById("theme-toggle-icon");
   const textEl = document.getElementById("theme-toggle-text");
   const darkCheck = document.getElementById("dark-mode-toggle");
+  const mobileFab = document.getElementById("theme-toggle-mobile");
 
   function systemTheme() {
     try {
@@ -43,6 +44,7 @@
       btn.setAttribute("aria-pressed", resolved === "dark" ? "true" : "false");
     }
     if (darkCheck) darkCheck.checked = resolved === "dark";
+    if (mobileFab) mobileFab.textContent = resolved === "light" ? "\u2600\uFE0F" : "\uD83C\uDF19";
   }
 
   function toggleDarkLight() {
@@ -69,6 +71,9 @@
 
   if (btn) {
     btn.addEventListener("click", toggleDarkLight);
+  }
+  if (mobileFab) {
+    mobileFab.addEventListener("click", toggleDarkLight);
   }
 
   document.addEventListener("keydown", function (ev) {

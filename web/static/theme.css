@@ -84,3 +84,46 @@ html[data-theme="dark"] {
   font-weight: 600;
   letter-spacing: 0.02em;
 }
+
+@media (max-width: 900px) {
+  .btn-theme {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0 0.85rem;
+    font-size: 1.05rem;
+  }
+  .btn-theme .theme-toggle-text {
+    font-size: 0.8rem;
+  }
+
+  .btn-theme-mobile-fab {
+    display: grid !important;
+    position: fixed;
+    left: 1rem;
+    bottom: 6.5rem;
+    z-index: 45;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    font-size: 1.35rem;
+    cursor: pointer;
+    place-items: center;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+  .btn-theme-mobile-fab:active {
+    transform: scale(0.96);
+  }
+  html[data-theme="light"] .btn-theme-mobile-fab {
+    background: #fff;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  }
+}
+
+@media (min-width: 901px) {
+  .btn-theme-mobile-fab {
+    display: none !important;
+  }
+}
