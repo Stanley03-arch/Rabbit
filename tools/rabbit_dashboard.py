@@ -4,6 +4,7 @@ Rabbit engine dashboard
 
 Dark UI: chat + model stats + expert-cache metrics.
 Advanced: SSE token streaming, system prompt, request metrics.
+PWA: service worker at /sw.js for installable mobile shell.
 
   pip install flask
   python tools/rabbit_dashboard.py --model models/tiny-test.rabbit
@@ -362,6 +363,13 @@ def create_app(
     @app.get("/")
     def index():
         return send_from_directory(str(repo / "web"), "index.html")
+
+    @app.get("/sw.js")
+    def service_worker():
+        resp = send_from_directory(str(repo / "web"), "sw.js")
+        resp.headers["Service-Worker-Allowed"] = "/"
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
 
     @app.get("/api/info")
     def info():
