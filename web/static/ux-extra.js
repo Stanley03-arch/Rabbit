@@ -8,6 +8,37 @@
 
   const COLLAPSE_AT = 420;
 
+  const COUNT_KEY = "rabbit-show-word-count";
+  const showCountEl = document.getElementById("show-word-count");
+
+  function applyWordCountVisibility(on) {
+    document.body.classList.toggle("hide-word-count", !on);
+    if (showCountEl) showCountEl.checked = !!on;
+  }
+
+  function loadWordCountPref() {
+    try {
+      const v = localStorage.getItem(COUNT_KEY);
+      if (v === null) return true;
+      return v === "1";
+    } catch (e) {
+      return true;
+    }
+  }
+
+  applyWordCountVisibility(loadWordCountPref());
+
+  if (showCountEl) {
+    showCountEl.addEventListener("change", function () {
+      const on = showCountEl.checked;
+      try {
+        localStorage.setItem(COUNT_KEY, on ? "1" : "0");
+      } catch (e) {}
+      applyWordCountVisibility(on);
+      if (window.rabbitToast) rabbitToast(on ? "Word count shown" : "Word count hidden", "ok");
+    });
+  }
+
   function nearBottom() {
     return chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 80;
   }
