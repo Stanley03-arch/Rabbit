@@ -23,16 +23,49 @@
   }
 }
 
-.bubble-actions {
-  flex-wrap: wrap;
-}
+.bubble-actions { flex-wrap: wrap; }
 .bubble-act.del-btn:hover {
   color: var(--danger);
   border-color: var(--danger);
 }
 
+.msg-count {
+  opacity: 0.75;
+  font-weight: 400;
+}
+
+.bubble.msg-focus {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+.body.collapsed {
+  max-height: 9.5rem;
+  overflow: hidden;
+  position: relative;
+}
+.body.collapsed::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2.5rem;
+  background: linear-gradient(transparent, var(--panel));
+}
+.collapse-toggle {
+  background: transparent;
+  border: none;
+  color: var(--accent-2);
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0.25rem 0;
+  margin-top: 0.15rem;
+}
+.collapse-toggle:hover { text-decoration: underline; }
+
 .bubble.bot.streaming .body::after {
-  content: "\u258c";
+  content: "\258c";
   display: inline-block;
   margin-left: 2px;
   color: var(--accent-2);

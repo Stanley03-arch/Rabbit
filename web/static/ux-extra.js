@@ -1,10 +1,12 @@
-/* Scroll-to-bottom, copy, edit, resend, delete message */
+/* Chat UX: scroll, copy, edit, resend, quote, delete, collapse, counts, caret */
 (function () {
   const chatEl = document.getElementById("chat");
   const btn = document.getElementById("scroll-bottom");
   const promptEl = document.getElementById("prompt");
   const formEl = document.getElementById("form");
   if (!chatEl) return;
+
+  const COLLAPSE_AT = 420;
 
   function nearBottom() {
     return chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 80;
@@ -33,8 +35,70 @@
     return body.textContent || "";
   }
 
+  function wordCount(text) {
+    const t = (text || "").trim();
+    if (!t) return 0;
+    return t.split(/\s+/).length;
+  }
+
+  function ensureMeta(b) {
+    let meta = b.querySelector(".meta");
+    if (!meta) return;
+    let count = meta.querySelector(".msg-count");
+    if (!count) {
+      count = document.createElement("span");
+      count.className = "msg-count";
+      meta.appendChild(document.createTextNode(" \u00b7 "));
+      meta.appendChild(count);
+    }
+    const n = wordCount(bubbleText(b));
+    count.textContent = n + (n === 1 ? " word" : " words");
+  }
+
+  function ensureCollapse(b) {
+    const body = b.querySelector(".body");
+    if (!body) return;
+    const text = bubbleText(b);
+    if (text.length < COLLAPSE_AT) {
+      body.classList.remove("collapsed");
+      const t = b.querySelector(".collapse-toggle");
+      if (t) t.remove();
+      return;
+    }
+    if (!b.querySelector(".collapse-toggle")) {
+      body.classList.add("collapsed");
+      const t = document.createElement("button");
+      t.type = "button";
+      t.className = "collapse-toggle";
+      t.textContent = "Show more";
+      t.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        const on = body.classList.toggle("collapsed");
+        t.textContent = on ? "Show more" : "Show less";
+      });
+      b.appendChild(t);
+    }
+  }
+
+  function addAct(actions, cls, label, title, handler) {
+    if (actions.querySelector("." + cls)) return;
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "bubble-act " + cls;
+    el.textContent = label;
+    el.title = title;
+    el.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      handler();
+    });
+    actions.appendChild(el);
+  }
+
   function ensureActions() {
     chatEl.querySelectorAll(".bubble").forEach(function (b) {
+      ensureMeta(b);
+      ensureCollapse(b);
+
       let actions = b.querySelector(".bubble-actions");
       if (!actions) {
         actions = document.createElement("div");
@@ -42,71 +106,53 @@
         b.appendChild(actions);
       }
 
-      if (!actions.querySelector(".copy-btn")) {
-        const copy = document.createElement("button");
-        copy.type = "button";
-        copy.className = "bubble-act copy-btn";
-        copy.textContent = "Copy";
-        copy.title = "Copy message";
-        copy.addEventListener("click", function (ev) {
-          ev.stopPropagation();
-          const raw = bubbleText(b);
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(raw).then(function () {
-              if (window.rabbitToast) rabbitToast("Copied", "ok");
-            });
-          }
-        });
-        actions.appendChild(copy);
-      }
+      addAct(actions, "copy-btn", "Copy", "Copy message", function () {
+        const raw = bubbleText(b);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(raw).then(function () {
+            if (window.rabbitToast) rabbitToast("Copied", "ok");
+          });
+        }
+      });
 
-      if (b.classList.contains("user") && !actions.querySelector(".edit-btn")) {
-        const edit = document.createElement("button");
-        edit.type = "button";
-        edit.className = "bubble-act edit-btn";
-        edit.textContent = "Edit";
-        edit.title = "Edit in composer";
-        edit.addEventListener("click", function (ev) {
-          ev.stopPropagation();
-          if (promptEl) {
-            promptEl.value = bubbleText(b);
-            promptEl.focus();
-            promptEl.dispatchEvent(new Event("input", { bubbles: true }));
-            if (window.rabbitToast) rabbitToast("Loaded into composer", "ok");
-          }
-        });
-        actions.appendChild(edit);
+      addAct(actions, "quote-btn", "Quote", "Quote into composer", function () {
+        if (!promptEl) return;
+        const raw = bubbleText(b).trim();
+        const quoted = raw
+          .split("\n")
+          .map(function (line) {
+            return "> " + line;
+          })
+          .join("\n");
+        const cur = promptEl.value.trim();
+        promptEl.value = cur ? cur + "\n\n" + quoted + "\n\n" : quoted + "\n\n";
+        promptEl.focus();
+        promptEl.dispatchEvent(new Event("input", { bubbles: true }));
+        if (window.rabbitToast) rabbitToast("Quoted into composer", "ok");
+      });
 
-        const resend = document.createElement("button");
-        resend.type = "button";
-        resend.className = "bubble-act resend-btn";
-        resend.textContent = "Resend";
-        resend.title = "Send again";
-        resend.addEventListener("click", function (ev) {
-          ev.stopPropagation();
+      if (b.classList.contains("user")) {
+        addAct(actions, "edit-btn", "Edit", "Edit in composer", function () {
+          if (!promptEl) return;
+          promptEl.value = bubbleText(b);
+          promptEl.focus();
+          promptEl.dispatchEvent(new Event("input", { bubbles: true }));
+          if (window.rabbitToast) rabbitToast("Loaded into composer", "ok");
+        });
+        addAct(actions, "resend-btn", "Resend", "Send again", function () {
           if (!promptEl || !formEl) return;
           promptEl.value = bubbleText(b);
           promptEl.dispatchEvent(new Event("input", { bubbles: true }));
           if (typeof formEl.requestSubmit === "function") formEl.requestSubmit();
           else formEl.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
         });
-        actions.appendChild(resend);
       }
 
-      if (!actions.querySelector(".del-btn")) {
-        const del = document.createElement("button");
-        del.type = "button";
-        del.className = "bubble-act del-btn";
-        del.textContent = "\u2715";
-        del.title = "Remove from view";
-        del.addEventListener("click", function (ev) {
-          ev.stopPropagation();
-          b.remove();
-          if (window.rabbitToast) rabbitToast("Message removed", "ok");
-          syncBtn();
-        });
-        actions.appendChild(del);
-      }
+      addAct(actions, "del-btn", "\u2715", "Remove from view", function () {
+        b.remove();
+        if (window.rabbitToast) rabbitToast("Message removed", "ok");
+        syncBtn();
+      });
     });
   }
 
@@ -129,6 +175,34 @@
       subtree: true,
     });
   }
+
+  document.addEventListener("keydown", function (ev) {
+    const tag = (ev.target && ev.target.tagName) || "";
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    const bubbles = Array.from(chatEl.querySelectorAll(".bubble"));
+    if (!bubbles.length) return;
+    let idx = bubbles.findIndex(function (b) {
+      return b.classList.contains("msg-focus");
+    });
+    if (ev.key === "j" || ev.key === "J") {
+      ev.preventDefault();
+      idx = Math.min(bubbles.length - 1, idx + 1);
+    } else if (ev.key === "k" || ev.key === "K") {
+      ev.preventDefault();
+      idx = Math.max(0, idx < 0 ? bubbles.length - 1 : idx - 1);
+    } else {
+      return;
+    }
+    bubbles.forEach(function (b) {
+      b.classList.remove("msg-focus");
+    });
+    const target = bubbles[idx];
+    if (target) {
+      target.classList.add("msg-focus");
+      target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  });
 
   const obs = new MutationObserver(function () {
     syncBtn();
