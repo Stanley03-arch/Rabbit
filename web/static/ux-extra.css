@@ -34,6 +34,10 @@
   font-weight: 400;
 }
 
+body.hide-word-count .msg-count {
+  display: none !important;
+}
+
 .bubble.msg-focus {
   outline: 2px solid var(--accent-2);
   outline-offset: 2px;
