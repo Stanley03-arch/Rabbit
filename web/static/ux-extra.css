@@ -38,6 +38,14 @@ body.hide-word-count .msg-count {
   display: none !important;
 }
 
+.msg-chars {
+  opacity: 0.75;
+  font-weight: 400;
+}
+body.hide-char-count .msg-chars {
+  display: none !important;
+}
+
 .bubble.msg-focus {
   outline: 2px solid var(--accent-2);
   outline-offset: 2px;
