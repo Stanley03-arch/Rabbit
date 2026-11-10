@@ -17,7 +17,7 @@ TEST_BIN = tests/test_quant
 # Optional quant for live-moe (0=f32 parity, 4=group-int4 disk-friendly)
 LIVE_QUANT ?= 4
 
-.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro stream-mixtral stream-qwen stream-deepseek smoke bench-smoke test test-name-maps parity parity-v2 m2 exact-f32 live-moe check version
+.PHONY: all clean debug test-model demo-model ref-model ref-v2 micro-hf mixtral-micro stream-mixtral stream-qwen stream-deepseek smoke bench-smoke warm-smoke test test-name-maps parity parity-v2 m2 exact-f32 live-moe live-olmoe check version
 
 all: $(TARGET)
 
@@ -103,7 +103,12 @@ smoke: $(TARGET) test-model
 
 bench-smoke: $(TARGET) test-model
 	./$(TARGET) bench --model models/tiny-test.rabbit --tokens 8 --runs 2
+	./$(TARGET) bench --model models/tiny-test.rabbit --tokens 8 --runs 2 --json | head -1
 	@echo "bench-smoke: ok"
+
+warm-smoke: $(TARGET) ref-v2
+	./$(TARGET) warm --model models/ref-v2.rabbit --tokens 8
+	@echo "warm-smoke: ok"
 
 check: test test-name-maps smoke bench-smoke parity parity-v2 m2 exact-f32 mixtral-micro stream-mixtral stream-qwen stream-deepseek
 	@echo "check: all passed"
@@ -115,15 +120,12 @@ clean:
 	rm -f $(OBJ) $(TARGET) $(TEST_TOOL) $(TEST_BIN)
 
 # Live Mixtral-style MoE (TinyBrainBot 360M).
-# Requires ~3 GB free RAM for safetensors mmap + conversion (1.5 GB checkpoint).
-# HF Xet/CDN sometimes yields 0-byte files via huggingface_hub; we validate and fall back to curl.
 live-moe: $(TARGET)
 	@mkdir -p models/tinybrainbot
 	@python3 -c "import huggingface_hub, safetensors, numpy" 2>/dev/null || \
 		(echo "pip install huggingface_hub safetensors numpy transformers" && exit 1)
 	@echo "[live-moe] downloading TinyBrainBot 360M (expect ~1.5 GB model.safetensors)..."
 	@python3 -c "from huggingface_hub import snapshot_download; snapshot_download('nkthebass/tinybrainbot-360m-a75m-v4.1-moe-base', local_dir='models/tinybrainbot', allow_patterns=['config.json','*.safetensors','tokenizer.json','tokenizer.model','tokenizer_config.json','model.safetensors.index.json','generation_config.json'])" || true
-	@# Validate size; HF Xet often leaves a 0-byte placeholder without a token / proper client
 	@SZ=$$(stat -c%s models/tinybrainbot/model.safetensors 2>/dev/null || echo 0); \
 	if [ "$$SZ" -lt 100000000 ]; then \
 		echo "[live-moe] model.safetensors is missing or too small ($$SZ bytes). Falling back to curl..."; \
@@ -136,7 +138,7 @@ live-moe: $(TARGET)
 	if [ "$$SZ" -lt 1000000000 ]; then \
 		echo "ERROR: model.safetensors still too small ($$SZ). Aborting."; exit 1; \
 	fi
-	@echo "[live-moe] converting (quant=$(LIVE_QUANT)). Needs ~3 GB free RAM for mmap..."
+	@echo "[live-moe] converting (quant=$(LIVE_QUANT)). Streaming reader: peak RAM ≈ largest tensor..."
 	python3 tools/convert_hf_stream.py --model-dir models/tinybrainbot \
 		--out models/tinybrainbot-v2.rabbit --quant $(LIVE_QUANT) --name tinybrainbot
 	python3 tools/export_hf_tokenizer.py --hf-dir models/tinybrainbot \
@@ -144,3 +146,36 @@ live-moe: $(TARGET)
 	./$(TARGET) probe-v2 --model models/tinybrainbot-v2.rabbit \
 		--tokenizer models/tinybrainbot.tok --prompt Hello --tokens 16
 	@echo "Chat: ./rabbit chat --model models/tinybrainbot-v2.rabbit --tokenizer models/tinybrainbot.tok"
+
+# Live ≥1B public MoE: allenai/OLMoE-1B-7B-0924 (7B total / ~1.3B active).
+LIVE_OLMOE_REPO ?= allenai/OLMoE-1B-7B-0924
+live-olmoe: $(TARGET)
+	@mkdir -p models/olmoe
+	@python3 -c "import huggingface_hub, numpy" 2>/dev/null || \
+		(echo "pip install huggingface_hub numpy" && exit 1)
+	@echo "[live-olmoe] downloading $(LIVE_OLMOE_REPO) (expect ~14 GB across 3 shards)..."
+	@python3 -c "from huggingface_hub import snapshot_download; snapshot_download('$(LIVE_OLMOE_REPO)', local_dir='models/olmoe', allow_patterns=['config.json','*.safetensors','tokenizer.json','tokenizer.model','tokenizer_config.json','model.safetensors.index.json','special_tokens_map.json','generation_config.json'])" || true
+	@python3 -c "from pathlib import Path; p=Path('models/olmoe'); files=sorted(p.glob('model-*-of-*.safetensors')) or list(p.glob('*.safetensors')); total=sum(f.stat().st_size for f in files if f.is_file()); print(f'[live-olmoe] safetensors files={len(files)} total_bytes={total}'); import sys; sys.exit(0 if total > 10_000_000_000 else 1)" \
+	|| ( echo "[live-olmoe] shards missing/small — trying curl for 3 shards..."; \
+	     for i in 1 2 3; do \
+	       f=model-0000$${i}-of-00003.safetensors; \
+	       sz=$$(stat -c%s models/olmoe/$$f 2>/dev/null || echo 0); \
+	       if [ "$$sz" -lt 100000000 ]; then \
+	         curl -L --fail --retry 3 -o models/olmoe/$$f \
+	           "https://huggingface.co/$(LIVE_OLMOE_REPO)/resolve/main/$$f" \
+	           || (echo "Download failed for $$f. Try HF_TOKEN=... make live-olmoe" && exit 1); \
+	       fi; \
+	     done )
+	@python3 -c "from pathlib import Path; p=Path('models/olmoe'); files=list(p.glob('model-*-of-*.safetensors')) or list(p.glob('*.safetensors')); total=sum(f.stat().st_size for f in files if f.is_file()); print(f'[live-olmoe] ready: {len(files)} files, {total/1e9:.2f} GB'); import sys; sys.exit(0 if total > 10_000_000_000 else 1)" \
+	|| (echo "ERROR: OLMoE shards still incomplete. Aborting."; exit 1)
+	@echo "[live-olmoe] converting (quant=$(LIVE_QUANT)). Streaming reader: peak RAM ≈ largest tensor..."
+	python3 tools/convert_hf_stream.py --model-dir models/olmoe \
+		--out models/olmoe-v2.rabbit --quant $(LIVE_QUANT) --name olmoe-1b-7b
+	python3 tools/export_hf_tokenizer.py --hf-dir models/olmoe \
+		--out models/olmoe.tok || true
+	@echo "[live-olmoe] probe (RABBIT_NO_MMAP=1 recommended on FUSE/network FS)..."
+	RABBIT_NO_MMAP=1 RABBIT_CACHE_SLOTS=64 ./$(TARGET) probe-v2 \
+		--model models/olmoe-v2.rabbit --tokenizer models/olmoe.tok \
+		--prompt "Hello" --tokens 16
+	@echo "Chat: RABBIT_NO_MMAP=1 RABBIT_CACHE_SLOTS=64 ./rabbit chat --model models/olmoe-v2.rabbit --tokenizer models/olmoe.tok"
+	@echo "Tips: copy .rabbit to local disk if FUSE is flaky; RABBIT_REF_V2_CTX=128 to shrink KV."
