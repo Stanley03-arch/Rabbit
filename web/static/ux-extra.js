@@ -8,36 +8,45 @@
 
   const COLLAPSE_AT = 420;
 
-  const COUNT_KEY = "rabbit-show-word-count";
-  const showCountEl = document.getElementById("show-word-count");
+  const WORD_KEY = "rabbit-show-word-count";
+  const CHAR_KEY = "rabbit-show-char-count";
+  const showWordEl = document.getElementById("show-word-count");
+  const showCharEl = document.getElementById("show-char-count");
 
-  function applyWordCountVisibility(on) {
-    document.body.classList.toggle("hide-word-count", !on);
-    if (showCountEl) showCountEl.checked = !!on;
-  }
-
-  function loadWordCountPref() {
+  function loadPref(key, defaultOn) {
     try {
-      const v = localStorage.getItem(COUNT_KEY);
-      if (v === null) return true;
+      const v = localStorage.getItem(key);
+      if (v === null) return defaultOn;
       return v === "1";
     } catch (e) {
-      return true;
+      return defaultOn;
     }
   }
 
-  applyWordCountVisibility(loadWordCountPref());
+  function applyCountVisibility() {
+    const showWord = loadPref(WORD_KEY, true);
+    const showChar = loadPref(CHAR_KEY, true);
+    document.body.classList.toggle("hide-word-count", !showWord);
+    document.body.classList.toggle("hide-char-count", !showChar);
+    if (showWordEl) showWordEl.checked = showWord;
+    if (showCharEl) showCharEl.checked = showChar;
+  }
 
-  if (showCountEl) {
-    showCountEl.addEventListener("change", function () {
-      const on = showCountEl.checked;
+  applyCountVisibility();
+
+  function bindToggle(el, key, label) {
+    if (!el) return;
+    el.addEventListener("change", function () {
+      const on = el.checked;
       try {
-        localStorage.setItem(COUNT_KEY, on ? "1" : "0");
+        localStorage.setItem(key, on ? "1" : "0");
       } catch (e) {}
-      applyWordCountVisibility(on);
-      if (window.rabbitToast) rabbitToast(on ? "Word count shown" : "Word count hidden", "ok");
+      applyCountVisibility();
+      if (window.rabbitToast) rabbitToast(label + (on ? " shown" : " hidden"), "ok");
     });
   }
+  bindToggle(showWordEl, WORD_KEY, "Word count");
+  bindToggle(showCharEl, CHAR_KEY, "Character count");
 
   function nearBottom() {
     return chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 80;
@@ -75,6 +84,7 @@
   function ensureMeta(b) {
     let meta = b.querySelector(".meta");
     if (!meta) return;
+    const text = bubbleText(b);
     let count = meta.querySelector(".msg-count");
     if (!count) {
       count = document.createElement("span");
@@ -82,8 +92,18 @@
       meta.appendChild(document.createTextNode(" \u00b7 "));
       meta.appendChild(count);
     }
-    const n = wordCount(bubbleText(b));
+    const n = wordCount(text);
     count.textContent = n + (n === 1 ? " word" : " words");
+
+    let chars = meta.querySelector(".msg-chars");
+    if (!chars) {
+      chars = document.createElement("span");
+      chars.className = "msg-chars";
+      meta.appendChild(document.createTextNode(" \u00b7 "));
+      meta.appendChild(chars);
+    }
+    const c = (text || "").length;
+    chars.textContent = c + (c === 1 ? " char" : " chars");
   }
 
   function ensureCollapse(b) {
