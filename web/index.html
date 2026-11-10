@@ -138,6 +138,7 @@
         <label class="check"><input type="checkbox" id="completion-sound" /> Sound on reply</label>
         <label class="check"><input type="checkbox" id="compact-ui" /> Compact UI</label>
         <label class="check"><input type="checkbox" id="hide-fab" /> Hide floating mic</label>
+        <label class="check"><input type="checkbox" id="show-word-count" checked /> Show word count</label>
         <label class="check"><input type="checkbox" id="dark-mode-toggle" checked /> Dark mode</label>
         <label>Theme
           <select id="theme-select">
@@ -227,8 +228,8 @@
       <div class="chat" id="chat" title="Drop a chat JSON/MD export here to import">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint">Hover a message: <strong>Copy</strong> · <strong>Edit</strong> · <strong>Resend</strong> · 📌 · ✕</p>
-          <p class="hint">Scroll up to show the ↓ jump-to-latest button.</p>
+          <p class="hint">Hover a message: <strong>Copy</strong> · <strong>Quote</strong> · <strong>Edit</strong> · <strong>Resend</strong> · 📌 · ✕</p>
+          <p class="hint">Sidebar: <strong>Show word count</strong> toggles · N words on messages.</p>
         </div>
       </div>
 
@@ -247,20 +248,20 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Edit · Resend · Copy · pin · ↓ latest · dark mode</p>
+      <p class="footer-note">Word count toggle · Edit · Resend · Copy · Quote · ↓ latest</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
     <div class="help-card" role="dialog" aria-labelledby="help-title">
       <header>
-        <h2 id="help-title">Shortcuts &amp; tips</h2>
+        <h2 id="help-title">Shortcuts & tips</h2>
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li>Message actions: <strong>Copy</strong> · <strong>Edit</strong> · <strong>Resend</strong> · 📌 · ✕</li>
-        <li>↓ button appears when you scroll up in chat</li>
-        <li>Streaming replies show a blinking caret</li>
-        <li><kbd>Ctrl+Shift+D</kbd> dark mode · mobile 🌙 FAB</li>
+        <li>Sidebar: <strong>Show word count</strong> show/hide · N words on each message</li>
+        <li>Message actions: Copy · Quote · Edit · Resend · pin · ✕</li>
+        <li><kbd>j</kbd>/<kbd>k</kbd> focus messages · ↓ jump to latest</li>
+        <li><kbd>Ctrl+Shift+D</kbd> dark mode</li>
       </ul>
     </div>
   </div>
