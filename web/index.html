@@ -32,6 +32,7 @@
   <link rel="stylesheet" href="/static/layout-extra.css" />
   <link rel="stylesheet" href="/static/features.css" />
   <link rel="stylesheet" href="/static/pwa-extra.css" />
+  <link rel="stylesheet" href="/static/ux-extra.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -226,8 +227,8 @@
       <div class="chat" id="chat" title="Drop a chat JSON/MD export here to import">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint">On mobile: use <strong>Install</strong> or Add to Home Screen.</p>
-          <p class="hint">Floating 🌙 toggles dark mode on phones.</p>
+          <p class="hint">Hover a message for <strong>Copy</strong> / 📌</p>
+          <p class="hint">Scroll up to show the ↓ jump-to-latest button.</p>
         </div>
       </div>
 
@@ -246,24 +247,25 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">PWA · Install · offline banner · <kbd>Ctrl+Shift+D</kbd> dark mode</p>
+      <p class="footer-note">Copy · pin · ↓ latest · Install · dark mode</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
     <div class="help-card" role="dialog" aria-labelledby="help-title">
       <header>
-        <h2 id="help-title">Shortcuts &amp; mobile</h2>
+        <h2 id="help-title">Shortcuts &amp; tips</h2>
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><kbd>Ctrl+Shift+D</kbd> Dark / light mode</li>
-        <li>Mobile: floating 🌙 (bottom-left)</li>
-        <li><strong>Install</strong> button when the browser allows it</li>
-        <li>Offline banner if the network drops</li>
+        <li>Message actions: <strong>Copy</strong> · 📌 pin</li>
+        <li>↓ button appears when you scroll up in chat</li>
+        <li><kbd>Ctrl+Shift+D</kbd> dark mode · mobile 🌙 FAB</li>
+        <li><strong>Install</strong> when the browser allows PWA install</li>
       </ul>
     </div>
   </div>
   <div id="toast-host" class="toast-host" aria-live="polite"></div>
+  <button type="button" class="btn-scroll-bottom" id="scroll-bottom" hidden title="Jump to latest">↓</button>
   <button type="button" class="btn-theme-mobile-fab" id="theme-toggle-mobile" title="Toggle dark mode" aria-label="Toggle dark mode">🌙</button>
   <button type="button" class="btn-voice-fab" id="voice-toggle-fab" title="Toggle voice (Ctrl+M)" aria-label="Toggle voice">🎙</button>
   <script src="/static/app-extras.js"></script>
@@ -277,6 +279,7 @@
   <script src="/static/sessions.js"></script>
   <script src="/static/features.js"></script>
   <script src="/static/features-more.js"></script>
+  <script src="/static/ux-extra.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
