@@ -31,8 +31,10 @@
   <link rel="stylesheet" href="/static/theme.css" />
   <link rel="stylesheet" href="/static/layout-extra.css" />
   <link rel="stylesheet" href="/static/features.css" />
+  <link rel="stylesheet" href="/static/pwa-extra.css" />
 </head>
 <body>
+  <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
   <div class="app">
     <aside class="sidebar">
       <div class="brand">
@@ -191,6 +193,7 @@
           </div>
         </div>
         <div class="top-right">
+          <button type="button" class="btn-install" id="pwa-install" hidden title="Install Rabbit app">Install</button>
           <button type="button" class="btn-theme" id="theme-toggle" title="Toggle dark mode (Ctrl+Shift+D)" aria-label="Toggle dark mode">
             <span id="theme-toggle-icon" aria-hidden="true">🌙</span>
             <span class="theme-toggle-text" id="theme-toggle-text">Dark</span>
@@ -223,8 +226,8 @@
       <div class="chat" id="chat" title="Drop a chat JSON/MD export here to import">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint">Install as app from browser menu on mobile.</p>
-          <p class="hint">Keys: <kbd>Enter</kbd> send · <kbd>Ctrl+Shift+D</kbd> theme · <kbd>?</kbd> help</p>
+          <p class="hint">On mobile: use <strong>Install</strong> or Add to Home Screen.</p>
+          <p class="hint">Floating 🌙 toggles dark mode on phones.</p>
         </div>
       </div>
 
@@ -243,20 +246,20 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">PWA-ready · <kbd>Ctrl+Shift+D</kbd> dark mode · floating 🌙 on mobile</p>
+      <p class="footer-note">PWA · Install · offline banner · <kbd>Ctrl+Shift+D</kbd> dark mode</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
     <div class="help-card" role="dialog" aria-labelledby="help-title">
       <header>
-        <h2 id="help-title">Keyboard shortcuts</h2>
+        <h2 id="help-title">Shortcuts &amp; mobile</h2>
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><kbd>Ctrl+Shift+D</kbd> Toggle dark / light mode</li>
-        <li>Mobile: floating 🌙 (bottom-left) toggles dark mode</li>
-        <li>Install: browser menu → Add to Home Screen</li>
-        <li>Sidebar: <strong>Dark mode</strong> checkbox</li>
+        <li><kbd>Ctrl+Shift+D</kbd> Dark / light mode</li>
+        <li>Mobile: floating 🌙 (bottom-left)</li>
+        <li><strong>Install</strong> button when the browser allows it</li>
+        <li>Offline banner if the network drops</li>
       </ul>
     </div>
   </div>
