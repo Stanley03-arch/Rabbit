@@ -1,0 +1,24 @@
+.btn-scroll-bottom {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 5.5rem;
+  z-index: 40;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 1.1rem;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.3);
+}
+.btn-scroll-bottom[hidden] { display: none !important; }
+.btn-scroll-bottom:hover { border-color: var(--accent-2); }
+
+@media (max-width: 900px) {
+  .btn-scroll-bottom {
+    right: calc(1.25rem + env(safe-area-inset-right, 0px));
+    bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+  }
+}
