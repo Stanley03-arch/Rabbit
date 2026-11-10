@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include "rabbit.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,6 +7,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <errno.h>
 
 typedef struct {
     int   expert_id;   /* -1 = empty */
@@ -48,8 +50,10 @@ void rabbit_cache_set_expert_size(ExpertCache *c, size_t size) {
     for (int i = 0; i < c->n_slots; i++) {
         if (!c->slots[i].data) {
             c->slots[i].data = malloc(size);
-            if (!c->slots[i].data)
+            if (!c->slots[i].data) {
+                /* Best-effort: leave remaining slots NULL; put() will retry. */
                 break;
+            }
         }
     }
 }
@@ -101,10 +105,12 @@ void *rabbit_cache_get(ExpertCache *c, int expert_id) {
 }
 
 static int find_victim(ExpertCache *c) {
+    /* Prefer empty slots. */
     for (int i = 0; i < c->n_slots; i++) {
         if (c->slots[i].expert_id < 0)
             return i;
     }
+    /* LRU among unpinned slots. */
     int victim = -1;
     int oldest = 0x7fffffff;
     for (int i = 0; i < c->n_slots; i++) {
@@ -121,6 +127,7 @@ static int find_victim(ExpertCache *c) {
 void *rabbit_cache_put(ExpertCache *c, int expert_id, const void *src) {
     if (!c || !src || c->expert_size == 0) return NULL;
 
+    /* Already resident? */
     for (int i = 0; i < c->n_slots; i++) {
         if (c->slots[i].expert_id == expert_id) {
             c->slots[i].last_used = ++c->clock;
@@ -130,7 +137,7 @@ void *rabbit_cache_put(ExpertCache *c, int expert_id, const void *src) {
 
     int victim = find_victim(c);
     if (victim < 0)
-        return NULL;
+        return NULL; /* all slots pinned and full */
 
     if (c->slots[victim].expert_id >= 0)
         c->evictions++;
@@ -152,6 +159,7 @@ void *rabbit_cache_put(ExpertCache *c, int expert_id, const void *src) {
 int rabbit_cache_pin(ExpertCache *c, int expert_id, const void *src_or_null) {
     if (!c || expert_id < 0) return -1;
 
+    /* Already present — just pin. */
     for (int i = 0; i < c->n_slots; i++) {
         if (c->slots[i].expert_id == expert_id) {
             c->slots[i].pinned = 1;
@@ -183,6 +191,7 @@ int rabbit_cache_pin(ExpertCache *c, int expert_id, const void *src_or_null) {
     c->bytes_copied += c->expert_size;
     return 0;
 }
+
 
 int rabbit_mmap_file(const char *path, void **base, size_t *size, int *fd) {
     *fd = open(path, O_RDONLY);
@@ -241,4 +250,30 @@ const void *rabbit_expert_ptr_layer(const RabbitModel *m, int layer, int local_e
     int gid = rabbit_expert_global_id(m, layer, local_expert_id);
     if (gid < 0) return NULL;
     return rabbit_expert_ptr(m, gid);
+}
+
+int rabbit_expert_pread(const RabbitModel *m, int global_expert_id, void *dst) {
+    if (!m || !dst || global_expert_id < 0 || m->expert_size == 0)
+        return -1;
+    if (m->expert_fd < 0)
+        return -1;
+    int nrec = m->n_expert_records > 0 ? m->n_expert_records : m->num_experts;
+    if (global_expert_id >= nrec)
+        return -1;
+    off_t off = m->expert_file_offset + (off_t)global_expert_id * (off_t)m->expert_size;
+    size_t left = m->expert_size;
+    uint8_t *p = (uint8_t *)dst;
+    while (left > 0) {
+        ssize_t n = pread(m->expert_fd, p, left, off);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            return -1;
+        }
+        if (n == 0)
+            return -1; /* EOF / short */
+        p += n;
+        off += n;
+        left -= (size_t)n;
+    }
+    return 0;
 }
