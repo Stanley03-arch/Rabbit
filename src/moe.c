@@ -78,16 +78,35 @@ const void *rabbit_fetch_expert(RabbitModel *m, int global_expert_id, int promot
     if (cached)
         return cached;
 
+    /* Prefer mmap pointer when available. */
     const void *ptr = rabbit_expert_ptr(m, global_expert_id);
-    if (!ptr)
+    if (ptr) {
+        if (promote && m->cache) {
+            void *ram = rabbit_cache_put(m->cache, global_expert_id, ptr);
+            if (ram)
+                return ram;
+        }
+        return ptr;
+    }
+
+    /* mmap-free path: pread one expert into the cache. */
+    if (m->expert_fd < 0 || m->expert_size == 0)
         return NULL;
 
     if (promote && m->cache) {
-        void *ram = rabbit_cache_put(m->cache, global_expert_id, ptr);
-        if (ram)
-            return ram;
+        void *tmp = malloc(m->expert_size);
+        if (!tmp)
+            return NULL;
+        if (rabbit_expert_pread(m, global_expert_id, tmp) != 0) {
+            free(tmp);
+            return NULL;
+        }
+        void *ram = rabbit_cache_put(m->cache, global_expert_id, tmp);
+        free(tmp);
+        return ram;
     }
-    return ptr;
+
+    return NULL;
 }
 
 const void *rabbit_fetch_expert_layer(RabbitModel *m, int layer, int local_expert_id, int promote) {
@@ -103,7 +122,7 @@ static void apply_expert(const RabbitModel *m, const void *expert_data,
 
     const uint8_t *bytes = (const uint8_t *)expert_data;
     size_t size = m->expert_size;
-    int quant = (int)m->hdr.expert_quant; /* 0 = f32 */
+    int quant = (int)m->hdr.expert_quant;
 
     float *delta = (float *)rabbit_xcalloc((size_t)hidden_dim, sizeof(float));
 
