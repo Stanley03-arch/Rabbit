@@ -1,0 +1,55 @@
+/* PWA / mobile chrome extras */
+.offline-banner {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: #b45309;
+  color: #fff;
+  text-align: center;
+  font-size: 0.82rem;
+  padding: 0.4rem 0.75rem;
+  padding-top: max(0.4rem, env(safe-area-inset-top));
+}
+.offline-banner[hidden] { display: none !important; }
+
+.btn-install {
+  background: var(--accent, #0d9488);
+  color: #04120e;
+  border: none;
+  border-radius: 99px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-install:hover { filter: brightness(1.08); }
+.btn-install[hidden] { display: none !important; }
+
+html[data-theme="light"] .btn-install {
+  background: #0d9488;
+  color: #fff;
+}
+
+body {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@media (max-width: 900px) {
+  .btn-theme-mobile-fab {
+    bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px));
+    left: calc(1rem + env(safe-area-inset-left, 0px));
+  }
+  .btn-voice-fab {
+    bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+    right: calc(1.25rem + env(safe-area-inset-right, 0px));
+  }
+  .composer {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+}
+
+html.pwa-standalone .footer-note {
+  opacity: 0.7;
+}
