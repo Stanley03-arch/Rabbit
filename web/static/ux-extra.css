@@ -22,3 +22,27 @@
     bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
   }
 }
+
+.bubble-actions {
+  flex-wrap: wrap;
+}
+.bubble-act.del-btn:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.bubble.bot.streaming .body::after {
+  content: "\u258c";
+  display: inline-block;
+  margin-left: 2px;
+  color: var(--accent-2);
+  animation: rabbit-caret 1s steps(1) infinite;
+  vertical-align: text-bottom;
+}
+@keyframes rabbit-caret {
+  50% { opacity: 0; }
+}
+html.reduce-motion .bubble.bot.streaming .body::after {
+  animation: none;
+  opacity: 0.7;
+}
