@@ -6,7 +6,7 @@ Rabbit is a pure-C engine that keeps dense weights in RAM and streams routed exp
 
 Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) — not a clone of its product or UI.
 
-> **Status:** v0.4.16 — Phase A–D quality spine + product surface. Dashboard with **SSE streaming**, **voice input/TTS**, **voice commands**, shared-expert metrics. OpenAI-compatible HTTP API, `rabbit stats` / `bench`. **Windows:** `rabbit.bat` and `start-dashboard.bat`.
+> **Status:** v0.4.28 — Phase A–G. Incremental ref-v2 decode, mmap-free expert load, multi-model dashboard, SSE metrics, OpenAI `usage`. **Windows/WSL:** `RABBIT_NO_MMAP=1` (see `docs/WINDOWS.md`).
 
 [![Dashboard in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_dashboard.ipynb)
 
@@ -18,9 +18,10 @@ Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) �
 |-----------|-------------|
 | **CLI** | `./rabbit chat --model …` (`--top-p`, `--seed`) |
 | **Stats** | `./rabbit stats --model …` (JSON) |
-| **Bench** | `./rabbit bench --model …` (avg ms + tokens/sec) |
-| **HTTP API** | OpenAI-compatible + SSE streaming |
-| **Dashboard** | Dark cockpit: chat, SSE, voice, metrics, expert cache |
+| **Bench** | `./rabbit bench --model … [--json]` (latency + cache deltas) |
+| **Warm** | `./rabbit warm --model …` (prime expert cache) |
+| **HTTP API** | OpenAI-compatible + SSE streaming + `usage` |
+| **Dashboard** | Dark cockpit: multi-model switcher, SSE, voice, metrics |
 | **Gradio** | Simple browser chat (`tools/rabbit_ui.py`) |
 | **Windows** | `rabbit.bat` menu · `start-dashboard.bat` one-click |
 
@@ -31,41 +32,19 @@ make && make test-model
 pip install flask
 python tools/rabbit_server.py --model models/tiny-test.rabbit --port 8080
 
-# non-streaming
 curl http://127.0.0.1:8080/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model":"rabbit","messages":[{"role":"user","content":"hello"}],"max_tokens":32}'
-
-# streaming (SSE)
-curl -N http://127.0.0.1:8080/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"rabbit","messages":[{"role":"user","content":"hello"}],"max_tokens":32,"stream":true}'
 ```
 
 ### Engine dashboard
 
-**Colab:**  
-https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_dashboard.ipynb
-
-**Local (Linux/macOS):**
 ```bash
 make && make test-model
 pip install flask
 python tools/rabbit_dashboard.py --model models/tiny-test.rabbit
-# open http://127.0.0.1:7860/
+# open http://127.0.0.1:7860/  — use the model dropdown to switch .rabbit files
 ```
-
-**Windows:**
-```bat
-git clone https://github.com/Stanley03-arch/Rabbit.git
-cd Rabbit
-rabbit.bat
-rem  or one-click dashboard:
-start-dashboard.bat
-```
-Requires **gcc** (MinGW / MSYS2 / WinLibs) to build and **Python 3** for the UI. Voice works best in Chrome or Edge.
-
-Dashboard extras: mic + TTS, voice commands (`clear`, `mute`, `help`, …), SSE stream toggle, system prompt, chat export/import.
 
 ---
 
@@ -78,29 +57,31 @@ make
 make test-model
 ./rabbit chat --model models/tiny-test.rabbit --temp 0.8 --top-p 0.9 --seed 42
 ./rabbit stats --model models/tiny-test.rabbit
-./rabbit bench --model models/tiny-test.rabbit --tokens 16 --runs 5
+./rabbit bench --model models/ref-v2.rabbit --tokens 16 --runs 5 --json
+./rabbit warm  --model models/ref-v2.rabbit --tokens 16
 ```
 
-Memory budget (optional):
+Environment knobs:
 ```bash
-export RABBIT_MEM_BUDGET_MB=1024   # default 1536
+export RABBIT_MEM_BUDGET_MB=1024    # default 1536
+export RABBIT_CACHE_SLOTS=32        # expert cache slots (max 64)
+export RABBIT_REF_V2_CTX=64         # ref-v2 KV window (16–256; lower = less RAM)
+export RABBIT_NO_MMAP=1             # pread experts when mmap/FUSE is flaky
 ```
 
 ---
 
 ## Features
 
-- Dense RAM + expert `mmap` + LRU cache  
-- Multi-head attention with per-head RoPE → dense residual → MoE  
-- int4 / int8 expert GEMV + SwiGLU-style path when gate/up/down present  
-- Group-scaled int4 (group=32) + GQA metadata in header  
-- DeepSeek-style **shared experts** (header + forward)  
-- HF → `.rabbit` converter (`layout v2`) and **low-RAM streaming** converter  
-- Auto-detects **Mixtral**, **Qwen**, and **DeepSeek shared experts**  
-- OpenAI-compatible HTTP API with SSE streaming  
-- Dashboard: SSE, voice STT/TTS, voice commands, metrics from `rabbit stats`  
-- `rabbit bench` for quick throughput measurement  
-- Exact C vs NumPy parity on frozen ref models  
+- Dense RAM + expert `mmap` / **pread** + LRU cache with pin/eviction stats
+- Multi-head attention with per-head RoPE → dense residual → MoE
+- Incremental ref-v2 decode (`RabbitRefV2Ctx` prefill/step, sliding KV)
+- Group-scaled int4 (group=32) + GQA metadata in header
+- DeepSeek-style **shared experts** (header + forward)
+- HF → `.rabbit` low-RAM **streaming** converter (Mixtral / Qwen / OLMoE / DeepSeek)
+- OpenAI-compatible HTTP API with SSE + `usage`
+- Dashboard: multi-model registry, SSE tok/s, voice STT/TTS
+- `rabbit bench --json` / `rabbit warm` for CI and cache priming
 
 ---
 
@@ -109,41 +90,34 @@ export RABBIT_MEM_BUDGET_MB=1024   # default 1536
 ```bash
 pip install safetensors numpy
 
-# In-memory (more naming variants)
-python tools/convert_hf_to_rabbit.py --model-dir /path/to/hf \
-  --out models/m.rabbit --layout v2 --quant 4
-
-# Low-RAM streaming — auto-detects Mixtral / Qwen / DeepSeek shared experts
 python tools/convert_hf_stream.py --model-dir /path/to/hf \
   --out models/m.rabbit --quant 4 --name my-moe
 
-# Offline naming checks
 make stream-mixtral    # block_sparse_moe + w1/w2/w3
 make stream-qwen       # mlp.experts + gate/up/down_proj
 make stream-deepseek   # + shared_experts (E+S records)
 ```
 
-Live public Mixtral-style model (downloads TinyBrainBot):
+Live public models:
 ```bash
 pip install huggingface_hub safetensors numpy transformers
-make live-moe                 # quant 4
+make live-moe                 # TinyBrainBot 360M → quant 4
 make live-moe LIVE_QUANT=0    # f32 experts
+make live-olmoe               # OLMoE-1B-7B (~14 GB HF → ~6 GB int4)
+make live-olmoe LIVE_QUANT=0  # f32 experts (large disk)
 ```
 
-Demo walkthrough video: [docs/media](docs/media/) (`bash docs/media/assemble_media.sh` after adding MP4 parts).
-
-See [docs/tensor-map.md](docs/tensor-map.md), [docs/conversion.md](docs/conversion.md), and [docs/PHASE_D.md](docs/PHASE_D.md).
+See [docs/WINDOWS.md](docs/WINDOWS.md), [docs/PHASE_D.md](docs/PHASE_D.md), [ROADMAP.md](ROADMAP.md).
 
 ---
 
 ## Limitations
 
-- Synthetic weights do not produce real language.  
-- Dashboard is **Rabbit’s own UI**, not Colibrì’s.  
-- Large real MoEs still need aggressive quant / expert limits on 4 GB hosts.  
-- Streaming reads engine stdout as tokens are flushed; banner filtering is best-effort.  
-- Voice STT needs a Chromium browser and microphone permission.  
-- `make live-moe` needs ~3 GB free RAM for the 1.5 GB TinyBrainBot checkpoint (safetensors mmap).
+- Synthetic weights do not produce real language.
+- Dashboard is **Rabbit’s own UI**, not Colibrì’s.
+- Large real MoEs still need aggressive quant / expert limits on 4 GB hosts.
+- Voice STT needs a Chromium browser and microphone permission.
+- `make live-moe` needs enough free disk/RAM for the checkpoint; prefer local disk + `RABBIT_NO_MMAP=1` on FUSE.
 
 ## License
 
