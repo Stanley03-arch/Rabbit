@@ -1,4 +1,4 @@
-/* Chat UX: scroll, copy, edit, resend, quote, delete, collapse, counts, caret */
+/* Chat UX: scroll, copy, edit, resend, quote, delete, collapse, counts, timestamps, caret */
 (function () {
   const chatEl = document.getElementById("chat");
   const btn = document.getElementById("scroll-bottom");
@@ -10,8 +10,10 @@
 
   const WORD_KEY = "rabbit-show-word-count";
   const CHAR_KEY = "rabbit-show-char-count";
+  const TIME_KEY = "rabbit-show-timestamps";
   const showWordEl = document.getElementById("show-word-count");
   const showCharEl = document.getElementById("show-char-count");
+  const showTimeEl = document.getElementById("show-timestamps");
 
   function loadPref(key, defaultOn) {
     try {
@@ -26,10 +28,13 @@
   function applyCountVisibility() {
     const showWord = loadPref(WORD_KEY, true);
     const showChar = loadPref(CHAR_KEY, true);
+    const showTime = loadPref(TIME_KEY, true);
     document.body.classList.toggle("hide-word-count", !showWord);
     document.body.classList.toggle("hide-char-count", !showChar);
+    document.body.classList.toggle("hide-timestamps", !showTime);
     if (showWordEl) showWordEl.checked = showWord;
     if (showCharEl) showCharEl.checked = showChar;
+    if (showTimeEl) showTimeEl.checked = showTime;
   }
 
   applyCountVisibility();
@@ -47,6 +52,7 @@
   }
   bindToggle(showWordEl, WORD_KEY, "Word count");
   bindToggle(showCharEl, CHAR_KEY, "Character count");
+  bindToggle(showTimeEl, TIME_KEY, "Timestamps");
 
   function nearBottom() {
     return chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 80;
@@ -85,6 +91,30 @@
     let meta = b.querySelector(".meta");
     if (!meta) return;
     const text = bubbleText(b);
+
+    if (!meta.querySelector(".msg-time") && !meta.querySelector(".msg-role")) {
+      const raw = (meta.textContent || "").trim();
+      const timeMatch = raw.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
+      let rolePart = raw;
+      let timePart = "";
+      if (timeMatch) {
+        timePart = timeMatch[1];
+        rolePart = raw.replace(timePart, "").replace(/\s*\u00b7\s*$/, "").replace(/^\s*\u00b7\s*/, "").trim();
+        rolePart = rolePart.replace(/\s*\u00b7\s*$/, "").trim() || raw.split("\u00b7")[0].trim();
+      }
+      meta.innerHTML = "";
+      const role = document.createElement("span");
+      role.className = "msg-role";
+      role.textContent = rolePart || (b.classList.contains("user") ? "you" : "rabbit");
+      meta.appendChild(role);
+      if (timePart) {
+        const time = document.createElement("span");
+        time.className = "msg-time";
+        time.textContent = " \u00b7 " + timePart;
+        meta.appendChild(time);
+      }
+    }
+
     let count = meta.querySelector(".msg-count");
     if (!count) {
       count = document.createElement("span");
