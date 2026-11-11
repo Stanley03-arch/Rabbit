@@ -233,8 +233,8 @@
       <div class="chat" id="chat" title="Drop a chat JSON/MD export here to import">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint">Hover a message: <strong>Copy</strong> · <strong>Quote</strong> · <strong>Edit</strong> · <strong>Resend</strong> · 📌 · ✕</p>
-          <p class="hint">Double-click your messages to edit · links open in a new tab when enabled.</p>
+          <p class="hint">Hover: Copy · MD · Quote · Edit · Resend · ✕ · double-click to edit yours</p>
+          <p class="hint">Draft auto-saves · <kbd>j</kbd>/<kbd>k</kbd>/<kbd>c</kbd>/<kbd>q</kbd>/<kbd>e</kbd></p>
         </div>
       </div>
 
@@ -253,7 +253,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Links · double-click edit · meta toggles · day separators</p>
+      <p class="footer-note">Draft autosave · MD copy · j/k/c/q/e · links · day separators</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -263,10 +263,11 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li>Sidebar: word / char / time / relative / roles / <strong>Clickable links</strong></li>
-        <li>Double-click a <strong>user</strong> message to load it into the composer</li>
-        <li>Day separators: Today / Yesterday</li>
-        <li><kbd>j</kbd>/<kbd>k</kbd> focus messages · <kbd>Ctrl+Shift+D</kbd> dark mode</li>
+        <li>Sidebar: word / char / time / relative / roles / clickable links</li>
+        <li><kbd>j</kbd>/<kbd>k</kbd> focus · <kbd>c</kbd> copy · <kbd>q</kbd> quote · <kbd>e</kbd> edit user msg</li>
+        <li>Composer draft auto-saves · <strong>MD</strong> copies as Markdown</li>
+        <li>Double-click your message to edit · day separators in chat</li>
+        <li><kbd>Ctrl+Shift+D</kbd> dark mode · <kbd>Ctrl+M</kbd> mic</li>
       </ul>
     </div>
   </div>
