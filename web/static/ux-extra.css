@@ -54,6 +54,32 @@ body.hide-timestamps .msg-time {
   display: none !important;
 }
 
+body.hide-roles .msg-role {
+  display: none !important;
+}
+
+.day-sep {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: 0.85rem 0 0.55rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  user-select: none;
+}
+.day-sep::before,
+.day-sep::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+  opacity: 0.7;
+}
+
 .bubble.msg-focus {
   outline: 2px solid var(--accent-2);
   outline-offset: 2px;
