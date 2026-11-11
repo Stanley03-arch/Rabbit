@@ -11,9 +11,11 @@
   const WORD_KEY = "rabbit-show-word-count";
   const CHAR_KEY = "rabbit-show-char-count";
   const TIME_KEY = "rabbit-show-timestamps";
+  const REL_KEY = "rabbit-relative-timestamps";
   const showWordEl = document.getElementById("show-word-count");
   const showCharEl = document.getElementById("show-char-count");
   const showTimeEl = document.getElementById("show-timestamps");
+  const relTimeEl = document.getElementById("relative-timestamps");
 
   function loadPref(key, defaultOn) {
     try {
@@ -29,17 +31,19 @@
     const showWord = loadPref(WORD_KEY, true);
     const showChar = loadPref(CHAR_KEY, true);
     const showTime = loadPref(TIME_KEY, true);
+    const relTime = loadPref(REL_KEY, false);
     document.body.classList.toggle("hide-word-count", !showWord);
     document.body.classList.toggle("hide-char-count", !showChar);
     document.body.classList.toggle("hide-timestamps", !showTime);
     if (showWordEl) showWordEl.checked = showWord;
     if (showCharEl) showCharEl.checked = showChar;
     if (showTimeEl) showTimeEl.checked = showTime;
+    if (relTimeEl) relTimeEl.checked = relTime;
   }
 
   applyCountVisibility();
 
-  function bindToggle(el, key, label) {
+  function bindToggle(el, key, label, after) {
     if (!el) return;
     el.addEventListener("change", function () {
       const on = el.checked;
@@ -47,12 +51,16 @@
         localStorage.setItem(key, on ? "1" : "0");
       } catch (e) {}
       applyCountVisibility();
-      if (window.rabbitToast) rabbitToast(label + (on ? " shown" : " hidden"), "ok");
+      if (typeof after === "function") after();
+      if (window.rabbitToast) rabbitToast(label + (on ? " on" : " off"), "ok");
     });
   }
   bindToggle(showWordEl, WORD_KEY, "Word count");
   bindToggle(showCharEl, CHAR_KEY, "Character count");
   bindToggle(showTimeEl, TIME_KEY, "Timestamps");
+  bindToggle(relTimeEl, REL_KEY, "Relative time", function () {
+    chatEl.querySelectorAll(".bubble").forEach(refreshTimeDisplay);
+  });
 
   function nearBottom() {
     return chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 80;
@@ -87,6 +95,41 @@
     return t.split(/\s+/).length;
   }
 
+  function formatRelative(ms) {
+    const sec = Math.round((Date.now() - ms) / 1000);
+    if (sec < 10) return "just now";
+    if (sec < 60) return sec + "s ago";
+    const min = Math.round(sec / 60);
+    if (min < 60) return min + "m ago";
+    const hr = Math.round(min / 60);
+    if (hr < 24) return hr + "h ago";
+    const day = Math.round(hr / 24);
+    return day + "d ago";
+  }
+
+  function refreshTimeDisplay(b) {
+    const time = b.querySelector(".msg-time");
+    if (!time) return;
+    const abs = time.dataset.abs || time.textContent.replace(/^\s*\u00b7\s*/, "").trim();
+    if (!time.dataset.abs) time.dataset.abs = abs;
+    if (!time.dataset.ms) {
+      const m = abs.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+      if (m) {
+        const d = new Date();
+        d.setHours(+m[1], +m[2], m[3] ? +m[3] : 0, 0);
+        time.dataset.ms = String(d.getTime());
+      } else {
+        time.dataset.ms = String(Date.now());
+      }
+    }
+    const useRel = loadPref(REL_KEY, false);
+    if (useRel) {
+      time.textContent = " \u00b7 " + formatRelative(+time.dataset.ms);
+    } else {
+      time.textContent = " \u00b7 " + time.dataset.abs;
+    }
+  }
+
   function ensureMeta(b) {
     let meta = b.querySelector(".meta");
     if (!meta) return;
@@ -99,8 +142,16 @@
       let timePart = "";
       if (timeMatch) {
         timePart = timeMatch[1];
-        rolePart = raw.replace(timePart, "").replace(/\s*\u00b7\s*$/, "").replace(/^\s*\u00b7\s*/, "").trim();
-        rolePart = rolePart.replace(/\s*\u00b7\s*$/, "").trim() || raw.split("\u00b7")[0].trim();
+        rolePart = raw.split("\u00b7")[0].trim() || raw.split("\u00b7")[0].trim();
+        rolePart = raw.split("\u00b7")[0].trim();
+        if (!rolePart) rolePart = raw.split(".")[0];
+        rolePart = (raw.split("\u00b7")[0] || raw).trim();
+      }
+      // Prefer splitting on middle-dot character
+      const parts = raw.split(/\s*[\u00b7|]\s*/);
+      if (timeMatch) {
+        rolePart = (parts[0] || "").trim() || (b.classList.contains("user") ? "you" : "rabbit");
+        timePart = timeMatch[1];
       }
       meta.innerHTML = "";
       const role = document.createElement("span");
@@ -110,10 +161,14 @@
       if (timePart) {
         const time = document.createElement("span");
         time.className = "msg-time";
+        time.dataset.abs = timePart;
+        time.dataset.ms = String(Date.now());
         time.textContent = " \u00b7 " + timePart;
         meta.appendChild(time);
       }
     }
+
+    refreshTimeDisplay(b);
 
     let count = meta.querySelector(".msg-count");
     if (!count) {
@@ -284,6 +339,11 @@
       target.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
   });
+
+  setInterval(function () {
+    if (!loadPref(REL_KEY, false)) return;
+    chatEl.querySelectorAll(".bubble").forEach(refreshTimeDisplay);
+  }, 30000);
 
   const obs = new MutationObserver(function () {
     syncBtn();
