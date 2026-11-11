@@ -29,34 +29,16 @@
   border-color: var(--danger);
 }
 
-.msg-count {
-  opacity: 0.75;
-  font-weight: 400;
-}
+.msg-count { opacity: 0.75; font-weight: 400; }
+body.hide-word-count .msg-count { display: none !important; }
 
-body.hide-word-count .msg-count {
-  display: none !important;
-}
+.msg-chars { opacity: 0.75; font-weight: 400; }
+body.hide-char-count .msg-chars { display: none !important; }
 
-.msg-chars {
-  opacity: 0.75;
-  font-weight: 400;
-}
-body.hide-char-count .msg-chars {
-  display: none !important;
-}
+.msg-time { opacity: 0.75; font-weight: 400; }
+body.hide-timestamps .msg-time { display: none !important; }
 
-.msg-time {
-  opacity: 0.75;
-  font-weight: 400;
-}
-body.hide-timestamps .msg-time {
-  display: none !important;
-}
-
-body.hide-roles .msg-role {
-  display: none !important;
-}
+body.hide-roles .msg-role { display: none !important; }
 
 .day-sep {
   display: flex;
@@ -80,6 +62,14 @@ body.hide-roles .msg-role {
   opacity: 0.7;
 }
 
+.msg-link {
+  color: var(--accent-2);
+  text-decoration: underline;
+  word-break: break-all;
+}
+.msg-link:hover { filter: brightness(1.15); }
+.bubble.user[data-dbl-edit="1"] { cursor: pointer; }
+
 .bubble.msg-focus {
   outline: 2px solid var(--accent-2);
   outline-offset: 2px;
@@ -93,9 +83,7 @@ body.hide-roles .msg-role {
 .body.collapsed::after {
   content: "";
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  left: 0; right: 0; bottom: 0;
   height: 2.5rem;
   background: linear-gradient(transparent, var(--panel));
 }
@@ -118,9 +106,7 @@ body.hide-roles .msg-role {
   animation: rabbit-caret 1s steps(1) infinite;
   vertical-align: text-bottom;
 }
-@keyframes rabbit-caret {
-  50% { opacity: 0; }
-}
+@keyframes rabbit-caret { 50% { opacity: 0; } }
 html.reduce-motion .bubble.bot.streaming .body::after {
   animation: none;
   opacity: 0.7;
