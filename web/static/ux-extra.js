@@ -414,10 +414,47 @@
         });
       }
 
+      addAct(actions, "dl-btn", "\u2193", "Download message", function () {
+        const raw = bubbleText(b);
+        const role = b.classList.contains("user") ? "user" : "assistant";
+        const blob = new Blob([raw], { type: "text/plain;charset=utf-8" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "rabbit-" + role + "-" + Date.now() + ".txt";
+        a.click();
+        setTimeout(function () {
+          URL.revokeObjectURL(a.href);
+        }, 1000);
+        if (window.rabbitToast) rabbitToast("Downloaded", "ok");
+      });
+
       addAct(actions, "del-btn", "\u2715", "Remove from view", function () {
+        const parent = b.parentNode;
+        const next = b.nextSibling;
         b.remove();
-        if (window.rabbitToast) rabbitToast("Message removed", "ok");
         syncBtn();
+        if (window.rabbitToast) {
+          rabbitToast("Removed — click toast to undo", "ok");
+          const host = document.getElementById("toast-host");
+          if (host) {
+            const last = host.lastElementChild;
+            if (last) {
+              last.style.cursor = "pointer";
+              last.title = "Undo remove";
+              const undo = function () {
+                last.removeEventListener("click", undo);
+                if (parent) parent.insertBefore(b, next);
+                ensureActions();
+                syncBtn();
+                if (window.rabbitToast) rabbitToast("Restored", "ok");
+              };
+              last.addEventListener("click", undo);
+              setTimeout(function () {
+                last.removeEventListener("click", undo);
+              }, 5000);
+            }
+          }
+        }
       });
     });
   }
@@ -447,13 +484,14 @@
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
     const bubbles = Array.from(chatEl.querySelectorAll(".bubble"));
-    if (!bubbles.length) return;
+    if (!bubbles.length && ev.key !== "/" && ev.key !== "Escape") return;
     let idx = bubbles.findIndex(function (b) {
       return b.classList.contains("msg-focus");
     });
     const focused = idx >= 0 ? bubbles[idx] : bubbles[bubbles.length - 1];
 
     if (ev.key === "j" || ev.key === "J") {
+      if (!bubbles.length) return;
       ev.preventDefault();
       idx = Math.min(bubbles.length - 1, (idx < 0 ? -1 : idx) + 1);
       bubbles.forEach(function (b) {
@@ -467,6 +505,7 @@
       return;
     }
     if (ev.key === "k" || ev.key === "K") {
+      if (!bubbles.length) return;
       ev.preventDefault();
       idx = Math.max(0, idx < 0 ? bubbles.length - 1 : idx - 1);
       bubbles.forEach(function (b) {
@@ -511,6 +550,25 @@
       promptEl.focus();
       promptEl.dispatchEvent(new Event("input", { bubbles: true }));
       if (window.rabbitToast) rabbitToast("Edit focused message", "ok");
+      return;
+    }
+    if (ev.key === "/") {
+      const search = document.getElementById("chat-search");
+      if (search) {
+        ev.preventDefault();
+        search.focus();
+        search.select();
+      }
+      return;
+    }
+    if (ev.key === "Escape") {
+      bubbles.forEach(function (b) {
+        b.classList.remove("msg-focus");
+      });
+      const help = document.getElementById("help-modal");
+      if (help && !help.hidden) {
+        help.hidden = true;
+      }
       return;
     }
   });
