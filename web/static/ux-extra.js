@@ -6,6 +6,34 @@
   const formEl = document.getElementById("form");
   if (!chatEl) return;
 
+  // Composer draft auto-save
+  const DRAFT_KEY = "rabbit-composer-draft";
+  if (promptEl) {
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY);
+      if (saved && !promptEl.value) {
+        promptEl.value = saved;
+        promptEl.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    } catch (e) {}
+    let draftTimer = null;
+    promptEl.addEventListener("input", function () {
+      clearTimeout(draftTimer);
+      draftTimer = setTimeout(function () {
+        try {
+          localStorage.setItem(DRAFT_KEY, promptEl.value || "");
+        } catch (e) {}
+      }, 250);
+    });
+    if (formEl) {
+      formEl.addEventListener("submit", function () {
+        try {
+          localStorage.removeItem(DRAFT_KEY);
+        } catch (e) {}
+      });
+    }
+  }
+
   const COLLAPSE_AT = 420;
   const WORD_KEY = "rabbit-show-word-count";
   const CHAR_KEY = "rabbit-show-char-count";
@@ -342,6 +370,17 @@
         }
       });
 
+      addAct(actions, "md-btn", "MD", "Copy as Markdown", function () {
+        const raw = bubbleText(b);
+        const role = b.classList.contains("user") ? "user" : "assistant";
+        const md = "**" + role + ":**\n\n" + raw;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(md).then(function () {
+            if (window.rabbitToast) rabbitToast("Copied as Markdown", "ok");
+          });
+        }
+      });
+
       addAct(actions, "quote-btn", "Quote", "Quote into composer", function () {
         if (!promptEl) return;
         const raw = bubbleText(b).trim();
@@ -412,22 +451,67 @@
     let idx = bubbles.findIndex(function (b) {
       return b.classList.contains("msg-focus");
     });
+    const focused = idx >= 0 ? bubbles[idx] : bubbles[bubbles.length - 1];
+
     if (ev.key === "j" || ev.key === "J") {
       ev.preventDefault();
-      idx = Math.min(bubbles.length - 1, idx + 1);
-    } else if (ev.key === "k" || ev.key === "K") {
-      ev.preventDefault();
-      idx = Math.max(0, idx < 0 ? bubbles.length - 1 : idx - 1);
-    } else {
+      idx = Math.min(bubbles.length - 1, (idx < 0 ? -1 : idx) + 1);
+      bubbles.forEach(function (b) {
+        b.classList.remove("msg-focus");
+      });
+      const target = bubbles[idx];
+      if (target) {
+        target.classList.add("msg-focus");
+        target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
       return;
     }
-    bubbles.forEach(function (b) {
-      b.classList.remove("msg-focus");
-    });
-    const target = bubbles[idx];
-    if (target) {
-      target.classList.add("msg-focus");
-      target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (ev.key === "k" || ev.key === "K") {
+      ev.preventDefault();
+      idx = Math.max(0, idx < 0 ? bubbles.length - 1 : idx - 1);
+      bubbles.forEach(function (b) {
+        b.classList.remove("msg-focus");
+      });
+      const target = bubbles[idx];
+      if (target) {
+        target.classList.add("msg-focus");
+        target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+      return;
+    }
+    if ((ev.key === "c" || ev.key === "C") && focused) {
+      ev.preventDefault();
+      const raw = bubbleText(focused);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(raw).then(function () {
+          if (window.rabbitToast) rabbitToast("Copied focused message", "ok");
+        });
+      }
+      return;
+    }
+    if ((ev.key === "q" || ev.key === "Q") && focused && promptEl) {
+      ev.preventDefault();
+      const raw = bubbleText(focused).trim();
+      const quoted = raw
+        .split("\n")
+        .map(function (line) {
+          return "> " + line;
+        })
+        .join("\n");
+      const cur = promptEl.value.trim();
+      promptEl.value = cur ? cur + "\n\n" + quoted + "\n\n" : quoted + "\n\n";
+      promptEl.focus();
+      promptEl.dispatchEvent(new Event("input", { bubbles: true }));
+      if (window.rabbitToast) rabbitToast("Quoted focused message", "ok");
+      return;
+    }
+    if ((ev.key === "e" || ev.key === "E") && focused && focused.classList.contains("user") && promptEl) {
+      ev.preventDefault();
+      promptEl.value = bubbleText(focused);
+      promptEl.focus();
+      promptEl.dispatchEvent(new Event("input", { bubbles: true }));
+      if (window.rabbitToast) rabbitToast("Edit focused message", "ok");
+      return;
     }
   });
 
