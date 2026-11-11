@@ -1,4 +1,4 @@
-/* Chat UX: scroll, copy, edit, resend, quote, delete, collapse, counts, timestamps, caret */
+/* Chat UX: scroll, copy, edit, resend, quote, delete, collapse, counts, timestamps, roles, day-sep, caret */
 (function () {
   const chatEl = document.getElementById("chat");
   const btn = document.getElementById("scroll-bottom");
@@ -12,10 +12,12 @@
   const CHAR_KEY = "rabbit-show-char-count";
   const TIME_KEY = "rabbit-show-timestamps";
   const REL_KEY = "rabbit-relative-timestamps";
+  const ROLE_KEY = "rabbit-show-roles";
   const showWordEl = document.getElementById("show-word-count");
   const showCharEl = document.getElementById("show-char-count");
   const showTimeEl = document.getElementById("show-timestamps");
   const relTimeEl = document.getElementById("relative-timestamps");
+  const showRoleEl = document.getElementById("show-roles");
 
   function loadPref(key, defaultOn) {
     try {
@@ -32,13 +34,16 @@
     const showChar = loadPref(CHAR_KEY, true);
     const showTime = loadPref(TIME_KEY, true);
     const relTime = loadPref(REL_KEY, false);
+    const showRole = loadPref(ROLE_KEY, true);
     document.body.classList.toggle("hide-word-count", !showWord);
     document.body.classList.toggle("hide-char-count", !showChar);
     document.body.classList.toggle("hide-timestamps", !showTime);
+    document.body.classList.toggle("hide-roles", !showRole);
     if (showWordEl) showWordEl.checked = showWord;
     if (showCharEl) showCharEl.checked = showChar;
     if (showTimeEl) showTimeEl.checked = showTime;
     if (relTimeEl) relTimeEl.checked = relTime;
+    if (showRoleEl) showRoleEl.checked = showRole;
   }
 
   applyCountVisibility();
@@ -61,6 +66,7 @@
   bindToggle(relTimeEl, REL_KEY, "Relative time", function () {
     chatEl.querySelectorAll(".bubble").forEach(refreshTimeDisplay);
   });
+  bindToggle(showRoleEl, ROLE_KEY, "Role labels");
 
   function nearBottom() {
     return chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 80;
@@ -110,7 +116,7 @@
   function refreshTimeDisplay(b) {
     const time = b.querySelector(".msg-time");
     if (!time) return;
-    const abs = time.dataset.abs || time.textContent.replace(/^\s*\u00b7\s*/, "").trim();
+    const abs = time.dataset.abs || time.textContent.replace(/^\s*[\u00b7]\s*/, "").trim();
     if (!time.dataset.abs) time.dataset.abs = abs;
     if (!time.dataset.ms) {
       const m = abs.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
@@ -138,25 +144,17 @@
     if (!meta.querySelector(".msg-time") && !meta.querySelector(".msg-role")) {
       const raw = (meta.textContent || "").trim();
       const timeMatch = raw.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
-      let rolePart = raw;
+      let rolePart = b.classList.contains("user") ? "you" : "rabbit";
       let timePart = "";
       if (timeMatch) {
         timePart = timeMatch[1];
-        rolePart = raw.split("\u00b7")[0].trim() || raw.split("\u00b7")[0].trim();
-        rolePart = raw.split("\u00b7")[0].trim();
-        if (!rolePart) rolePart = raw.split(".")[0];
-        rolePart = (raw.split("\u00b7")[0] || raw).trim();
-      }
-      // Prefer splitting on middle-dot character
-      const parts = raw.split(/\s*[\u00b7|]\s*/);
-      if (timeMatch) {
-        rolePart = (parts[0] || "").trim() || (b.classList.contains("user") ? "you" : "rabbit");
-        timePart = timeMatch[1];
+        const parts = raw.split(/\s*[\u00b7|]\s*/);
+        rolePart = (parts[0] || rolePart).trim() || rolePart;
       }
       meta.innerHTML = "";
       const role = document.createElement("span");
       role.className = "msg-role";
-      role.textContent = rolePart || (b.classList.contains("user") ? "you" : "rabbit");
+      role.textContent = rolePart;
       meta.appendChild(role);
       if (timePart) {
         const time = document.createElement("span");
@@ -216,6 +214,44 @@
     }
   }
 
+  function dayKeyFromBubble(b) {
+    const time = b.querySelector(".msg-time");
+    let ms = time && time.dataset.ms ? +time.dataset.ms : Date.now();
+    const d = new Date(ms);
+    return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
+  }
+
+  function formatDayLabel(key) {
+    const parts = key.split("-").map(Number);
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    const today = new Date();
+    const tKey = today.getFullYear() + "-" + (today.getMonth() + 1) + "-" + today.getDate();
+    const y = new Date(today);
+    y.setDate(y.getDate() - 1);
+    const yKey = y.getFullYear() + "-" + (y.getMonth() + 1) + "-" + y.getDate();
+    if (key === tKey) return "Today";
+    if (key === yKey) return "Yesterday";
+    return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  }
+
+  function ensureDateSeparators() {
+    chatEl.querySelectorAll(".day-sep").forEach(function (el) {
+      el.remove();
+    });
+    const bubbles = Array.from(chatEl.querySelectorAll(".bubble"));
+    let lastKey = null;
+    bubbles.forEach(function (b) {
+      const key = dayKeyFromBubble(b);
+      if (key !== lastKey) {
+        const sep = document.createElement("div");
+        sep.className = "day-sep";
+        sep.textContent = formatDayLabel(key);
+        b.parentNode.insertBefore(sep, b);
+        lastKey = key;
+      }
+    });
+  }
+
   function addAct(actions, cls, label, title, handler) {
     if (actions.querySelector("." + cls)) return;
     const el = document.createElement("button");
@@ -231,6 +267,7 @@
   }
 
   function ensureActions() {
+    ensureDateSeparators();
     chatEl.querySelectorAll(".bubble").forEach(function (b) {
       ensureMeta(b);
       ensureCollapse(b);
