@@ -1,4 +1,4 @@
-/* Chat UX: scroll, copy, edit, resend, quote, delete, collapse, counts, timestamps, roles, day-sep, caret */
+/* Rabbit chat UX extras */
 (function () {
   const chatEl = document.getElementById("chat");
   const btn = document.getElementById("scroll-bottom");
@@ -7,17 +7,19 @@
   if (!chatEl) return;
 
   const COLLAPSE_AT = 420;
-
   const WORD_KEY = "rabbit-show-word-count";
   const CHAR_KEY = "rabbit-show-char-count";
   const TIME_KEY = "rabbit-show-timestamps";
   const REL_KEY = "rabbit-relative-timestamps";
   const ROLE_KEY = "rabbit-show-roles";
+  const LINK_KEY = "rabbit-linkify";
+
   const showWordEl = document.getElementById("show-word-count");
   const showCharEl = document.getElementById("show-char-count");
   const showTimeEl = document.getElementById("show-timestamps");
   const relTimeEl = document.getElementById("relative-timestamps");
   const showRoleEl = document.getElementById("show-roles");
+  const linkifyEl = document.getElementById("linkify-urls");
 
   function loadPref(key, defaultOn) {
     try {
@@ -29,12 +31,13 @@
     }
   }
 
-  function applyCountVisibility() {
+  function applyVisibility() {
     const showWord = loadPref(WORD_KEY, true);
     const showChar = loadPref(CHAR_KEY, true);
     const showTime = loadPref(TIME_KEY, true);
     const relTime = loadPref(REL_KEY, false);
     const showRole = loadPref(ROLE_KEY, true);
+    const linkify = loadPref(LINK_KEY, true);
     document.body.classList.toggle("hide-word-count", !showWord);
     document.body.classList.toggle("hide-char-count", !showChar);
     document.body.classList.toggle("hide-timestamps", !showTime);
@@ -44,9 +47,10 @@
     if (showTimeEl) showTimeEl.checked = showTime;
     if (relTimeEl) relTimeEl.checked = relTime;
     if (showRoleEl) showRoleEl.checked = showRole;
+    if (linkifyEl) linkifyEl.checked = linkify;
   }
 
-  applyCountVisibility();
+  applyVisibility();
 
   function bindToggle(el, key, label, after) {
     if (!el) return;
@@ -55,11 +59,12 @@
       try {
         localStorage.setItem(key, on ? "1" : "0");
       } catch (e) {}
-      applyCountVisibility();
+      applyVisibility();
       if (typeof after === "function") after();
       if (window.rabbitToast) rabbitToast(label + (on ? " on" : " off"), "ok");
     });
   }
+
   bindToggle(showWordEl, WORD_KEY, "Word count");
   bindToggle(showCharEl, CHAR_KEY, "Character count");
   bindToggle(showTimeEl, TIME_KEY, "Timestamps");
@@ -67,6 +72,14 @@
     chatEl.querySelectorAll(".bubble").forEach(refreshTimeDisplay);
   });
   bindToggle(showRoleEl, ROLE_KEY, "Role labels");
+  bindToggle(linkifyEl, LINK_KEY, "Clickable links", function () {
+    chatEl.querySelectorAll(".bubble").forEach(function (b) {
+      const body = b.querySelector(".body");
+      if (!body) return;
+      const raw = body.dataset.raw != null ? body.dataset.raw : body.textContent || "";
+      renderBody(body, raw);
+    });
+  });
 
   function nearBottom() {
     return chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 80;
@@ -74,13 +87,11 @@
 
   function syncBtn() {
     if (!btn) return;
-    const show = chatEl.scrollHeight > chatEl.clientHeight + 40 && !nearBottom();
-    btn.hidden = !show;
+    btn.hidden = !(chatEl.scrollHeight > chatEl.clientHeight + 40 && !nearBottom());
   }
 
   chatEl.addEventListener("scroll", syncBtn, { passive: true });
   window.addEventListener("resize", syncBtn);
-
   if (btn) {
     btn.addEventListener("click", function () {
       chatEl.scrollTo({ top: chatEl.scrollHeight, behavior: "smooth" });
@@ -101,6 +112,31 @@
     return t.split(/\s+/).length;
   }
 
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function linkifyHtml(text) {
+    const esc = escapeHtml(text);
+    return esc.replace(
+      /(https?:\/\/[^\s<]+[^.,;:!?\s<])/g,
+      '<a class="msg-link" href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+    );
+  }
+
+  function renderBody(body, raw) {
+    if (body.dataset.raw == null) body.dataset.raw = raw;
+    if (loadPref(LINK_KEY, true)) {
+      body.innerHTML = linkifyHtml(raw).replace(/\n/g, "<br>");
+    } else {
+      body.textContent = raw;
+    }
+  }
+
   function formatRelative(ms) {
     const sec = Math.round((Date.now() - ms) / 1000);
     if (sec < 10) return "just now";
@@ -109,8 +145,7 @@
     if (min < 60) return min + "m ago";
     const hr = Math.round(min / 60);
     if (hr < 24) return hr + "h ago";
-    const day = Math.round(hr / 24);
-    return day + "d ago";
+    return Math.round(hr / 24) + "d ago";
   }
 
   function refreshTimeDisplay(b) {
@@ -128,20 +163,16 @@
         time.dataset.ms = String(Date.now());
       }
     }
-    const useRel = loadPref(REL_KEY, false);
-    if (useRel) {
-      time.textContent = " \u00b7 " + formatRelative(+time.dataset.ms);
-    } else {
-      time.textContent = " \u00b7 " + time.dataset.abs;
-    }
+    time.textContent =
+      " \u00b7 " + (loadPref(REL_KEY, false) ? formatRelative(+time.dataset.ms) : time.dataset.abs);
   }
 
   function ensureMeta(b) {
-    let meta = b.querySelector(".meta");
+    const meta = b.querySelector(".meta");
     if (!meta) return;
     const text = bubbleText(b);
 
-    if (!meta.querySelector(".msg-time") && !meta.querySelector(".msg-role")) {
+    if (!meta.querySelector(".msg-role")) {
       const raw = (meta.textContent || "").trim();
       const timeMatch = raw.match(/(\d{1,2}:\d{2}(?::\d{2})?)/);
       let rolePart = b.classList.contains("user") ? "you" : "rabbit";
@@ -165,7 +196,6 @@
         meta.appendChild(time);
       }
     }
-
     refreshTimeDisplay(b);
 
     let count = meta.querySelector(".msg-count");
@@ -185,8 +215,7 @@
       meta.appendChild(document.createTextNode(" \u00b7 "));
       meta.appendChild(chars);
     }
-    const c = (text || "").length;
-    chars.textContent = c + (c === 1 ? " char" : " chars");
+    chars.textContent = text.length + (text.length === 1 ? " char" : " chars");
   }
 
   function ensureCollapse(b) {
@@ -216,7 +245,7 @@
 
   function dayKeyFromBubble(b) {
     const time = b.querySelector(".msg-time");
-    let ms = time && time.dataset.ms ? +time.dataset.ms : Date.now();
+    const ms = time && time.dataset.ms ? +time.dataset.ms : Date.now();
     const d = new Date(ms);
     return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
   }
@@ -225,22 +254,26 @@
     const parts = key.split("-").map(Number);
     const d = new Date(parts[0], parts[1] - 1, parts[2]);
     const today = new Date();
-    const tKey = today.getFullYear() + "-" + (today.getMonth() + 1) + "-" + today.getDate();
+    const tKey =
+      today.getFullYear() + "-" + (today.getMonth() + 1) + "-" + today.getDate();
     const y = new Date(today);
     y.setDate(y.getDate() - 1);
     const yKey = y.getFullYear() + "-" + (y.getMonth() + 1) + "-" + y.getDate();
     if (key === tKey) return "Today";
     if (key === yKey) return "Yesterday";
-    return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+    return d.toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
   }
 
   function ensureDateSeparators() {
     chatEl.querySelectorAll(".day-sep").forEach(function (el) {
       el.remove();
     });
-    const bubbles = Array.from(chatEl.querySelectorAll(".bubble"));
     let lastKey = null;
-    bubbles.forEach(function (b) {
+    chatEl.querySelectorAll(".bubble").forEach(function (b) {
       const key = dayKeyFromBubble(b);
       if (key !== lastKey) {
         const sep = document.createElement("div");
@@ -271,6 +304,27 @@
     chatEl.querySelectorAll(".bubble").forEach(function (b) {
       ensureMeta(b);
       ensureCollapse(b);
+
+      const body = b.querySelector(".body");
+      if (body && body.dataset.raw != null) {
+        if (!body.querySelector("a.msg-link") && loadPref(LINK_KEY, true)) {
+          renderBody(body, body.dataset.raw);
+        }
+      } else if (body) {
+        body.dataset.raw = body.textContent || "";
+        if (loadPref(LINK_KEY, true)) renderBody(body, body.dataset.raw);
+      }
+
+      if (b.classList.contains("user") && !b.dataset.dblEdit) {
+        b.dataset.dblEdit = "1";
+        b.addEventListener("dblclick", function () {
+          if (!promptEl) return;
+          promptEl.value = bubbleText(b);
+          promptEl.focus();
+          promptEl.dispatchEvent(new Event("input", { bubbles: true }));
+          if (window.rabbitToast) rabbitToast("Double-click: loaded into composer", "ok");
+        });
+      }
 
       let actions = b.querySelector(".bubble-actions");
       if (!actions) {
@@ -382,12 +436,11 @@
     chatEl.querySelectorAll(".bubble").forEach(refreshTimeDisplay);
   }, 30000);
 
-  const obs = new MutationObserver(function () {
+  new MutationObserver(function () {
     syncBtn();
     ensureActions();
     syncStreamingClass();
-  });
-  obs.observe(chatEl, { childList: true, subtree: true });
+  }).observe(chatEl, { childList: true, subtree: true });
 
   setTimeout(function () {
     ensureActions();
