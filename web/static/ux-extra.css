@@ -70,6 +70,27 @@ body.hide-roles .msg-role { display: none !important; }
 .msg-link:hover { filter: brightness(1.15); }
 .bubble.user[data-dbl-edit="1"] { cursor: pointer; }
 
+mark.msg-hit {
+  background: rgba(250, 204, 21, 0.35);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 0.1em;
+}
+.bubble.search-match {
+  box-shadow: 0 0 0 1px var(--accent-2);
+}
+body.compact-bubbles .bubble {
+  padding: 0.45rem 0.65rem;
+  margin-bottom: 0.35rem;
+}
+body.compact-bubbles .bubble .body {
+  font-size: 0.92em;
+  line-height: 1.35;
+}
+body.compact-bubbles .meta {
+  font-size: 0.72rem;
+}
+
 .bubble.msg-focus {
   outline: 2px solid var(--accent-2);
   outline-offset: 2px;
