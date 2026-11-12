@@ -235,7 +235,7 @@
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
           <p class="hint">Hover: Copy · MD · ↓ · Quote · Edit · Resend · ✕</p>
-          <p class="hint"><kbd>/</kbd> search (highlights matches) · <kbd>i</kbd> composer · compact bubbles</p>
+          <p class="hint"><kbd>r</kbd> regen · <kbd>n</kbd> new session · <kbd>/</kbd> search · ↑/↓ jump</p>
         </div>
       </div>
 
@@ -254,7 +254,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Search highlight · compact bubbles · i composer · / search</p>
+      <p class="footer-note">r regen · n session · Home/End · ↑ top FAB · length warn</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -264,9 +264,9 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><kbd>j</kbd>/<kbd>k</kbd> · <kbd>c</kbd>/<kbd>q</kbd>/<kbd>e</kbd>/<kbd>i</kbd> · <kbd>/</kbd> search · <kbd>Esc</kbd></li>
-        <li>Search highlights matches · <strong>Compact bubbles</strong> in sidebar</li>
-        <li>Draft auto-saves · MD / ↓ download · delete undo via toast</li>
+        <li><kbd>j</kbd>/<kbd>k</kbd> · <kbd>c</kbd>/<kbd>q</kbd>/<kbd>e</kbd>/<kbd>i</kbd> · <kbd>/</kbd> · <kbd>Esc</kbd></li>
+        <li><kbd>r</kbd> regenerate · <kbd>n</kbd> new session · <kbd>Home</kbd>/<kbd>End</kbd> scroll</li>
+        <li>↑ jump to top · ↓ jump to latest · composer turns amber/red when long</li>
         <li><kbd>Ctrl+Shift+D</kbd> dark mode · <kbd>Ctrl+M</kbd> mic</li>
       </ul>
     </div>
@@ -288,6 +288,7 @@
   <script src="/static/features-more.js"></script>
   <script src="/static/ux-extra.js"></script>
   <script src="/static/ux-search.js"></script>
+  <script src="/static/ux-more.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
