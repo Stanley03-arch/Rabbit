@@ -16,12 +16,37 @@
 .btn-scroll-bottom[hidden] { display: none !important; }
 .btn-scroll-bottom:hover { border-color: var(--accent-2); }
 
+.btn-scroll-top {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 8.2rem;
+  z-index: 40;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 1.1rem;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.3);
+}
+.btn-scroll-top[hidden] { display: none !important; }
+.btn-scroll-top:hover { border-color: var(--accent-2); }
+
 @media (max-width: 900px) {
   .btn-scroll-bottom {
     right: calc(1.25rem + env(safe-area-inset-right, 0px));
     bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
   }
+  .btn-scroll-top {
+    right: calc(1.25rem + env(safe-area-inset-right, 0px));
+    bottom: calc(8.2rem + env(safe-area-inset-bottom, 0px));
+  }
 }
+
+.composer-count.warn { color: #f59e0b; }
+.composer-count.danger { color: #ef4444; font-weight: 600; }
 
 .bubble-actions { flex-wrap: wrap; }
 .bubble-act.del-btn:hover {
