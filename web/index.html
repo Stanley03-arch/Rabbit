@@ -239,7 +239,7 @@
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
           <p class="hint">Click a message to focus · <kbd>d</kbd> download · Clear asks confirm</p>
-          <p class="hint"><kbd>r</kbd> regen · <kbd>n</kbd> session · <kbd>?</kbd> help · reduce motion</p>
+          <p class="hint">Messages restore after refresh when <strong>Persist chat</strong> is on</p>
         </div>
       </div>
 
@@ -258,18 +258,19 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Click focus · d download · clear confirm · reduce motion</p>
+      <p class="footer-note">Persist chat keeps messages after refresh · Clear wipes storage</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
     <div class="help-card" role="dialog" aria-labelledby="help-title">
       <header>
-        <h2 id="help-title">Shortcuts &amp; tips</h2>
+        <h2 id="help-title">Shortcuts & tips</h2>
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
         <li>Click a message to focus · <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>c</kbd>/<kbd>q</kbd>/<kbd>e</kbd>/<kbd>d</kbd></li>
         <li><kbd>r</kbd> regen · <kbd>n</kbd> new session · <kbd>/</kbd> search · <kbd>?</kbd> help</li>
+        <li><strong>Persist chat</strong> saves messages across refresh (localStorage)</li>
         <li>Clear confirms when ≥3 messages · <strong>Reduce motion</strong> in sidebar</li>
         <li><kbd>Ctrl+Shift+D</kbd> dark mode · <kbd>Ctrl+M</kbd> mic</li>
       </ul>
@@ -288,6 +289,7 @@
   <script src="/static/pwa.js"></script>
   <script src="/static/layout-extra.js"></script>
   <script src="/static/sessions.js"></script>
+  <script src="/static/persist-messages.js"></script>
   <script src="/static/features.js"></script>
   <script src="/static/features-more.js"></script>
   <script src="/static/ux-extra.js"></script>
