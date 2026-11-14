@@ -202,7 +202,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Voice · SSE · local history · <kbd>Ctrl+K</kbd></p>
+            <p class="muted">Voice · SSE · <kbd>Ctrl+K</kbd> · drop files</p>
           </div>
         </div>
         <div class="top-right">
@@ -236,11 +236,11 @@
 
       <div class="pinned-strip" id="pinned-strip" hidden></div>
 
-      <div class="chat" id="chat" title="Drop a chat JSON/MD export here to import">
+      <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint"><kbd>Ctrl+K</kbd> command palette · recent prompts · filters <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></p>
-          <p class="hint">Messages restore after refresh when <strong>Persist chat</strong> is on</p>
+          <p class="hint"><kbd>Ctrl+K</kbd> palette · drop .txt/.md/.json into chat</p>
+          <p class="hint">Mobile: <strong>⌘K</strong> button · Stop via palette</p>
         </div>
       </div>
 
@@ -250,7 +250,7 @@
         <button type="button" class="linkish" id="save-prompt" title="Save current text as a chip">Save prompt</button>
       </div>
       <form class="composer" id="form">
-        <textarea id="prompt" rows="2" autocomplete="off" placeholder="Message or voice command… (Enter send · Ctrl+K commands)"></textarea>
+        <textarea id="prompt" rows="2" autocomplete="off" placeholder="Message… (Enter send · drop files · Ctrl+K)"></textarea>
         <button type="button" class="btn-stop" id="stop" hidden title="Stop request">Stop</button>
         <button type="button" class="btn-tts-stop" id="tts-stop" hidden title="Stop speaking">🔇</button>
         <button type="submit" id="send">Send</button>
@@ -259,7 +259,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Ctrl+K palette · recent prompts · filters · persist</p>
+      <p class="footer-note">Ctrl+K · drop files · stop in palette · filters</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -269,9 +269,9 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><kbd>Ctrl+K</kbd> command palette (actions + recent prompts)</li>
-        <li><kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> filters · session delete undo via toast</li>
-        <li><kbd>Ctrl+Shift+U</kbd> dup · <kbd>Ctrl+Shift+P</kbd> persist · <kbd>Ctrl+Shift+S</kbd> save</li>
+        <li><kbd>Ctrl+K</kbd> palette · mobile <strong>⌘K</strong> button · Stop generation in palette</li>
+        <li>Drop .txt / .md / .json / code files into the window to append to the composer</li>
+        <li><kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> filters · <kbd>Ctrl+Shift+S</kbd> save · <kbd>Ctrl+Shift+E</kbd> export all</li>
         <li><kbd>r</kbd> regen · <kbd>n</kbd> new session · <kbd>/</kbd> search · <kbd>?</kbd> help</li>
       </ul>
     </div>
@@ -299,6 +299,7 @@
   <script src="/static/ux-polish.js"></script>
   <script src="/static/chat-filters.js"></script>
   <script src="/static/command-palette.js"></script>
+  <script src="/static/file-drop.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
