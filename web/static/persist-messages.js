@@ -2,6 +2,7 @@
  * - Saves bubbles when Persist chat is on
  * - Restores after refresh
  * - Syncs with multi-session store (rabbit-sessions-v1)
+ * - Status indicator + quota-safe saves + export all sessions
  */
 (function () {
   const HISTORY_KEY = "rabbit-dashboard-history-v1";
@@ -15,6 +16,26 @@
   let restoring = false;
   let saveTimer = null;
   let restoredOnce = false;
+  let lastSavedAt = 0;
+  let lastCount = 0;
+
+  // Status pill next to composer tools
+  let statusEl = document.getElementById("persist-status");
+  if (!statusEl) {
+    const tools = document.querySelector(".composer-tools");
+    statusEl = document.createElement("span");
+    statusEl.id = "persist-status";
+    statusEl.className = "persist-status";
+    statusEl.title = "Message persistence status";
+    if (tools) tools.appendChild(statusEl);
+    else document.body.appendChild(statusEl);
+  }
+
+  function setStatus(text, kind) {
+    if (!statusEl) return;
+    statusEl.textContent = text;
+    statusEl.dataset.kind = kind || "ok";
+  }
 
   function persistEnabled() {
     if (persistEl) return !!persistEl.checked;
@@ -105,19 +126,30 @@
       localStorage.setItem(SESSIONS_KEY, JSON.stringify(st));
     } catch (e) {
       console.warn("[persist] sessions save", e);
+      throw e;
     }
   }
 
   function saveNow() {
     if (restoring) return;
-    if (!persistEnabled()) return;
+    if (!persistEnabled()) {
+      setStatus("persist off", "off");
+      return;
+    }
     const msgs = readMessages().slice(-120);
     try {
       localStorage.setItem(HISTORY_KEY, JSON.stringify(msgs));
+      saveSessionsMessages(msgs);
+      lastSavedAt = Date.now();
+      lastCount = msgs.length;
+      setStatus("saved · " + lastCount + " msg", "ok");
     } catch (e) {
-      console.warn("[persist] history save", e);
+      console.warn("[persist] save failed", e);
+      setStatus("storage full", "err");
+      if (window.rabbitToast) {
+        rabbitToast("Could not save chat (storage full?). Export JSON as backup.", "err");
+      }
     }
-    saveSessionsMessages(msgs);
   }
 
   function scheduleSave() {
@@ -127,7 +159,6 @@
   }
 
   function messagesFromStore() {
-    // Prefer active session messages if present
     const st = loadSessions();
     if (st && st.sessions && st.active && st.sessions[st.active]) {
       const m = st.sessions[st.active].messages;
@@ -145,14 +176,20 @@
 
   function restore() {
     if (restoredOnce) return;
-    if (!persistEnabled()) return;
+    if (!persistEnabled()) {
+      setStatus("persist off", "off");
+      restoredOnce = true;
+      return;
+    }
     if (chatEl.querySelector(".bubble")) {
       restoredOnce = true;
+      scheduleSave();
       return;
     }
     const msgs = messagesFromStore();
     if (!msgs.length) {
       restoredOnce = true;
+      setStatus("no saved chat", "off");
       return;
     }
     restoring = true;
@@ -162,6 +199,9 @@
     restoring = false;
     restoredOnce = true;
     chatEl.scrollTop = chatEl.scrollHeight;
+    lastCount = msgs.length;
+    lastSavedAt = Date.now();
+    setStatus("restored · " + msgs.length + " msg", "ok");
     if (window.rabbitToast) {
       rabbitToast("Restored " + msgs.length + " messages", "ok");
     }
@@ -178,16 +218,46 @@
         localStorage.setItem(SESSIONS_KEY, JSON.stringify(st));
       }
     } catch (e) {}
+    lastCount = 0;
+    setStatus(persistEnabled() ? "cleared" : "persist off", "off");
   }
 
-  // Observe chat DOM for new/changed messages
+  function exportAllSessions() {
+    const st = loadSessions() || {
+      active: "s1",
+      sessions: { s1: { name: "Chat 1", messages: readMessages() } },
+    };
+    // refresh active from DOM
+    try {
+      const id = st.active || "s1";
+      if (!st.sessions[id]) st.sessions[id] = { name: id, messages: [] };
+      st.sessions[id].messages = readMessages().slice(-120);
+    } catch (e) {}
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      active: st.active,
+      sessions: st.sessions,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "rabbit-sessions-" + Date.now() + ".json";
+    a.click();
+    setTimeout(function () {
+      URL.revokeObjectURL(a.href);
+    }, 1000);
+    if (window.rabbitToast) rabbitToast("Exported all sessions", "ok");
+  }
+
+  // Observe chat DOM
   const obs = new MutationObserver(function () {
     if (restoring) return;
     scheduleSave();
   });
   obs.observe(chatEl, { childList: true, subtree: true, characterData: true });
 
-  // Persist-chat toggle
   if (persistEl) {
     persistEl.addEventListener("change", function () {
       if (!persistEl.checked) {
@@ -200,7 +270,6 @@
     });
   }
 
-  // Clear button — wipe storage after DOM clears
   const clearBtn = document.getElementById("clear-chat");
   if (clearBtn) {
     clearBtn.addEventListener("click", function () {
@@ -211,12 +280,42 @@
     });
   }
 
-  // Save before unload
+  // Export-all: long-press or secondary control near Export JSON
+  const exportBtn = document.getElementById("export-chat");
+  if (exportBtn && !exportBtn.dataset.sessionsBound) {
+    exportBtn.dataset.sessionsBound = "1";
+    exportBtn.title = (exportBtn.title || "Export") + " · Shift+click = all sessions";
+    exportBtn.addEventListener(
+      "click",
+      function (ev) {
+        if (ev.shiftKey) {
+          ev.preventDefault();
+          ev.stopImmediatePropagation();
+          exportAllSessions();
+        }
+      },
+      true
+    );
+  }
+
+  // Keyboard: Ctrl+Shift+S force save, Ctrl+Shift+E export sessions
+  document.addEventListener("keydown", function (ev) {
+    if (!(ev.ctrlKey || ev.metaKey) || !ev.shiftKey) return;
+    if (ev.key === "S" || ev.key === "s") {
+      ev.preventDefault();
+      saveNow();
+      if (window.rabbitToast) rabbitToast("Chat saved", "ok");
+    }
+    if (ev.key === "E" || ev.key === "e") {
+      ev.preventDefault();
+      exportAllSessions();
+    }
+  });
+
   window.addEventListener("beforeunload", function () {
     if (persistEnabled()) saveNow();
   });
 
-  // Restore after other scripts inject UI
   function tryRestore() {
     restore();
   }
@@ -227,7 +326,6 @@
       setTimeout(tryRestore, 300);
     });
   }
-  // Also after app-p0 ready
   const prevReady = window.rabbitOnAppReady;
   window.rabbitOnAppReady = function () {
     if (typeof prevReady === "function") {
@@ -238,11 +336,26 @@
     setTimeout(tryRestore, 200);
   };
 
-  // Public API
+  // Refresh status clock occasionally
+  setInterval(function () {
+    if (!persistEnabled()) {
+      setStatus("persist off", "off");
+      return;
+    }
+    if (!lastSavedAt) return;
+    const sec = Math.round((Date.now() - lastSavedAt) / 1000);
+    if (sec < 5) setStatus("saved · " + lastCount + " msg", "ok");
+    else if (sec < 60) setStatus("saved " + sec + "s ago · " + lastCount, "ok");
+    else setStatus("saved " + Math.round(sec / 60) + "m ago · " + lastCount, "ok");
+  }, 5000);
+
   window.rabbitPersist = {
     save: saveNow,
     restore: restore,
     read: readMessages,
     wipe: wipeStorage,
+    exportAll: exportAllSessions,
   };
+
+  setStatus(persistEnabled() ? "ready" : "persist off", persistEnabled() ? "ok" : "off");
 })();

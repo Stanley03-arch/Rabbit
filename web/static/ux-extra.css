@@ -48,6 +48,17 @@
 .composer-count.warn { color: #f59e0b; }
 .composer-count.danger { color: #ef4444; font-weight: 600; }
 
+.persist-status {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--muted);
+  opacity: 0.9;
+  white-space: nowrap;
+}
+.persist-status[data-kind="ok"] { color: var(--accent-2); }
+.persist-status[data-kind="err"] { color: #ef4444; font-weight: 600; }
+.persist-status[data-kind="off"] { color: var(--muted); }
+
 .bubble-actions { flex-wrap: wrap; }
 .bubble-act.del-btn:hover {
   color: var(--danger);
