@@ -195,7 +195,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted"><kbd>Ctrl+K</kbd> · ★ favorites · <kbd>Alt+[ ]</kbd></p>
+            <p class="muted">Queue · undo clear · <kbd>Ctrl+K</kbd></p>
           </div>
         </div>
         <div class="top-right">
@@ -232,8 +232,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint"><kbd>Ctrl+K</kbd> · ★ Favorite · <kbd>Alt+[</kbd>/<kbd>]</kbd> sessions</p>
-          <p class="hint">Copy all as Markdown from the palette</p>
+          <p class="hint">Send while generating → <strong>queued</strong> · Clear is undoable</p>
+          <p class="hint"><kbd>Ctrl+K</kbd> · ★ Favorite · <kbd>Alt+[</kbd>/<kbd>]</kbd></p>
         </div>
       </div>
 
@@ -243,7 +243,7 @@
         <button type="button" class="linkish" id="save-prompt" title="Save current text as a chip">Save prompt</button>
       </div>
       <form class="composer" id="form">
-        <textarea id="prompt" rows="2" autocomplete="off" placeholder="Message… (Enter send · Ctrl+K · ★ Favorite)"></textarea>
+        <textarea id="prompt" rows="2" autocomplete="off" placeholder="Message… (queues if busy)"></textarea>
         <button type="button" class="btn-stop" id="stop" hidden title="Stop request">Stop</button>
         <button type="button" class="btn-tts-stop" id="tts-stop" hidden title="Stop speaking">🔇</button>
         <button type="submit" id="send">Send</button>
@@ -252,7 +252,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Favorites · Alt+[ ] sessions · copy-all MD · stats</p>
+      <p class="footer-note">Queue while generating · undo clear · favorites</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -262,10 +262,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><kbd>Ctrl+K</kbd> palette · <kbd>Ctrl+Shift+F</kbd> favorite prompt · <kbd>Alt+[</kbd>/<kbd>]</kbd> cycle sessions</li>
-        <li>Palette: chat stats, copy all Markdown, stop, favorites (★)</li>
-        <li>Drop text files into the window · filters <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd></li>
-        <li><kbd>r</kbd> regen · <kbd>n</kbd> new session · <kbd>?</kbd> help</li>
+        <li>Send while generating → message is <strong>queued</strong> (click chip to cancel)</li>
+        <li><strong>Clear</strong>: click the toast within ~8s to undo</li>
+        <li><kbd>Ctrl+K</kbd> palette · <kbd>Ctrl+Shift+F</kbd> favorite · <kbd>Alt+[</kbd>/<kbd>]</kbd> sessions</li>
+        <li><kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> filters · drop files · <kbd>?</kbd> help</li>
       </ul>
     </div>
   </div>
@@ -294,6 +294,7 @@
   <script src="/static/favorites.js"></script>
   <script src="/static/command-palette.js"></script>
   <script src="/static/file-drop.js"></script>
+  <script src="/static/msg-queue.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
