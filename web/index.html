@@ -238,7 +238,7 @@
       <div class="chat" id="chat" title="Drop a chat JSON/MD export here to import">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint">Sessions auto-title · <strong>Dup</strong> copies chat · Import sessions JSON</p>
+          <p class="hint">Filter <strong>All / You / Rabbit</strong> · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></p>
           <p class="hint">Messages restore after refresh when <strong>Persist chat</strong> is on</p>
         </div>
       </div>
@@ -258,7 +258,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Auto-title · Dup · import sessions · Ctrl+Shift+U/P/S/E</p>
+      <p class="footer-note">All/You/Rabbit filters · session delete undo · persist status</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -268,9 +268,9 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><strong>Dup</strong> / <kbd>Ctrl+Shift+U</kbd> duplicate session · auto-title from first message</li>
-        <li>Import a sessions export JSON via <strong>Import</strong> · Shift+click <strong>Export JSON</strong> for all</li>
-        <li><kbd>Ctrl+Shift+P</kbd> toggle persist · <kbd>Ctrl+Shift+S</kbd> save · <kbd>Ctrl+Shift+E</kbd> export all</li>
+        <li><kbd>1</kbd> All · <kbd>2</kbd> You · <kbd>3</kbd> Rabbit message filters</li>
+        <li>Deleting a session tab: click the toast within ~6s to undo</li>
+        <li><kbd>Ctrl+Shift+U</kbd> dup · <kbd>Ctrl+Shift+P</kbd> persist · <kbd>Ctrl+Shift+S</kbd> save</li>
         <li><kbd>r</kbd> regen · <kbd>n</kbd> new session · <kbd>/</kbd> search · <kbd>?</kbd> help</li>
       </ul>
     </div>
@@ -296,6 +296,7 @@
   <script src="/static/ux-search.js"></script>
   <script src="/static/ux-more.js"></script>
   <script src="/static/ux-polish.js"></script>
+  <script src="/static/chat-filters.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
