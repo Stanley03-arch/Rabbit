@@ -36,6 +36,7 @@
   <link rel="stylesheet" href="/static/features.css" />
   <link rel="stylesheet" href="/static/pwa-extra.css" />
   <link rel="stylesheet" href="/static/ux-extra.css" />
+  <link rel="stylesheet" href="/static/command-palette.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -201,7 +202,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Voice · SSE · local history</p>
+            <p class="muted">Voice · SSE · local history · <kbd>Ctrl+K</kbd></p>
           </div>
         </div>
         <div class="top-right">
@@ -238,7 +239,7 @@
       <div class="chat" id="chat" title="Drop a chat JSON/MD export here to import">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint">Filter <strong>All / You / Rabbit</strong> · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></p>
+          <p class="hint"><kbd>Ctrl+K</kbd> command palette · recent prompts · filters <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></p>
           <p class="hint">Messages restore after refresh when <strong>Persist chat</strong> is on</p>
         </div>
       </div>
@@ -249,7 +250,7 @@
         <button type="button" class="linkish" id="save-prompt" title="Save current text as a chip">Save prompt</button>
       </div>
       <form class="composer" id="form">
-        <textarea id="prompt" rows="2" autocomplete="off" placeholder="Message or voice command… (Enter send · Shift+Enter newline)"></textarea>
+        <textarea id="prompt" rows="2" autocomplete="off" placeholder="Message or voice command… (Enter send · Ctrl+K commands)"></textarea>
         <button type="button" class="btn-stop" id="stop" hidden title="Stop request">Stop</button>
         <button type="button" class="btn-tts-stop" id="tts-stop" hidden title="Stop speaking">🔇</button>
         <button type="submit" id="send">Send</button>
@@ -258,7 +259,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">All/You/Rabbit filters · session delete undo · persist status</p>
+      <p class="footer-note">Ctrl+K palette · recent prompts · filters · persist</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -268,8 +269,8 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><kbd>1</kbd> All · <kbd>2</kbd> You · <kbd>3</kbd> Rabbit message filters</li>
-        <li>Deleting a session tab: click the toast within ~6s to undo</li>
+        <li><kbd>Ctrl+K</kbd> command palette (actions + recent prompts)</li>
+        <li><kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> filters · session delete undo via toast</li>
         <li><kbd>Ctrl+Shift+U</kbd> dup · <kbd>Ctrl+Shift+P</kbd> persist · <kbd>Ctrl+Shift+S</kbd> save</li>
         <li><kbd>r</kbd> regen · <kbd>n</kbd> new session · <kbd>/</kbd> search · <kbd>?</kbd> help</li>
       </ul>
@@ -297,6 +298,7 @@
   <script src="/static/ux-more.js"></script>
   <script src="/static/ux-polish.js"></script>
   <script src="/static/chat-filters.js"></script>
+  <script src="/static/command-palette.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
