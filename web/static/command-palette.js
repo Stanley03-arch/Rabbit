@@ -34,7 +34,6 @@
     });
   }
 
-  // Build palette DOM
   let overlay = document.getElementById("cmd-palette");
   if (!overlay) {
     overlay = document.createElement("div");
@@ -50,6 +49,21 @@
     document.body.appendChild(overlay);
   }
 
+  // Mobile FAB for palette
+  if (!document.getElementById("cmd-palette-fab")) {
+    const fab = document.createElement("button");
+    fab.type = "button";
+    fab.id = "cmd-palette-fab";
+    fab.className = "btn-cmd-fab";
+    fab.title = "Command palette (Ctrl+K)";
+    fab.setAttribute("aria-label", "Command palette");
+    fab.textContent = "⌘K";
+    fab.addEventListener("click", function () {
+      open();
+    });
+    document.body.appendChild(fab);
+  }
+
   const input = document.getElementById("cmd-palette-input");
   const listEl = document.getElementById("cmd-palette-list");
   let items = [];
@@ -60,6 +74,7 @@
       { id: "new", label: "New session", run: function () { const b = document.getElementById("session-new"); if (b) b.click(); } },
       { id: "dup", label: "Duplicate session", run: function () { if (window.rabbitSessionsExtra) rabbitSessionsExtra.duplicate(); } },
       { id: "clear", label: "Clear chat", run: function () { const b = document.getElementById("clear-chat"); if (b) b.click(); } },
+      { id: "stop", label: "Stop generation", run: function () { const b = document.getElementById("stop"); if (b && !b.hidden) b.click(); else if (window.rabbitToast) rabbitToast("Nothing to stop", "ok"); } },
       { id: "regen", label: "Regenerate last", run: function () { const b = document.getElementById("regen-last"); if (b) b.click(); } },
       { id: "export", label: "Export JSON (this chat)", run: function () { const b = document.getElementById("export-chat"); if (b) b.click(); } },
       { id: "export-all", label: "Export all sessions", run: function () { if (window.rabbitPersist) rabbitPersist.exportAll(); } },
