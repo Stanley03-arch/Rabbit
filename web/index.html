@@ -50,7 +50,6 @@
         </div>
         <button type="button" class="btn-side-toggle" id="sidebar-toggle" title="Collapse sidebar (Ctrl+\\)" aria-label="Collapse sidebar">⟨</button>
       </div>
-
       <section class="panel">
         <h3>Model</h3>
         <div class="stat" id="model-name">—</div>
@@ -64,7 +63,6 @@
         <div class="kv"><span>map</span><b id="s-map">—</b></div>
         <div class="kv"><span>tokenizer</span><b id="s-tok">—</b></div>
       </section>
-
       <section class="panel">
         <h3>Memory</h3>
         <div class="kv"><span>budget</span><b id="m-budget">—</b></div>
@@ -73,7 +71,6 @@
         <div class="kv"><span>status</span><b id="m-status">—</b></div>
         <button type="button" class="btn-secondary" id="refresh-stats">Refresh stats</button>
       </section>
-
       <section class="panel">
         <h3>Session metrics</h3>
         <div class="kv"><span>requests</span><b id="met-req">0</b></div>
@@ -82,7 +79,6 @@
         <div class="kv"><span>tokens est.</span><b id="met-tok">0</b></div>
         <div class="kv"><span>last speed</span><b id="met-tps">—</b></div>
       </section>
-
       <section class="panel">
         <h3>Expert cache</h3>
         <div class="kv"><span>hits</span><b id="c-hits">0</b></div>
@@ -91,13 +87,11 @@
         <div class="kv"><span>hit rate</span><b id="c-rate">—</b></div>
         <div class="bar"><div class="bar-fill" id="c-bar" style="width:0%"></div></div>
       </section>
-
       <section class="panel">
         <h3>Expert activity</h3>
         <div class="expert-grid" id="expert-grid"></div>
         <p class="hint">Warm = recently routed · shared experts always-on</p>
       </section>
-
       <section class="panel voice-panel">
         <h3>Voice</h3>
         <label class="check"><input type="checkbox" id="voice-auto-send" checked /> Auto-send after speech</label>
@@ -130,7 +124,6 @@
           <li><code>repeat</code> · <code>send</code> · <code>help</code></li>
         </ul>
       </section>
-
       <section class="panel controls">
         <h3>Generation</h3>
         <label>Tokens <input type="number" id="tokens" value="48" min="8" max="256" /></label>
@@ -202,7 +195,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Voice · SSE · <kbd>Ctrl+K</kbd> · drop files</p>
+            <p class="muted"><kbd>Ctrl+K</kbd> · ★ favorites · <kbd>Alt+[ ]</kbd></p>
           </div>
         </div>
         <div class="top-right">
@@ -239,8 +232,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint"><kbd>Ctrl+K</kbd> palette · drop .txt/.md/.json into chat</p>
-          <p class="hint">Mobile: <strong>⌘K</strong> button · Stop via palette</p>
+          <p class="hint"><kbd>Ctrl+K</kbd> · ★ Favorite · <kbd>Alt+[</kbd>/<kbd>]</kbd> sessions</p>
+          <p class="hint">Copy all as Markdown from the palette</p>
         </div>
       </div>
 
@@ -250,7 +243,7 @@
         <button type="button" class="linkish" id="save-prompt" title="Save current text as a chip">Save prompt</button>
       </div>
       <form class="composer" id="form">
-        <textarea id="prompt" rows="2" autocomplete="off" placeholder="Message… (Enter send · drop files · Ctrl+K)"></textarea>
+        <textarea id="prompt" rows="2" autocomplete="off" placeholder="Message… (Enter send · Ctrl+K · ★ Favorite)"></textarea>
         <button type="button" class="btn-stop" id="stop" hidden title="Stop request">Stop</button>
         <button type="button" class="btn-tts-stop" id="tts-stop" hidden title="Stop speaking">🔇</button>
         <button type="submit" id="send">Send</button>
@@ -259,7 +252,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Ctrl+K · drop files · stop in palette · filters</p>
+      <p class="footer-note">Favorites · Alt+[ ] sessions · copy-all MD · stats</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -269,10 +262,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><kbd>Ctrl+K</kbd> palette · mobile <strong>⌘K</strong> button · Stop generation in palette</li>
-        <li>Drop .txt / .md / .json / code files into the window to append to the composer</li>
-        <li><kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> filters · <kbd>Ctrl+Shift+S</kbd> save · <kbd>Ctrl+Shift+E</kbd> export all</li>
-        <li><kbd>r</kbd> regen · <kbd>n</kbd> new session · <kbd>/</kbd> search · <kbd>?</kbd> help</li>
+        <li><kbd>Ctrl+K</kbd> palette · <kbd>Ctrl+Shift+F</kbd> favorite prompt · <kbd>Alt+[</kbd>/<kbd>]</kbd> cycle sessions</li>
+        <li>Palette: chat stats, copy all Markdown, stop, favorites (★)</li>
+        <li>Drop text files into the window · filters <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd></li>
+        <li><kbd>r</kbd> regen · <kbd>n</kbd> new session · <kbd>?</kbd> help</li>
       </ul>
     </div>
   </div>
@@ -298,6 +291,7 @@
   <script src="/static/ux-more.js"></script>
   <script src="/static/ux-polish.js"></script>
   <script src="/static/chat-filters.js"></script>
+  <script src="/static/favorites.js"></script>
   <script src="/static/command-palette.js"></script>
   <script src="/static/file-drop.js"></script>
   <script src="/static/app-toasts.js"></script>
