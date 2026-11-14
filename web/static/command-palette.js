@@ -1,13 +1,14 @@
-/* Ctrl+K command palette + recent prompts */
+/* Ctrl+K command palette + recent + favorites */
 (function () {
   const RECENT_KEY = "rabbit-recent-prompts";
+  const FAV_KEY = "rabbit-favorite-prompts";
   const promptEl = document.getElementById("prompt");
   const formEl = document.getElementById("form");
   if (!promptEl) return;
 
-  function loadRecent() {
+  function loadList(key) {
     try {
-      const raw = localStorage.getItem(RECENT_KEY);
+      const raw = localStorage.getItem(key);
       const arr = raw ? JSON.parse(raw) : [];
       return Array.isArray(arr) ? arr : [];
     } catch (e) {
@@ -18,13 +19,12 @@
   function pushRecent(text) {
     const t = (text || "").trim();
     if (!t) return;
-    let list = loadRecent().filter(function (x) {
+    let list = loadList(RECENT_KEY).filter(function (x) {
       return x !== t;
     });
     list.unshift(t);
-    list = list.slice(0, 20);
     try {
-      localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+      localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 20)));
     } catch (e) {}
   }
 
@@ -42,14 +42,13 @@
     overlay.hidden = true;
     overlay.innerHTML =
       '<div class="cmd-palette-card" role="dialog" aria-label="Command palette">' +
-      '<input type="search" id="cmd-palette-input" class="cmd-palette-input" placeholder="Type a command or search recent…" autocomplete="off" />' +
+      '<input type="search" id="cmd-palette-input" class="cmd-palette-input" placeholder="Type a command, favorite, or recent…" autocomplete="off" />' +
       '<ul id="cmd-palette-list" class="cmd-palette-list"></ul>' +
-      '<p class="cmd-palette-hint"><kbd>↑</kbd><kbd>↓</kbd> · <kbd>Enter</kbd> run · <kbd>Esc</kbd> close</p>' +
+      '<p class="cmd-palette-hint"><kbd>↑</kbd><kbd>↓</kbd> · <kbd>Enter</kbd> · <kbd>Esc</kbd></p>' +
       "</div>";
     document.body.appendChild(overlay);
   }
 
-  // Mobile FAB for palette
   if (!document.getElementById("cmd-palette-fab")) {
     const fab = document.createElement("button");
     fab.type = "button";
@@ -70,7 +69,14 @@
   let active = 0;
 
   function commands() {
+    const stats =
+      window.rabbitFavorites && rabbitFavorites.stats
+        ? rabbitFavorites.stats()
+        : { msgs: 0, user: 0, bot: 0, chars: 0 };
     const base = [
+      { id: "stats", label: "Chat stats: " + stats.msgs + " msgs (" + stats.user + " you / " + stats.bot + " rabbit, " + stats.chars + " chars)", run: function () { if (window.rabbitToast) rabbitToast(stats.msgs + " messages · " + stats.chars + " chars", "ok"); } },
+      { id: "copy-md", label: "Copy all as Markdown", run: function () { if (window.rabbitFavorites) rabbitFavorites.copyAllMarkdown(); } },
+      { id: "star", label: "★ Favorite current prompt", run: function () { if (window.rabbitFavorites) rabbitFavorites.starCurrent(); } },
       { id: "new", label: "New session", run: function () { const b = document.getElementById("session-new"); if (b) b.click(); } },
       { id: "dup", label: "Duplicate session", run: function () { if (window.rabbitSessionsExtra) rabbitSessionsExtra.duplicate(); } },
       { id: "clear", label: "Clear chat", run: function () { const b = document.getElementById("clear-chat"); if (b) b.click(); } },
@@ -87,7 +93,19 @@
       { id: "help", label: "Open help", run: function () { const b = document.getElementById("help-open"); if (b) b.click(); } },
       { id: "focus", label: "Focus composer", run: function () { promptEl.focus(); } },
     ];
-    loadRecent().forEach(function (text, i) {
+    loadList(FAV_KEY).forEach(function (text, i) {
+      base.push({
+        id: "fav-" + i,
+        label: "★ " + text.slice(0, 60) + (text.length > 60 ? "…" : ""),
+        recent: text,
+        run: function () {
+          promptEl.value = text;
+          promptEl.focus();
+          promptEl.dispatchEvent(new Event("input", { bubbles: true }));
+        },
+      });
+    });
+    loadList(RECENT_KEY).forEach(function (text, i) {
       base.push({
         id: "recent-" + i,
         label: "Recent: " + text.slice(0, 60) + (text.length > 60 ? "…" : ""),
@@ -114,7 +132,6 @@
       const li = document.createElement("li");
       li.className = "cmd-palette-item" + (i === 0 ? " active" : "");
       li.textContent = c.label;
-      li.dataset.idx = String(i);
       li.addEventListener("click", function () {
         runIdx(i);
       });
@@ -184,9 +201,7 @@
       if (overlay.hidden) open();
       else close();
     }
-    if (ev.key === "Escape" && !overlay.hidden) {
-      close();
-    }
+    if (ev.key === "Escape" && !overlay.hidden) close();
   });
 
   window.rabbitCommandPalette = { open: open, close: close };
