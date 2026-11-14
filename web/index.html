@@ -20,6 +20,9 @@
           t = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
         }
         document.documentElement.setAttribute("data-theme", t);
+        if (localStorage.getItem("rabbit-reduce-motion") === "1") {
+          document.documentElement.classList.add("reduce-motion");
+        }
       } catch (e) {}
     })();
   </script>
@@ -145,6 +148,7 @@
         <label class="check"><input type="checkbox" id="show-roles" checked /> Show role labels</label>
         <label class="check"><input type="checkbox" id="linkify-urls" checked /> Clickable links</label>
         <label class="check"><input type="checkbox" id="compact-bubbles" /> Compact bubbles</label>
+        <label class="check"><input type="checkbox" id="reduce-motion" /> Reduce motion</label>
         <label class="check"><input type="checkbox" id="dark-mode-toggle" checked /> Dark mode</label>
         <label>Theme
           <select id="theme-select">
@@ -234,8 +238,8 @@
       <div class="chat" id="chat" title="Drop a chat JSON/MD export here to import">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint">Hover: Copy · MD · ↓ · Quote · Edit · Resend · ✕</p>
-          <p class="hint"><kbd>r</kbd> regen · <kbd>n</kbd> new session · <kbd>/</kbd> search · ↑/↓ jump</p>
+          <p class="hint">Click a message to focus · <kbd>d</kbd> download · Clear asks confirm</p>
+          <p class="hint"><kbd>r</kbd> regen · <kbd>n</kbd> session · <kbd>?</kbd> help · reduce motion</p>
         </div>
       </div>
 
@@ -254,7 +258,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">r regen · n session · Home/End · ↑ top FAB · length warn</p>
+      <p class="footer-note">Click focus · d download · clear confirm · reduce motion</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -264,9 +268,9 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><kbd>j</kbd>/<kbd>k</kbd> · <kbd>c</kbd>/<kbd>q</kbd>/<kbd>e</kbd>/<kbd>i</kbd> · <kbd>/</kbd> · <kbd>Esc</kbd></li>
-        <li><kbd>r</kbd> regenerate · <kbd>n</kbd> new session · <kbd>Home</kbd>/<kbd>End</kbd> scroll</li>
-        <li>↑ jump to top · ↓ jump to latest · composer turns amber/red when long</li>
+        <li>Click a message to focus · <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>c</kbd>/<kbd>q</kbd>/<kbd>e</kbd>/<kbd>d</kbd></li>
+        <li><kbd>r</kbd> regen · <kbd>n</kbd> new session · <kbd>/</kbd> search · <kbd>?</kbd> help</li>
+        <li>Clear confirms when ≥3 messages · <strong>Reduce motion</strong> in sidebar</li>
         <li><kbd>Ctrl+Shift+D</kbd> dark mode · <kbd>Ctrl+M</kbd> mic</li>
       </ul>
     </div>
@@ -289,6 +293,7 @@
   <script src="/static/ux-extra.js"></script>
   <script src="/static/ux-search.js"></script>
   <script src="/static/ux-more.js"></script>
+  <script src="/static/ux-polish.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
