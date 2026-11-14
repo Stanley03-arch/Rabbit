@@ -59,6 +59,35 @@
 .persist-status[data-kind="err"] { color: #ef4444; font-weight: 600; }
 .persist-status[data-kind="off"] { color: var(--muted); }
 
+.msg-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.75rem 0.5rem;
+  flex-wrap: wrap;
+}
+.msg-filter {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.msg-filter:hover { border-color: var(--accent-2); }
+.msg-filter.active {
+  background: var(--accent-2);
+  color: #0c0f14;
+  border-color: transparent;
+  font-weight: 600;
+}
+.msg-filter-count {
+  margin-left: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
 .bubble-actions { flex-wrap: wrap; }
 .bubble-act.del-btn:hover {
   color: var(--danger);
