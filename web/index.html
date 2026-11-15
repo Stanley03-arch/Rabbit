@@ -37,6 +37,7 @@
   <link rel="stylesheet" href="/static/pwa-extra.css" />
   <link rel="stylesheet" href="/static/ux-extra.css" />
   <link rel="stylesheet" href="/static/command-palette.css" />
+  <link rel="stylesheet" href="/static/code-copy.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -195,7 +196,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Queue · undo clear · <kbd>Ctrl+K</kbd></p>
+            <p class="muted">Continue · code Copy · <kbd>Ctrl+/-</kbd></p>
           </div>
         </div>
         <div class="top-right">
@@ -232,8 +233,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint">Send while generating → <strong>queued</strong> · Clear is undoable</p>
-          <p class="hint"><kbd>Ctrl+K</kbd> · ★ Favorite · <kbd>Alt+[</kbd>/<kbd>]</kbd></p>
+          <p class="hint"><strong>Continue</strong> / Shorter / More detail after replies</p>
+          <p class="hint">Code blocks get <strong>Copy</strong> · <kbd>Ctrl+</kbd>/<kbd>-</kbd> UI scale</p>
         </div>
       </div>
 
@@ -252,7 +253,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Queue while generating · undo clear · favorites</p>
+      <p class="footer-note">Continue chips · code Copy · Ctrl+/- scale</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -262,10 +263,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li>Send while generating → message is <strong>queued</strong> (click chip to cancel)</li>
-        <li><strong>Clear</strong>: click the toast within ~8s to undo</li>
-        <li><kbd>Ctrl+K</kbd> palette · <kbd>Ctrl+Shift+F</kbd> favorite · <kbd>Alt+[</kbd>/<kbd>]</kbd> sessions</li>
-        <li><kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> filters · drop files · <kbd>?</kbd> help</li>
+        <li><strong>Continue</strong> / Shorter / More detail chips after a reply</li>
+        <li><kbd>Ctrl+</kbd> / <kbd>Ctrl-</kbd> UI scale · <kbd>Ctrl+0</kbd> reset</li>
+        <li>Send while generating queues · Clear is undoable via toast</li>
+        <li><kbd>Ctrl+K</kbd> palette · <kbd>Ctrl+Shift+F</kbd> favorite · <kbd>?</kbd> help</li>
       </ul>
     </div>
   </div>
@@ -295,6 +296,7 @@
   <script src="/static/command-palette.js"></script>
   <script src="/static/file-drop.js"></script>
   <script src="/static/msg-queue.js"></script>
+  <script src="/static/code-copy.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
