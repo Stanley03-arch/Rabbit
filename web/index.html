@@ -38,6 +38,7 @@
   <link rel="stylesheet" href="/static/ux-extra.css" />
   <link rel="stylesheet" href="/static/command-palette.css" />
   <link rel="stylesheet" href="/static/code-copy.css" />
+  <link rel="stylesheet" href="/static/sidebar-collapse.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -196,7 +197,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Continue · code Copy · <kbd>Ctrl+/-</kbd></p>
+            <p class="muted">Fenced code · panel collapse · <kbd>Ctrl+K</kbd></p>
           </div>
         </div>
         <div class="top-right">
@@ -233,8 +234,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint"><strong>Continue</strong> / Shorter / More detail after replies</p>
-          <p class="hint">Code blocks get <strong>Copy</strong> · <kbd>Ctrl+</kbd>/<kbd>-</kbd> UI scale</p>
+          <p class="hint"><strong>```</strong> code fences render with Copy · click panel titles to collapse</p>
+          <p class="hint"><kbd>Ctrl+K</kbd> Continue / Shorter / More detail</p>
         </div>
       </div>
 
@@ -253,20 +254,20 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Continue chips · code Copy · Ctrl+/- scale</p>
+      <p class="footer-note">Fenced code · collapse panels · Continue in Ctrl+K</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
     <div class="help-card" role="dialog" aria-labelledby="help-title">
       <header>
-        <h2 id="help-title">Shortcuts & tips</h2>
+        <h2 id="help-title">Shortcuts &amp; tips</h2>
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><strong>Continue</strong> / Shorter / More detail chips after a reply</li>
-        <li><kbd>Ctrl+</kbd> / <kbd>Ctrl-</kbd> UI scale · <kbd>Ctrl+0</kbd> reset</li>
-        <li>Send while generating queues · Clear is undoable via toast</li>
-        <li><kbd>Ctrl+K</kbd> palette · <kbd>Ctrl+Shift+F</kbd> favorite · <kbd>?</kbd> help</li>
+        <li>Click a sidebar <strong>panel title</strong> to collapse/expand (remembered)</li>
+        <li><code>```</code> fences become code blocks with <strong>Copy</strong></li>
+        <li><kbd>Ctrl+K</kbd>: Continue · Shorter · More detail · favorites · stats</li>
+        <li>Queue while generating · undo Clear · <kbd>Ctrl+/-</kbd> scale</li>
       </ul>
     </div>
   </div>
@@ -296,7 +297,9 @@
   <script src="/static/command-palette.js"></script>
   <script src="/static/file-drop.js"></script>
   <script src="/static/msg-queue.js"></script>
+  <script src="/static/markdown-lite.js"></script>
   <script src="/static/code-copy.js"></script>
+  <script src="/static/sidebar-collapse.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
