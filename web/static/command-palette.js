@@ -1,4 +1,4 @@
-/* Ctrl+K command palette + recent + favorites + continue */
+/* Ctrl+K command palette + recent + favorites + continue + copy last */
 (function () {
   const RECENT_KEY = "rabbit-recent-prompts";
   const FAV_KEY = "rabbit-favorite-prompts";
@@ -84,7 +84,9 @@
         : { msgs: 0, user: 0, bot: 0, chars: 0 };
     const base = [
       { id: "stats", label: "Chat stats: " + stats.msgs + " msgs (" + stats.user + " you / " + stats.bot + " rabbit, " + stats.chars + " chars)", run: function () { if (window.rabbitToast) rabbitToast(stats.msgs + " messages · " + stats.chars + " chars", "ok"); } },
+      { id: "copy-last", label: "Copy last bot reply", run: function () { if (window.rabbitLatencyBadge) rabbitLatencyBadge.copyLastReply(); } },
       { id: "copy-md", label: "Copy all as Markdown", run: function () { if (window.rabbitFavorites) rabbitFavorites.copyAllMarkdown(); } },
+      { id: "shortcuts", label: "Export shortcuts cheat sheet", run: function () { if (window.rabbitLatencyBadge) rabbitLatencyBadge.exportShortcuts(); } },
       { id: "continue", label: "Continue last reply", run: function () { sendPrompt("Continue."); } },
       { id: "shorter", label: "Make last reply shorter", run: function () { sendPrompt("Make that shorter."); } },
       { id: "detail", label: "More detail on last reply", run: function () { sendPrompt("Go into more detail."); } },
