@@ -40,6 +40,7 @@
   <link rel="stylesheet" href="/static/code-copy.css" />
   <link rel="stylesheet" href="/static/sidebar-collapse.css" />
   <link rel="stylesheet" href="/static/latency-badge.css" />
+  <link rel="stylesheet" href="/static/conn-pulse.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -198,7 +199,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Latency badge · <kbd>Ctrl+Shift+L</kbd> copy last</p>
+            <p class="muted">Conn pulse · filter settings · search Enter</p>
           </div>
         </div>
         <div class="top-right">
@@ -219,7 +220,7 @@
       <div class="session-bar">
         <div class="session-tabs" id="session-tabs"></div>
         <button type="button" class="btn-session-new" id="session-new" title="New session">+ Session</button>
-        <input type="search" id="chat-search" class="chat-search" placeholder="Search chat…" autocomplete="off" />
+        <input type="search" id="chat-search" class="chat-search" placeholder="Search chat… (Enter = next hit)" autocomplete="off" />
         <button type="button" class="btn-help" id="help-open" title="Keyboard shortcuts (?)">?</button>
       </div>
 
@@ -235,8 +236,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint">Top bar shows last latency · <kbd>Ctrl+Shift+L</kbd> copy last reply</p>
-          <p class="hint"><kbd>Ctrl+Shift+H</kbd> export shortcuts · <kbd>Ctrl+K</kbd> palette</p>
+          <p class="hint">Search: type then <kbd>Enter</kbd> to jump hits · filter Generation settings</p>
+          <p class="hint">Green pulse = online · latency badge after replies</p>
         </div>
       </div>
 
@@ -255,7 +256,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Latency badge · copy last reply · shortcuts export</p>
+      <p class="footer-note">Conn pulse · settings filter · search Enter</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -265,10 +266,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><kbd>Ctrl+Shift+L</kbd> copy last bot reply · <kbd>Ctrl+Shift+H</kbd> export shortcuts.txt</li>
-        <li>Latency badge mirrors last latency / tok/s in the top bar</li>
-        <li>Click sidebar panel titles to collapse · fenced code gets Copy</li>
-        <li><kbd>Ctrl+K</kbd> palette · queue while generating · undo Clear</li>
+        <li>Chat search: <kbd>Enter</kbd> jumps to the next match</li>
+        <li>Generation panel: type in <strong>Filter settings</strong> to find toggles</li>
+        <li>Conn status pulses green when online</li>
+        <li><kbd>Ctrl+Shift+L</kbd> copy last reply · <kbd>Ctrl+K</kbd> palette</li>
       </ul>
     </div>
   </div>
@@ -302,6 +303,7 @@
   <script src="/static/code-copy.js"></script>
   <script src="/static/sidebar-collapse.js"></script>
   <script src="/static/latency-badge.js"></script>
+  <script src="/static/conn-pulse.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
