@@ -1,0 +1,8 @@
+.session-tab.session-pinned {
+  border-color: var(--accent-2);
+  box-shadow: inset 0 -2px 0 var(--accent-2);
+}
+.session-tab .pin-mark {
+  font-size: 0.7em;
+  opacity: 0.9;
+}
