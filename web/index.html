@@ -41,6 +41,7 @@
   <link rel="stylesheet" href="/static/sidebar-collapse.css" />
   <link rel="stylesheet" href="/static/latency-badge.css" />
   <link rel="stylesheet" href="/static/conn-pulse.css" />
+  <link rel="stylesheet" href="/static/session-ux.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -199,7 +200,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Conn pulse · filter settings · search Enter</p>
+            <p class="muted">Dblclick rename · pin · quiet hours</p>
           </div>
         </div>
         <div class="top-right">
@@ -236,8 +237,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint">Search: type then <kbd>Enter</kbd> to jump hits · filter Generation settings</p>
-          <p class="hint">Green pulse = online · latency badge after replies</p>
+          <p class="hint"><strong>Double-click</strong> a session tab to rename · <kbd>Ctrl+Alt+P</kbd> pin</p>
+          <p class="hint">Quiet hours mutes reply sound 22:00–07:00</p>
         </div>
       </div>
 
@@ -256,7 +257,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Conn pulse · settings filter · search Enter</p>
+      <p class="footer-note">Rename session · pin · quiet hours</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -266,10 +267,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li>Chat search: <kbd>Enter</kbd> jumps to the next match</li>
-        <li>Generation panel: type in <strong>Filter settings</strong> to find toggles</li>
-        <li>Conn status pulses green when online</li>
-        <li><kbd>Ctrl+Shift+L</kbd> copy last reply · <kbd>Ctrl+K</kbd> palette</li>
+        <li>Double-click a <strong>session tab</strong> to rename</li>
+        <li><kbd>Ctrl+Alt+P</kbd> pin / unpin the active session</li>
+        <li><strong>Quiet hours</strong> (Generation): mute reply sound 22:00–07:00 local</li>
+        <li>Search Enter · settings filter · <kbd>Ctrl+K</kbd> palette</li>
       </ul>
     </div>
   </div>
@@ -304,6 +305,7 @@
   <script src="/static/sidebar-collapse.js"></script>
   <script src="/static/latency-badge.js"></script>
   <script src="/static/conn-pulse.js"></script>
+  <script src="/static/session-ux.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
