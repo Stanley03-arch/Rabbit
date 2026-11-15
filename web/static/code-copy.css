@@ -1,0 +1,44 @@
+.code-wrap {
+  position: relative;
+  margin: 0.4rem 0;
+}
+.code-wrap pre {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  padding-top: 1.6rem;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  font-size: 0.85em;
+}
+.code-copy-btn {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  opacity: 0.85;
+}
+.code-copy-btn:hover {
+  opacity: 1;
+  border-color: var(--accent-2);
+}
+
+.continue-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.25rem 0.75rem 0.35rem;
+}
+.continue-bar[hidden] {
+  display: none !important;
+}
+.continue-chip {
+  font-size: 0.8rem;
+}
