@@ -39,6 +39,7 @@
   <link rel="stylesheet" href="/static/command-palette.css" />
   <link rel="stylesheet" href="/static/code-copy.css" />
   <link rel="stylesheet" href="/static/sidebar-collapse.css" />
+  <link rel="stylesheet" href="/static/latency-badge.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -197,7 +198,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Fenced code · panel collapse · <kbd>Ctrl+K</kbd></p>
+            <p class="muted">Latency badge · <kbd>Ctrl+Shift+L</kbd> copy last</p>
           </div>
         </div>
         <div class="top-right">
@@ -234,8 +235,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint"><strong>```</strong> code fences render with Copy · click panel titles to collapse</p>
-          <p class="hint"><kbd>Ctrl+K</kbd> Continue / Shorter / More detail</p>
+          <p class="hint">Top bar shows last latency · <kbd>Ctrl+Shift+L</kbd> copy last reply</p>
+          <p class="hint"><kbd>Ctrl+Shift+H</kbd> export shortcuts · <kbd>Ctrl+K</kbd> palette</p>
         </div>
       </div>
 
@@ -254,7 +255,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Fenced code · collapse panels · Continue in Ctrl+K</p>
+      <p class="footer-note">Latency badge · copy last reply · shortcuts export</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -264,10 +265,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li>Click a sidebar <strong>panel title</strong> to collapse/expand (remembered)</li>
-        <li><code>```</code> fences become code blocks with <strong>Copy</strong></li>
-        <li><kbd>Ctrl+K</kbd>: Continue · Shorter · More detail · favorites · stats</li>
-        <li>Queue while generating · undo Clear · <kbd>Ctrl+/-</kbd> scale</li>
+        <li><kbd>Ctrl+Shift+L</kbd> copy last bot reply · <kbd>Ctrl+Shift+H</kbd> export shortcuts.txt</li>
+        <li>Latency badge mirrors last latency / tok/s in the top bar</li>
+        <li>Click sidebar panel titles to collapse · fenced code gets Copy</li>
+        <li><kbd>Ctrl+K</kbd> palette · queue while generating · undo Clear</li>
       </ul>
     </div>
   </div>
@@ -300,6 +301,7 @@
   <script src="/static/markdown-lite.js"></script>
   <script src="/static/code-copy.js"></script>
   <script src="/static/sidebar-collapse.js"></script>
+  <script src="/static/latency-badge.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
