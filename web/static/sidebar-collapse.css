@@ -1,0 +1,19 @@
+.sidebar section.panel > h3.panel-toggle {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.sidebar section.panel > h3.panel-toggle::after {
+  content: "▾";
+  font-size: 0.75em;
+  opacity: 0.7;
+}
+.sidebar section.panel.panel-collapsed > h3.panel-toggle::after {
+  content: "▸";
+}
+.sidebar section.panel.panel-collapsed > :not(h3) {
+  display: none !important;
+}

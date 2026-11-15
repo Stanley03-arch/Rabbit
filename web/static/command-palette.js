@@ -1,4 +1,4 @@
-/* Ctrl+K command palette + recent + favorites */
+/* Ctrl+K command palette + recent + favorites + continue */
 (function () {
   const RECENT_KEY = "rabbit-recent-prompts";
   const FAV_KEY = "rabbit-favorite-prompts";
@@ -32,6 +32,15 @@
     formEl.addEventListener("submit", function () {
       pushRecent(promptEl.value);
     });
+  }
+
+  function sendPrompt(text) {
+    promptEl.value = text;
+    promptEl.dispatchEvent(new Event("input", { bubbles: true }));
+    if (formEl) {
+      if (typeof formEl.requestSubmit === "function") formEl.requestSubmit();
+      else formEl.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    }
   }
 
   let overlay = document.getElementById("cmd-palette");
@@ -76,6 +85,9 @@
     const base = [
       { id: "stats", label: "Chat stats: " + stats.msgs + " msgs (" + stats.user + " you / " + stats.bot + " rabbit, " + stats.chars + " chars)", run: function () { if (window.rabbitToast) rabbitToast(stats.msgs + " messages · " + stats.chars + " chars", "ok"); } },
       { id: "copy-md", label: "Copy all as Markdown", run: function () { if (window.rabbitFavorites) rabbitFavorites.copyAllMarkdown(); } },
+      { id: "continue", label: "Continue last reply", run: function () { sendPrompt("Continue."); } },
+      { id: "shorter", label: "Make last reply shorter", run: function () { sendPrompt("Make that shorter."); } },
+      { id: "detail", label: "More detail on last reply", run: function () { sendPrompt("Go into more detail."); } },
       { id: "star", label: "★ Favorite current prompt", run: function () { if (window.rabbitFavorites) rabbitFavorites.starCurrent(); } },
       { id: "new", label: "New session", run: function () { const b = document.getElementById("session-new"); if (b) b.click(); } },
       { id: "dup", label: "Duplicate session", run: function () { if (window.rabbitSessionsExtra) rabbitSessionsExtra.duplicate(); } },
