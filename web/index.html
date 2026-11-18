@@ -44,6 +44,7 @@
   <link rel="stylesheet" href="/static/session-ux.css" />
   <link rel="stylesheet" href="/static/density.css" />
   <link rel="stylesheet" href="/static/session-menu.css" />
+  <link rel="stylesheet" href="/static/queue-clear.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -202,7 +203,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Density · right-click session · <kbd>Ctrl+Shift+J</kbd></p>
+            <p class="muted">Templates · clear queue · density</p>
           </div>
         </div>
         <div class="top-right">
@@ -239,8 +240,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint"><strong>Right-click</strong> a session tab · <kbd>Ctrl+Shift+J</kbd> jump to pinned</p>
-          <p class="hint">Generation → <strong>Density</strong>: Comfortable / Compact / Dense</p>
+          <p class="hint">Dashed chips = <strong>templates</strong> (system + starter) · <strong>Save template</strong> under composer</p>
+          <p class="hint">Queued messages show <strong>Clear queue</strong> · sticky composer on mobile</p>
         </div>
       </div>
 
@@ -259,7 +260,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Density presets · session context menu · jump pinned</p>
+      <p class="footer-note">Templates · clear queue · sticky mobile composer</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -269,10 +270,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><strong>Right-click</strong> session tab: rename, pin, export, duplicate</li>
-        <li><kbd>Ctrl+Shift+J</kbd> jump to first pinned session</li>
-        <li><strong>Density</strong> in Generation: Comfortable / Compact / Dense</li>
-        <li>Dblclick rename · <kbd>Ctrl+Alt+P</kbd> pin · quiet hours</li>
+        <li>Dashed chips: <strong>templates</strong> set system prompt + starter text</li>
+        <li><strong>Save template</strong> stores current system + composer text</li>
+        <li><strong>Clear queue</strong> drops all messages waiting while generating</li>
+        <li>Right-click session · density · pin · <kbd>Ctrl+K</kbd></li>
       </ul>
     </div>
   </div>
@@ -310,6 +311,8 @@
   <script src="/static/session-ux.js"></script>
   <script src="/static/density.js"></script>
   <script src="/static/session-menu.js"></script>
+  <script src="/static/templates.js"></script>
+  <script src="/static/queue-clear.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
