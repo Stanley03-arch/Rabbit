@@ -1,0 +1,49 @@
+html.focus-mode .sidebar {
+  opacity: 0.22;
+  filter: grayscale(0.4);
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+html.focus-mode .sidebar:hover {
+  opacity: 0.85;
+  pointer-events: auto;
+  filter: none;
+}
+html.focus-mode .chips {
+  opacity: 0.5;
+}
+
+.btn-focus {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.btn-focus[aria-pressed="true"] {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+}
+
+.read-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 300;
+  pointer-events: none;
+  background: transparent;
+}
+.read-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent-2), #a78bfa);
+  transition: width 0.08s linear;
+}
+
+.deep-link-btn {
+  font-size: 0.72rem;
+}
