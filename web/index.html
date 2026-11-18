@@ -47,6 +47,7 @@
   <link rel="stylesheet" href="/static/queue-clear.css" />
   <link rel="stylesheet" href="/static/reactions.css" />
   <link rel="stylesheet" href="/static/focus-mode.css" />
+  <link rel="stylesheet" href="/static/session-filter.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -205,7 +206,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Focus · progress · message links</p>
+            <p class="muted">Filter sessions · Ctrl+Alt+D density</p>
           </div>
         </div>
         <div class="top-right">
@@ -242,8 +243,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint"><strong>Focus</strong> button or <kbd>Ctrl+.</kbd> dims the sidebar</p>
-          <p class="hint">**Link** on a message copies a deep link · top bar shows reading progress</p>
+          <p class="hint"><strong>Filter sessions</strong> in the session bar · <kbd>Ctrl+Alt+D</kbd> cycle density</p>
+          <p class="hint">In composer: <kbd>Ctrl+Shift+V</kbd> paste clipboard as a code fence</p>
         </div>
       </div>
 
@@ -253,7 +254,7 @@
         <button type="button" class="linkish" id="save-prompt" title="Save current text as a chip">Save prompt</button>
       </div>
       <form class="composer" id="form">
-        <textarea id="prompt" rows="2" autocomplete="off" placeholder="Message… (queues if busy)"></textarea>
+        <textarea id="prompt" rows="2" autocomplete="off" placeholder="Message… (Ctrl+Shift+V = paste as code)"></textarea>
         <button type="button" class="btn-stop" id="stop" hidden title="Stop request">Stop</button>
         <button type="button" class="btn-tts-stop" id="tts-stop" hidden title="Stop speaking">🔇</button>
         <button type="submit" id="send">Send</button>
@@ -262,7 +263,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Focus mode · reading progress · message links</p>
+      <p class="footer-note">Session filter · density cycle · paste-as-code</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -272,10 +273,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><strong>Focus</strong> / <kbd>Ctrl+.</kbd> dims sidebar for reading</li>
-        <li>Top progress bar tracks chat scroll position</li>
-        <li><strong>Link</strong> on a message copies a #deep-link URL</li>
-        <li>Reactions · templates · density · <kbd>Ctrl+K</kbd></li>
+        <li><strong>Filter sessions</strong> box in the session bar</li>
+        <li><kbd>Ctrl+Alt+D</kbd> cycle Comfortable → Compact → Dense</li>
+        <li><kbd>Ctrl+Shift+V</kbd> in composer: paste as fenced code</li>
+        <li>Focus · reactions · templates · <kbd>Ctrl+K</kbd></li>
       </ul>
     </div>
   </div>
@@ -319,6 +320,7 @@
   <script src="/static/token-budget.js"></script>
   <script src="/static/autoscroll-reply.js"></script>
   <script src="/static/focus-mode.js"></script>
+  <script src="/static/session-filter.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
