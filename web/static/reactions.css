@@ -1,0 +1,42 @@
+.react-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  margin-top: 0.35rem;
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+.bubble:hover .react-bar,
+.react-bar:focus-within {
+  opacity: 1;
+}
+.react-btn {
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 6px;
+  padding: 0.05rem 0.25rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1.2;
+}
+.react-btn:hover {
+  border-color: var(--border);
+  background: var(--panel);
+}
+.react-btn.active {
+  border-color: var(--accent-2);
+  background: rgba(127, 127, 255, 0.12);
+}
+.react-current {
+  margin-left: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.composer-count.budget-warn {
+  color: #f59e0b;
+  font-weight: 600;
+}
+.composer-count.budget-over {
+  color: #ef4444;
+  font-weight: 700;
+}
