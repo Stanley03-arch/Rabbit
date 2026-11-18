@@ -45,6 +45,7 @@
   <link rel="stylesheet" href="/static/density.css" />
   <link rel="stylesheet" href="/static/session-menu.css" />
   <link rel="stylesheet" href="/static/queue-clear.css" />
+  <link rel="stylesheet" href="/static/reactions.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -203,7 +204,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Templates · clear queue · density</p>
+            <p class="muted">Reactions · token budget · templates</p>
           </div>
         </div>
         <div class="top-right">
@@ -240,8 +241,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint">Dashed chips = <strong>templates</strong> (system + starter) · <strong>Save template</strong> under composer</p>
-          <p class="hint">Queued messages show <strong>Clear queue</strong> · sticky composer on mobile</p>
+          <p class="hint">Hover a bubble to <strong>react</strong> (👍 👎 🔥 💡 ❓) — saved locally</p>
+          <p class="hint">Composer count warns when prompt ~tokens approach Tokens setting</p>
         </div>
       </div>
 
@@ -260,7 +261,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Templates · clear queue · sticky mobile composer</p>
+      <p class="footer-note">Reactions · token budget warn · auto-scroll reply</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -270,10 +271,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li>Dashed chips: <strong>templates</strong> set system prompt + starter text</li>
-        <li><strong>Save template</strong> stores current system + composer text</li>
-        <li><strong>Clear queue</strong> drops all messages waiting while generating</li>
-        <li>Right-click session · density · pin · <kbd>Ctrl+K</kbd></li>
+        <li>Hover messages for emoji reactions (local only)</li>
+        <li>Composer turns amber/red when prompt size vs Tokens is high</li>
+        <li>Templates · clear queue · density · session right-click</li>
+        <li><kbd>Ctrl+K</kbd> palette · <kbd>Ctrl+Shift+J</kbd> pinned session</li>
       </ul>
     </div>
   </div>
@@ -313,6 +314,9 @@
   <script src="/static/session-menu.js"></script>
   <script src="/static/templates.js"></script>
   <script src="/static/queue-clear.js"></script>
+  <script src="/static/reactions.js"></script>
+  <script src="/static/token-budget.js"></script>
+  <script src="/static/autoscroll-reply.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
