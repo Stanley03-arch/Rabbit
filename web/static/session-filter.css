@@ -1,0 +1,20 @@
+.session-filter {
+  min-width: 7rem;
+  max-width: 10rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8rem;
+}
+.session-filter:focus {
+  outline: none;
+  border-color: var(--accent-2);
+}
+@media (max-width: 700px) {
+  .session-filter {
+    max-width: 6.5rem;
+    min-width: 5rem;
+  }
+}
