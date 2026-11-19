@@ -48,6 +48,7 @@
   <link rel="stylesheet" href="/static/reactions.css" />
   <link rel="stylesheet" href="/static/focus-mode.css" />
   <link rel="stylesheet" href="/static/session-filter.css" />
+  <link rel="stylesheet" href="/static/error-log.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -206,7 +207,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Filter sessions · Ctrl+Alt+D density</p>
+            <p class="muted">Error strip · retry · filter sessions</p>
           </div>
         </div>
         <div class="top-right">
@@ -243,8 +244,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint"><strong>Filter sessions</strong> in the session bar · <kbd>Ctrl+Alt+D</kbd> cycle density</p>
-          <p class="hint">In composer: <kbd>Ctrl+Shift+V</kbd> paste clipboard as a code fence</p>
+          <p class="hint">On errors: red <strong>status strip</strong> with <strong>Retry</strong> / dismiss / export log</p>
+          <p class="hint">Filter sessions · Ctrl+Shift+V paste-as-code · Focus mode</p>
         </div>
       </div>
 
@@ -263,7 +264,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Session filter · density cycle · paste-as-code</p>
+      <p class="footer-note">Error strip · retry last · session filter</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -273,9 +274,9 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><strong>Filter sessions</strong> box in the session bar</li>
-        <li><kbd>Ctrl+Alt+D</kbd> cycle Comfortable → Compact → Dense</li>
-        <li><kbd>Ctrl+Shift+V</kbd> in composer: paste as fenced code</li>
+        <li>Status strip appears on errors — <strong>Retry</strong> resends last prompt</li>
+        <li><strong>Log</strong> exports recent errors as a text file</li>
+        <li>Filter sessions · <kbd>Ctrl+Alt+D</kbd> density · <kbd>Ctrl+Shift+V</kbd> code paste</li>
         <li>Focus · reactions · templates · <kbd>Ctrl+K</kbd></li>
       </ul>
     </div>
@@ -321,6 +322,7 @@
   <script src="/static/autoscroll-reply.js"></script>
   <script src="/static/focus-mode.js"></script>
   <script src="/static/session-filter.js"></script>
+  <script src="/static/error-log.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
