@@ -49,6 +49,7 @@
   <link rel="stylesheet" href="/static/focus-mode.css" />
   <link rel="stylesheet" href="/static/session-filter.css" />
   <link rel="stylesheet" href="/static/error-log.css" />
+  <link rel="stylesheet" href="/static/notes-drawer.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -207,7 +208,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Error strip · retry · filter sessions</p>
+            <p class="muted">Notes · presets · drag sessions</p>
           </div>
         </div>
         <div class="top-right">
@@ -244,8 +245,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint">On errors: red <strong>status strip</strong> with <strong>Retry</strong> / dismiss / export log</p>
-          <p class="hint">Filter sessions · Ctrl+Shift+V paste-as-code · Focus mode</p>
+          <p class="hint"><strong>Notes</strong> / <kbd>Ctrl+Shift+N</kbd> · drag session tabs to reorder</p>
+          <p class="hint">Generation <strong>Presets</strong>: Precise / Balanced / Creative / Long</p>
         </div>
       </div>
 
@@ -264,7 +265,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Error strip · retry last · session filter</p>
+      <p class="footer-note">Notes · gen presets · drag sessions</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -274,10 +275,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li>Status strip appears on errors — <strong>Retry</strong> resends last prompt</li>
-        <li><strong>Log</strong> exports recent errors as a text file</li>
-        <li>Filter sessions · <kbd>Ctrl+Alt+D</kbd> density · <kbd>Ctrl+Shift+V</kbd> code paste</li>
-        <li>Focus · reactions · templates · <kbd>Ctrl+K</kbd></li>
+        <li><strong>Notes</strong> / <kbd>Ctrl+Shift+N</kbd> — local scratch pad (Insert into prompt)</li>
+        <li>Drag session tabs to reorder (order is remembered)</li>
+        <li>Generation <strong>Presets</strong>: Precise / Balanced / Creative / Long</li>
+        <li>Error strip · focus · density · <kbd>Ctrl+K</kbd></li>
       </ul>
     </div>
   </div>
@@ -323,6 +324,7 @@
   <script src="/static/focus-mode.js"></script>
   <script src="/static/session-filter.js"></script>
   <script src="/static/error-log.js"></script>
+  <script src="/static/notes-drawer.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
