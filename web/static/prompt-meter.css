@@ -1,0 +1,43 @@
+.prompt-meter {
+  height: 3px;
+  margin: 0 0.75rem 0.25rem;
+  border-radius: 2px;
+  background: rgba(127, 127, 127, 0.15);
+  overflow: hidden;
+}
+.prompt-meter-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent-2);
+  transition: width 0.12s ease, background 0.15s ease;
+}
+.prompt-meter-fill.warn {
+  background: #f59e0b;
+}
+.prompt-meter-fill.over {
+  background: #ef4444;
+}
+
+.metrics-chip {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.7rem;
+  cursor: pointer;
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.metrics-chip:hover {
+  color: var(--text);
+  border-color: var(--accent-2);
+}
+
+@media (max-width: 900px) {
+  .metrics-chip {
+    display: none;
+  }
+}
