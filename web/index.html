@@ -52,6 +52,7 @@
   <link rel="stylesheet" href="/static/notes-drawer.css" />
   <link rel="stylesheet" href="/static/changelog-panel.css" />
   <link rel="stylesheet" href="/static/prompt-history.css" />
+  <link rel="stylesheet" href="/static/pin-messages.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -210,7 +211,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">History ↑↓ · panic mute · unread</p>
+            <p class="muted">Pin · copy code · draft backup</p>
           </div>
         </div>
         <div class="top-right">
@@ -247,8 +248,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint">Empty composer: <kbd>↑</kbd>/<kbd>↓</kbd> cycle sent prompts</p>
-          <p class="hint"><kbd>Ctrl+Shift+X</kbd> panic stop (TTS + mic + generation)</p>
+          <p class="hint"><strong>Pin</strong> on a bubble · chips appear above chat · click to reuse</p>
+          <p class="hint"><strong>Copy all code</strong> under composer · drafts auto-backup if you refresh</p>
         </div>
       </div>
 
@@ -267,7 +268,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Prompt history ↑↓ · panic mute · unread badges</p>
+      <p class="footer-note">Pin messages · copy all code · draft backup</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -277,10 +278,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li>Composer <kbd>↑</kbd>/<kbd>↓</kbd> — cycle last sent prompts</li>
-        <li><kbd>Ctrl+Shift+X</kbd> — stop TTS, mic, and generation</li>
-        <li>Session tabs can show unread badges</li>
-        <li>Enter to send · Alt+[ ] · Notes · <kbd>Ctrl+K</kbd></li>
+        <li><strong>Pin</strong> on messages — strip above chat, click to reuse, × to unpin</li>
+        <li><strong>Copy all code</strong> — every fenced block in the current chat</li>
+        <li>Composer draft auto-saves across refresh until you send</li>
+        <li>↑ history · Ctrl+Shift+X panic · Enter to send · <kbd>Ctrl+K</kbd></li>
       </ul>
     </div>
   </div>
@@ -329,6 +330,7 @@
   <script src="/static/notes-drawer.js"></script>
   <script src="/static/changelog-panel.js"></script>
   <script src="/static/prompt-history.js"></script>
+  <script src="/static/pin-messages.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
