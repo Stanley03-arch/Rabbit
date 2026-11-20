@@ -53,6 +53,7 @@
   <link rel="stylesheet" href="/static/changelog-panel.css" />
   <link rel="stylesheet" href="/static/prompt-history.css" />
   <link rel="stylesheet" href="/static/pin-messages.css" />
+  <link rel="stylesheet" href="/static/typing-export.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -211,7 +212,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Pin · copy code · draft backup</p>
+            <p class="muted">Typing · Save · Peek</p>
           </div>
         </div>
         <div class="top-right">
@@ -248,8 +249,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint"><strong>Pin</strong> on a bubble · chips appear above chat · click to reuse</p>
-          <p class="hint"><strong>Copy all code</strong> under composer · drafts auto-backup if you refresh</p>
+          <p class="hint">While streaming: <strong>Rabbit is writing…</strong> indicator</p>
+          <p class="hint"><strong>Save</strong> on a bubble downloads .md · <strong>Peek</strong> / <kbd>Ctrl+Shift+P</kbd> last reply panel</p>
         </div>
       </div>
 
@@ -268,7 +269,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Pin messages · copy all code · draft backup</p>
+      <p class="footer-note">Typing indicator · Save reply · Peek</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -278,10 +279,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><strong>Pin</strong> on messages — strip above chat, click to reuse, × to unpin</li>
-        <li><strong>Copy all code</strong> — every fenced block in the current chat</li>
-        <li>Composer draft auto-saves across refresh until you send</li>
-        <li>↑ history · Ctrl+Shift+X panic · Enter to send · <kbd>Ctrl+K</kbd></li>
+        <li>Typing indicator while the model is streaming</li>
+        <li><strong>Save</strong> on a message — download that reply as .md</li>
+        <li><strong>Peek</strong> / <kbd>Ctrl+Shift+P</kbd> — floating last-reply panel</li>
+        <li>Pin · copy all code · ↑ history · <kbd>Ctrl+K</kbd></li>
       </ul>
     </div>
   </div>
@@ -331,6 +332,7 @@
   <script src="/static/changelog-panel.js"></script>
   <script src="/static/prompt-history.js"></script>
   <script src="/static/pin-messages.js"></script>
+  <script src="/static/typing-export.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
