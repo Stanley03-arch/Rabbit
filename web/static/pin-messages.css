@@ -1,0 +1,48 @@
+.pinned-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+  padding: 0.35rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: rgba(127, 127, 255, 0.04);
+}
+.pinned-strip[hidden] {
+  display: none !important;
+}
+.pinned-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-right: 0.25rem;
+}
+.pin-chip {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.72rem;
+  cursor: pointer;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pin-chip:hover {
+  border-color: var(--accent-2);
+}
+.pin-x {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0 0.15rem;
+  margin-right: 0.25rem;
+}
+.pin-x:hover {
+  color: #f87171;
+}
+.pin-msg-btn {
+  font-size: 0.72rem;
+}
