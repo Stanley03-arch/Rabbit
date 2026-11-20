@@ -50,6 +50,7 @@
   <link rel="stylesheet" href="/static/session-filter.css" />
   <link rel="stylesheet" href="/static/error-log.css" />
   <link rel="stylesheet" href="/static/notes-drawer.css" />
+  <link rel="stylesheet" href="/static/changelog-panel.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -208,7 +209,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Notes · presets · drag sessions</p>
+            <p class="muted">What's new · Enter to send · Alt+[ ]</p>
           </div>
         </div>
         <div class="top-right">
@@ -245,8 +246,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint"><strong>Notes</strong> / <kbd>Ctrl+Shift+N</kbd> · drag session tabs to reorder</p>
-          <p class="hint">Generation <strong>Presets</strong>: Precise / Balanced / Creative / Long</p>
+          <p class="hint"><strong>New</strong> button shows changelog · <kbd>Alt+[</kbd> / <kbd>Alt+]</kbd> switch sessions</p>
+          <p class="hint">Enable <strong>Enter to send</strong> under the composer (Shift+Enter = newline)</p>
         </div>
       </div>
 
@@ -265,7 +266,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Notes · gen presets · drag sessions</p>
+      <p class="footer-note">What's new · Enter to send · Alt+[ ] sessions</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -275,10 +276,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><strong>Notes</strong> / <kbd>Ctrl+Shift+N</kbd> — local scratch pad (Insert into prompt)</li>
-        <li>Drag session tabs to reorder (order is remembered)</li>
-        <li>Generation <strong>Presets</strong>: Precise / Balanced / Creative / Long</li>
-        <li>Error strip · focus · density · <kbd>Ctrl+K</kbd></li>
+        <li><strong>New</strong> — what's-new changelog for this UI build</li>
+        <li><kbd>Alt+[</kbd> / <kbd>Alt+]</kbd> previous / next session</li>
+        <li><strong>Enter to send</strong> toggle · Shift+Enter always newline</li>
+        <li>Notes · presets · drag tabs · error Retry · <kbd>Ctrl+K</kbd></li>
       </ul>
     </div>
   </div>
@@ -325,6 +326,7 @@
   <script src="/static/session-filter.js"></script>
   <script src="/static/error-log.js"></script>
   <script src="/static/notes-drawer.js"></script>
+  <script src="/static/changelog-panel.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
