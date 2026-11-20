@@ -54,6 +54,7 @@
   <link rel="stylesheet" href="/static/prompt-history.css" />
   <link rel="stylesheet" href="/static/pin-messages.css" />
   <link rel="stylesheet" href="/static/typing-export.css" />
+  <link rel="stylesheet" href="/static/prompt-meter.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -212,7 +213,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Typing · Save · Peek</p>
+            <p class="muted">Meter · reuse last · metrics chip</p>
           </div>
         </div>
         <div class="top-right">
@@ -249,8 +250,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint">While streaming: <strong>Rabbit is writing…</strong> indicator</p>
-          <p class="hint"><strong>Save</strong> on a bubble downloads .md · <strong>Peek</strong> / <kbd>Ctrl+Shift+P</kbd> last reply panel</p>
+          <p class="hint">Thin <strong>prompt meter</strong> under composer turns amber/red vs Tokens budget</p>
+          <p class="hint"><strong>Reuse last</strong> / <kbd>Ctrl+Shift+U</kbd> · metrics chip in header</p>
         </div>
       </div>
 
@@ -269,7 +270,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Typing indicator · Save reply · Peek</p>
+      <p class="footer-note">Prompt meter · reuse last · metrics chip</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -279,10 +280,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li>Typing indicator while the model is streaming</li>
-        <li><strong>Save</strong> on a message — download that reply as .md</li>
-        <li><strong>Peek</strong> / <kbd>Ctrl+Shift+P</kbd> — floating last-reply panel</li>
-        <li>Pin · copy all code · ↑ history · <kbd>Ctrl+K</kbd></li>
+        <li>Prompt meter — length vs Tokens budget (amber / red)</li>
+        <li><strong>Reuse last</strong> / <kbd>Ctrl+Shift+U</kbd> — last user message into composer</li>
+        <li>Header metrics chip — req / latency / tok·s (click refreshes stats)</li>
+        <li>Peek · Save · Pin · typing indicator · <kbd>Ctrl+K</kbd></li>
       </ul>
     </div>
   </div>
@@ -333,6 +334,7 @@
   <script src="/static/prompt-history.js"></script>
   <script src="/static/pin-messages.js"></script>
   <script src="/static/typing-export.js"></script>
+  <script src="/static/prompt-meter.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
