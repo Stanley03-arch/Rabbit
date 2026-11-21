@@ -1,0 +1,77 @@
+.bookmarks-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+  padding: 0.3rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: rgba(250, 204, 21, 0.04);
+}
+.bookmarks-bar[hidden] {
+  display: none !important;
+}
+.bm-label {
+  color: #fbbf24;
+  font-size: 0.85rem;
+  margin-right: 0.15rem;
+}
+.bm-chip {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.72rem;
+  cursor: pointer;
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bm-chip:hover {
+  border-color: #fbbf24;
+}
+.bm-x {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0 0.1rem;
+  margin-right: 0.2rem;
+}
+.bm-x:hover {
+  color: #f87171;
+}
+.bm-msg-btn {
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+.bm-msg-btn:hover {
+  opacity: 1;
+}
+
+.first-tips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.75rem;
+  background: rgba(127, 127, 255, 0.1);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+  color: var(--text);
+}
+.first-tips kbd {
+  font-size: 0.72rem;
+}
+#tips-dismiss {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
