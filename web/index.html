@@ -58,6 +58,7 @@
   <link rel="stylesheet" href="/static/archive-share.css" />
   <link rel="stylesheet" href="/static/bookmarks-tips.css" />
   <link rel="stylesheet" href="/static/continue-perf.css" />
+  <link rel="stylesheet" href="/static/snippets-probe.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -216,7 +217,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Continue · FPS · height memory</p>
+            <p class="muted">Snippets · Esc clear · RTT</p>
           </div>
         </div>
         <div class="top-right">
@@ -253,8 +254,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint"><strong>Continue</strong> on a bubble seeds the composer from that turn</p>
-          <p class="hint"><strong>FPS</strong> / <kbd>Ctrl+Shift+F</kbd> · composer height is remembered</p>
+          <p class="hint"><strong>Snippets</strong> / <kbd>Ctrl+Shift+S</kbd> — save &amp; reuse prompt templates</p>
+          <p class="hint"><kbd>Esc</kbd> in composer clears it · header shows RTT probe</p>
         </div>
       </div>
 
@@ -264,7 +265,7 @@
         <button type="button" class="linkish" id="save-prompt" title="Save current text as a chip">Save prompt</button>
       </div>
       <form class="composer" id="form">
-        <textarea id="prompt" rows="2" autocomplete="off" placeholder="Message… (Ctrl+Enter send · ↑ history)"></textarea>
+        <textarea id="prompt" rows="2" autocomplete="off" placeholder="Message… (Ctrl+Enter send · Esc clear)"></textarea>
         <button type="button" class="btn-stop" id="stop" hidden title="Stop request">Stop</button>
         <button type="button" class="btn-tts-stop" id="tts-stop" hidden title="Stop speaking">🔇</button>
         <button type="submit" id="send">Send</button>
@@ -273,7 +274,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Continue · FPS HUD · composer height</p>
+      <p class="footer-note">Snippets · Esc clear · latency probe</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -283,10 +284,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><strong>Continue</strong> on a message — seed composer from that turn</li>
-        <li><strong>FPS</strong> / <kbd>Ctrl+Shift+F</kbd> — lightweight performance HUD</li>
-        <li>Composer resize height is saved across reloads</li>
-        <li>★ bookmarks · Ctrl+Enter · archive · Share MD</li>
+        <li><strong>Snippets</strong> / <kbd>Ctrl+Shift+S</kbd> — local prompt library</li>
+        <li><kbd>Esc</kbd> in composer clears the text</li>
+        <li>Header RTT probe pings the dashboard every 15s</li>
+        <li>Continue · FPS · bookmarks · archive · Share MD</li>
       </ul>
     </div>
   </div>
@@ -341,6 +342,7 @@
   <script src="/static/archive-share.js"></script>
   <script src="/static/bookmarks-tips.js"></script>
   <script src="/static/continue-perf.js"></script>
+  <script src="/static/snippets-probe.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
