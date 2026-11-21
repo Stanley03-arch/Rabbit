@@ -1,0 +1,34 @@
+.continue-msg-btn {
+  font-size: 0.72rem;
+}
+
+.perf-hud {
+  position: fixed;
+  left: 0.5rem;
+  bottom: 0.5rem;
+  z-index: 300;
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #a3e635;
+  font: 0.7rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  pointer-events: none;
+}
+.perf-hud[hidden] {
+  display: none !important;
+}
+
+.btn-perf {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 0.25rem 0.4rem;
+  font-size: 0.72rem;
+  cursor: pointer;
+  margin-right: 0.25rem;
+}
+.btn-perf:hover {
+  color: var(--text);
+  border-color: var(--accent-2);
+}
