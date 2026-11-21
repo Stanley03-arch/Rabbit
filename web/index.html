@@ -56,6 +56,7 @@
   <link rel="stylesheet" href="/static/typing-export.css" />
   <link rel="stylesheet" href="/static/prompt-meter.css" />
   <link rel="stylesheet" href="/static/archive-share.css" />
+  <link rel="stylesheet" href="/static/bookmarks-tips.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -214,7 +215,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Archive · Share MD · / search</p>
+            <p class="muted">★ Bookmarks · Ctrl+Enter · tips</p>
           </div>
         </div>
         <div class="top-right">
@@ -251,8 +252,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint"><kbd>Ctrl+Shift+A</kbd> archive session · <strong>Archived</strong> button to show them</p>
-          <p class="hint"><kbd>/</kbd> focuses search · <strong>Share MD</strong> copies full transcript</p>
+          <p class="hint">★ on a bubble bookmarks it · jump from the star bar</p>
+          <p class="hint"><kbd>Ctrl+Enter</kbd> always sends · tips banner once per browser</p>
         </div>
       </div>
 
@@ -262,7 +263,7 @@
         <button type="button" class="linkish" id="save-prompt" title="Save current text as a chip">Save prompt</button>
       </div>
       <form class="composer" id="form">
-        <textarea id="prompt" rows="2" autocomplete="off" placeholder="Message… (↑ history · Ctrl+Shift+X stop all)"></textarea>
+        <textarea id="prompt" rows="2" autocomplete="off" placeholder="Message… (Ctrl+Enter send · ↑ history)"></textarea>
         <button type="button" class="btn-stop" id="stop" hidden title="Stop request">Stop</button>
         <button type="button" class="btn-tts-stop" id="tts-stop" hidden title="Stop speaking">🔇</button>
         <button type="submit" id="send">Send</button>
@@ -271,7 +272,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Archive · share MD · / search</p>
+      <p class="footer-note">Bookmarks · Ctrl+Enter · tips</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -281,10 +282,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><kbd>Ctrl+Shift+A</kbd> archive / unarchive active session</li>
-        <li><strong>Archived</strong> in session bar — toggle visibility of archived tabs</li>
-        <li><kbd>/</kbd> focuses chat search · <strong>Share MD</strong> copies transcript</li>
-        <li>Right-click session also has Archive &amp; Share</li>
+        <li>★ on a message — bookmark; click chip to jump or reuse</li>
+        <li><kbd>Ctrl+Enter</kbd> always sends (even if Enter-to-send is off)</li>
+        <li>First-visit tips banner (dismiss once)</li>
+        <li>Archive · Share MD · / search · Peek · Pin</li>
       </ul>
     </div>
   </div>
@@ -337,6 +338,7 @@
   <script src="/static/typing-export.js"></script>
   <script src="/static/prompt-meter.js"></script>
   <script src="/static/archive-share.js"></script>
+  <script src="/static/bookmarks-tips.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
