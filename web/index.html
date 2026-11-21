@@ -55,6 +55,7 @@
   <link rel="stylesheet" href="/static/pin-messages.css" />
   <link rel="stylesheet" href="/static/typing-export.css" />
   <link rel="stylesheet" href="/static/prompt-meter.css" />
+  <link rel="stylesheet" href="/static/archive-share.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -213,7 +214,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Meter · reuse last · metrics chip</p>
+            <p class="muted">Archive · Share MD · / search</p>
           </div>
         </div>
         <div class="top-right">
@@ -250,8 +251,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint">Thin <strong>prompt meter</strong> under composer turns amber/red vs Tokens budget</p>
-          <p class="hint"><strong>Reuse last</strong> / <kbd>Ctrl+Shift+U</kbd> · metrics chip in header</p>
+          <p class="hint"><kbd>Ctrl+Shift+A</kbd> archive session · <strong>Archived</strong> button to show them</p>
+          <p class="hint"><kbd>/</kbd> focuses search · <strong>Share MD</strong> copies full transcript</p>
         </div>
       </div>
 
@@ -270,7 +271,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Prompt meter · reuse last · metrics chip</p>
+      <p class="footer-note">Archive · share MD · / search</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -280,10 +281,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li>Prompt meter — length vs Tokens budget (amber / red)</li>
-        <li><strong>Reuse last</strong> / <kbd>Ctrl+Shift+U</kbd> — last user message into composer</li>
-        <li>Header metrics chip — req / latency / tok·s (click refreshes stats)</li>
-        <li>Peek · Save · Pin · typing indicator · <kbd>Ctrl+K</kbd></li>
+        <li><kbd>Ctrl+Shift+A</kbd> archive / unarchive active session</li>
+        <li><strong>Archived</strong> in session bar — toggle visibility of archived tabs</li>
+        <li><kbd>/</kbd> focuses chat search · <strong>Share MD</strong> copies transcript</li>
+        <li>Right-click session also has Archive &amp; Share</li>
       </ul>
     </div>
   </div>
@@ -335,6 +336,7 @@
   <script src="/static/pin-messages.js"></script>
   <script src="/static/typing-export.js"></script>
   <script src="/static/prompt-meter.js"></script>
+  <script src="/static/archive-share.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
