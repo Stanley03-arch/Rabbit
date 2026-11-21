@@ -1,0 +1,17 @@
+.session-tab.session-archived {
+  opacity: 0.55;
+  font-style: italic;
+}
+.btn-show-archived {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 0.25rem 0.45rem;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.btn-show-archived.active {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+}
