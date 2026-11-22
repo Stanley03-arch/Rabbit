@@ -1,0 +1,20 @@
+.quote-msg-btn {
+  font-size: 0.72rem;
+}
+
+html.quiet-hours {
+  filter: brightness(0.88) saturate(0.92);
+}
+html.quiet-hours .composer,
+html.quiet-hours .chat {
+  filter: none;
+}
+
+.btn-secondary.dangerish {
+  border-color: rgba(248, 113, 113, 0.45);
+  color: #fca5a5;
+}
+.btn-secondary.dangerish:hover {
+  border-color: #f87171;
+  color: #fecaca;
+}
