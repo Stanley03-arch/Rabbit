@@ -59,6 +59,7 @@
   <link rel="stylesheet" href="/static/bookmarks-tips.css" />
   <link rel="stylesheet" href="/static/continue-perf.css" />
   <link rel="stylesheet" href="/static/snippets-probe.css" />
+  <link rel="stylesheet" href="/static/quote-quiet-wipe.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -217,7 +218,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Snippets · Esc clear · RTT</p>
+            <p class="muted">Quote · quiet hours · wipe</p>
           </div>
         </div>
         <div class="top-right">
@@ -254,8 +255,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint"><strong>Snippets</strong> / <kbd>Ctrl+Shift+S</kbd> — save &amp; reuse prompt templates</p>
-          <p class="hint"><kbd>Esc</kbd> in composer clears it · header shows RTT probe</p>
+          <p class="hint"><strong>Quote</strong> on a bubble appends a blockquote to the composer</p>
+          <p class="hint">Quiet hours dims UI 22:00–07:00 · Wipe local data in Generation</p>
         </div>
       </div>
 
@@ -274,7 +275,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Snippets · Esc clear · latency probe</p>
+      <p class="footer-note">Quote · quiet hours · wipe local</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -284,10 +285,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><strong>Snippets</strong> / <kbd>Ctrl+Shift+S</kbd> — local prompt library</li>
-        <li><kbd>Esc</kbd> in composer clears the text</li>
-        <li>Header RTT probe pings the dashboard every 15s</li>
-        <li>Continue · FPS · bookmarks · archive · Share MD</li>
+        <li><strong>Quote</strong> — append message as blockquote in composer</li>
+        <li><strong>Quiet hours</strong> — soft dim between 22:00 and 07:00 local time</li>
+        <li><strong>Wipe local data</strong> — clears rabbit-* localStorage (confirm)</li>
+        <li>Snippets · Continue · bookmarks · FPS · RTT probe</li>
       </ul>
     </div>
   </div>
@@ -343,6 +344,7 @@
   <script src="/static/bookmarks-tips.js"></script>
   <script src="/static/continue-perf.js"></script>
   <script src="/static/snippets-probe.js"></script>
+  <script src="/static/quote-quiet-wipe.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
