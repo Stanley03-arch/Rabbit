@@ -62,6 +62,7 @@
   <link rel="stylesheet" href="/static/quote-quiet-wipe.css" />
   <link rel="stylesheet" href="/static/select-slash.css" />
   <link rel="stylesheet" href="/static/summarize-settings.css" />
+  <link rel="stylesheet" href="/static/find-usage.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -220,7 +221,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Summarize · settings · ages</p>
+            <p class="muted">Find ring · Txt · daily usage</p>
           </div>
         </div>
         <div class="top-right">
@@ -257,8 +258,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint"><strong>Summarize</strong> / <kbd>Ctrl+Shift+Y</kbd> / <code>/summarize</code> builds a summary prompt</p>
-          <p class="hint">Export / Import settings in Generation · session tabs show age</p>
+          <p class="hint">Search hits get a gold ring on the bubble · <strong>Txt</strong> copies plain text</p>
+          <p class="hint"><kbd>Ctrl+Shift+C</kbd> copies last reply · daily send count in metrics</p>
         </div>
       </div>
 
@@ -277,7 +278,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Summarize · settings export · tab ages</p>
+      <p class="footer-note">Find ring · plain copy · daily usage</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -287,10 +288,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><strong>Summarize</strong> / <kbd>Ctrl+Shift+Y</kbd> / <code>/summarize</code> — selected or last messages</li>
-        <li><strong>Export / Import settings</strong> — preferences JSON (not full chat history)</li>
-        <li>Session tabs show relative age when active</li>
-        <li>Select · slash cmds · Quote · snippets</li>
+        <li>Search hits outline the whole bubble in gold</li>
+        <li><strong>Txt</strong> / <kbd>Ctrl+Shift+C</kbd> — plain text copy (last bot)</li>
+        <li>Session metrics show local <strong>today</strong> send count</li>
+        <li>Summarize · Select · slash cmds · settings export</li>
       </ul>
     </div>
   </div>
@@ -349,6 +350,7 @@
   <script src="/static/quote-quiet-wipe.js"></script>
   <script src="/static/select-slash.js"></script>
   <script src="/static/summarize-settings.js"></script>
+  <script src="/static/find-usage.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
