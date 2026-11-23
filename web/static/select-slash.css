@@ -1,0 +1,46 @@
+.select-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  background: rgba(127, 127, 255, 0.12);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+.select-bar[hidden] {
+  display: none !important;
+}
+.select-bar button {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.bubble.msg-selected {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+html.select-mode .bubble {
+  cursor: pointer;
+}
+
+.unread-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+  font-size: 0.72rem;
+  color: #f87171;
+  font-weight: 600;
+}
+.unread-divider::before,
+.unread-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(248, 113, 113, 0.45);
+}
