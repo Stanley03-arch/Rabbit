@@ -61,6 +61,7 @@
   <link rel="stylesheet" href="/static/snippets-probe.css" />
   <link rel="stylesheet" href="/static/quote-quiet-wipe.css" />
   <link rel="stylesheet" href="/static/select-slash.css" />
+  <link rel="stylesheet" href="/static/summarize-settings.css" />
 </head>
 <body>
   <div id="offline-banner" class="offline-banner" hidden>Offline — UI shell may work; generation needs the engine.</div>
@@ -219,7 +220,7 @@
           <button type="button" class="btn-side-expand" id="sidebar-expand" title="Show sidebar" aria-label="Show sidebar" hidden>☰</button>
           <div>
             <h1>Chat</h1>
-            <p class="muted">Select · /cmds · unread line</p>
+            <p class="muted">Summarize · settings · ages</p>
           </div>
         </div>
         <div class="top-right">
@@ -256,8 +257,8 @@
       <div class="chat" id="chat" title="Drop text files here to add to the composer">
         <div class="empty-state" id="empty-state">
           <p>Send a message or use the mic.</p>
-          <p class="hint"><strong>Select</strong> / <kbd>Ctrl+Shift+M</kbd> — multi-select &amp; copy messages</p>
-          <p class="hint">Composer <code>/clear</code> <code>/new</code> <code>/regen</code> <code>/export</code> <code>/help</code> <code>/snip</code> <code>/notes</code> <code>/focus</code></p>
+          <p class="hint"><strong>Summarize</strong> / <kbd>Ctrl+Shift+Y</kbd> / <code>/summarize</code> builds a summary prompt</p>
+          <p class="hint">Export / Import settings in Generation · session tabs show age</p>
         </div>
       </div>
 
@@ -267,7 +268,7 @@
         <button type="button" class="linkish" id="save-prompt" title="Save current text as a chip">Save prompt</button>
       </div>
       <form class="composer" id="form">
-        <textarea id="prompt" rows="2" autocomplete="off" placeholder="Message… (/help · Ctrl+Enter send)"></textarea>
+        <textarea id="prompt" rows="2" autocomplete="off" placeholder="Message… (/summarize · /help · Ctrl+Enter)"></textarea>
         <button type="button" class="btn-stop" id="stop" hidden title="Stop request">Stop</button>
         <button type="button" class="btn-tts-stop" id="tts-stop" hidden title="Stop speaking">🔇</button>
         <button type="submit" id="send">Send</button>
@@ -276,7 +277,7 @@
           <span class="mic-pulse" aria-hidden="true"></span>
         </button>
       </form>
-      <p class="footer-note">Select · slash cmds · unread divider</p>
+      <p class="footer-note">Summarize · settings export · tab ages</p>
     </main>
   </div>
   <div id="help-modal" class="help-modal" hidden>
@@ -286,10 +287,10 @@
         <button type="button" id="help-close" aria-label="Close">×</button>
       </header>
       <ul class="help-list">
-        <li><strong>Select</strong> / <kbd>Ctrl+Shift+M</kbd> — multi-select bubbles, bulk copy</li>
-        <li>Slash cmds: <code>/clear</code> <code>/new</code> <code>/regen</code> <code>/export</code> <code>/copy</code> <code>/help</code> <code>/snip</code> <code>/notes</code> <code>/focus</code></li>
-        <li>Unread divider appears after you leave and new replies arrive</li>
-        <li>Quote · quiet hours · snippets · Continue</li>
+        <li><strong>Summarize</strong> / <kbd>Ctrl+Shift+Y</kbd> / <code>/summarize</code> — selected or last messages</li>
+        <li><strong>Export / Import settings</strong> — preferences JSON (not full chat history)</li>
+        <li>Session tabs show relative age when active</li>
+        <li>Select · slash cmds · Quote · snippets</li>
       </ul>
     </div>
   </div>
@@ -347,6 +348,7 @@
   <script src="/static/snippets-probe.js"></script>
   <script src="/static/quote-quiet-wipe.js"></script>
   <script src="/static/select-slash.js"></script>
+  <script src="/static/summarize-settings.js"></script>
   <script src="/static/app-toasts.js"></script>
 </body>
 </html>
