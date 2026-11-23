@@ -1,0 +1,10 @@
+.bubble.has-search-hit {
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.55);
+  border-radius: 12px;
+}
+.plain-copy-btn {
+  font-size: 0.72rem;
+}
+#daily-usage b {
+  font-variant-numeric: tabular-nums;
+}
