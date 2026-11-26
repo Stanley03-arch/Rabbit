@@ -1,0 +1,32 @@
+name: Feature Request
+description: Propose a new capability or improvement
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Prefer focused, low-RAM-friendly ideas.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: dropdown
+    id: size
+    attributes:
+      label: Estimated size
+      options:
+        - Tiny (docs / config / 1 file)
+        - Small (few files, clear tests)
+        - Medium
+        - Large (needs design discussion first)
+    validations:
+      required: true

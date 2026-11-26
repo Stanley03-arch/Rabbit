@@ -1,8 +1,8 @@
 # Contributing to Rabbit
 
-Thank you for considering a contribution.
+Thank you. Rabbit aims for high volume of small, focused, high-quality PRs.
 
-## Development setup
+## Setup
 
 ```bash
 git clone https://github.com/Stanley03-arch/Rabbit.git
@@ -10,73 +10,52 @@ cd Rabbit
 make
 make test-model
 ./rabbit chat --model models/tiny-test.rabbit
-./rabbit version
-./rabbit stats --model models/tiny-test.rabbit
-./rabbit bench --model models/tiny-test.rabbit --tokens 8 --runs 2
 ```
 
-Python tooling (converter + UIs):
+Python tools:
 
 ```bash
-pip install numpy safetensors flask   # + gradio for tools/rabbit_ui.py
-python tools/convert_hf_to_rabbit.py --demo --out models/demo-moe.rabbit
+pip install numpy safetensors flask
 python tools/rabbit_server.py --model models/tiny-test.rabbit
 python tools/rabbit_dashboard.py --model models/tiny-test.rabbit
 ```
 
-Full local check (recommended before a PR):
+Full check before a PR:
 
 ```bash
-make check   # includes unit tests, smoke, bench-smoke, parity, m2, mixtral
+make check
 ```
 
-## Code guidelines
+## Guidelines
 
-- **C:** C11, no unnecessary dependencies. Prefer clear control flow over cleverness.
-- **Memory:** Assume low-RAM targets. Avoid unbounded allocations in the hot path.
-  Prefer the helpers in `src/utils.c`:
-  - `rabbit_xmalloc` / `rabbit_xcalloc` / `rabbit_xrealloc` / `rabbit_xstrdup`
-  - `rabbit_die` / `rabbit_dief` for fatal errors
-- **Format:** Match existing style (4-space or as in neighboring files; keep headers consistent with `rabbit.h`).
-- **Commits:** Prefer small, focused commits with imperative messages  
-  (e.g. `Add int4 GEMV path`, not `updates`).
+- **C:** C11, clear control flow, low-RAM first. Prefer helpers in `src/utils.c`.
+- **Commits:** Small, focused, imperative messages.
+- **PRs:** One logical change. Fill the template. Describe what you tested.
 
-## CLI surface (keep in sync)
+## Labels
 
-| Command | Role |
-|---------|------|
-| `chat` | Interactive generation |
-| `stats` | JSON model / memory report |
-| `bench` | Timed ref-v2 (or probe fallback); `--runs` |
-| `probe` / `probe-v2` | One-shot hidden / token dumps |
-| `version` | Print version string |
+| Label | Meaning |
+|-------|---------|
+| `good first issue` | Small, low-risk, ideal first contribution |
+| `help wanted` | We want community help |
+| `docs` | Documentation |
+| `tests` | Tests / CI / parity |
+| `bug` | Something broken |
+| `enhancement` | New capability |
+| `model-support` | New HF name maps / families |
+| `windows` | Windows / WSL |
 
-Optional flags used across tools: `--model`, `--tokenizer`, `--tokens`, `--temp`, `--prompt`, `--runs`.
+Comment "I'd like to take this" on issues you want to work on.
 
-## What is most useful right now
+## High-value areas right now
 
-1. Correctness tests for expert fetch / quant kernels
-2. Better HF expert-name coverage for specific model families
-3. Documentation fixes and clearer error messages
-4. Real tokenizer backends (SentencePiece / HF tokenizers) behind the existing API
-5. Live public MoE end-to-end validation (`make live-moe`)
-
-## Pull requests
-
-1. Fork and branch from `main`
-2. Keep changes scoped
-3. Update docs / CHANGELOG when behavior or CLI changes
-4. Describe what you tested (`make`, `make test-model`, `make check`, converter flags, etc.)
-
-## Reporting issues
-
-Include:
-
-- OS and compiler version
-- Exact command line
-- Model source (synthetic vs converted)
-- Relevant log output
+1. Micro documentation PRs
+2. Extra offline stream tests
+3. HF expert-name coverage (`tools/rabbit_name_maps.py`)
+4. Clearer error messages
+5. Bench baselines and structured logs (Phase G)
+6. Windows / WSL polish
 
 ## License
 
-By contributing, you agree that your contributions are licensed under the Apache License 2.0.
+Contributions are licensed under Apache-2.0.
