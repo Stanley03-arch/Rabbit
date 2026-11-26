@@ -40,6 +40,15 @@ rabbit.exe warm --model models\olmoe-v2.rabbit --tokens 16
 rabbit.exe chat --model models\olmoe-v2.rabbit
 ```
 
+## Common failure modes
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| Instant crash or `mmap` error on load | Large model on network/FUSE drive | `RABBIT_NO_MMAP=1` + copy to local disk |
+| Slow first tokens, then normal | Cold expert cache | Run `rabbit warm` once |
+| High RAM use / OOM on 4 GB machine | Too many cache slots + large KV | Lower `RABBIT_CACHE_SLOTS` and `RABBIT_REF_V2_CTX` |
+| `rabbit.bat` fails to find binary | Not built yet | Run `make` under WSL or rebuild |
+
 ## Build
 
 Use the included `rabbit.bat` / `rabbit.ps1` helpers, or build under WSL with
