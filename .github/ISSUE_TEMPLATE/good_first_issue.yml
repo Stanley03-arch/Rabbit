@@ -1,0 +1,37 @@
+name: Good First Issue suggestion
+description: Suggest or claim a small, well-scoped starter task
+title: "[good first issue] "
+labels: ["good first issue"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this if you want to propose a micro-task that is perfect for a first contribution,
+        or if you are claiming one that already exists.
+  - type: textarea
+    id: task
+    attributes:
+      label: Task description
+      description: What exactly needs to be done? Link to code or docs if possible.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Documentation
+        - Tests
+        - C core (engine)
+        - Converter / tools
+        - Dashboard / web
+        - Build / CI
+        - Model support (name maps)
+    validations:
+      required: true
+  - type: checkboxes
+    id: claim
+    attributes:
+      label: Claiming
+      options:
+        - label: I want to work on this myself

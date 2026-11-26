@@ -1,6 +1,6 @@
 # Contributing to Rabbit
 
-Thank you for considering a contribution.
+Thank you for considering a contribution. Rabbit aims to be the easiest high-quality MoE inference engine for constrained hardware. We want **lots** of small, focused PRs.
 
 ## Development setup
 
@@ -27,7 +27,7 @@ python tools/rabbit_dashboard.py --model models/tiny-test.rabbit
 Full local check (recommended before a PR):
 
 ```bash
-make check   # includes unit tests, smoke, bench-smoke, parity, m2, mixtral
+make check   # unit tests, smoke, bench-smoke, parity, m2, mixtral, ...
 ```
 
 ## Code guidelines
@@ -41,32 +41,41 @@ make check   # includes unit tests, smoke, bench-smoke, parity, m2, mixtral
 - **Commits:** Prefer small, focused commits with imperative messages  
   (e.g. `Add int4 GEMV path`, not `updates`).
 
-## CLI surface (keep in sync)
+## Labels we use
 
-| Command | Role |
-|---------|------|
-| `chat` | Interactive generation |
-| `stats` | JSON model / memory report |
-| `bench` | Timed ref-v2 (or probe fallback); `--runs` |
-| `probe` / `probe-v2` | One-shot hidden / token dumps |
-| `version` | Print version string |
+| Label | Meaning |
+|-------|---------|
+| `good first issue` | Small, well-scoped, low-risk. Ideal first contribution |
+| `help wanted` | We would love community help |
+| `docs` | Documentation only |
+| `tests` | Tests / CI / parity |
+| `bug` | Something is broken |
+| `enhancement` | New capability |
+| `model-support` | New HF name maps / architecture family |
+| `performance` | Speed or memory |
+| `windows` | Windows / WSL specific |
 
-Optional flags used across tools: `--model`, `--tokenizer`, `--tokens`, `--temp`, `--prompt`, `--runs`.
+Look for open issues with these labels. Comment "I'd like to take this" so we can assign you.
 
 ## What is most useful right now
 
-1. Correctness tests for expert fetch / quant kernels
-2. Better HF expert-name coverage for specific model families
-3. Documentation fixes and clearer error messages
-4. Real tokenizer backends (SentencePiece / HF tokenizers) behind the existing API
-5. Live public MoE end-to-end validation (`make live-moe`)
+1. **Micro documentation PRs** — clarify a section of README, ROADMAP, docs/*.md, or add a usage example
+2. **More offline stream tests** for additional MoE families
+3. **HF expert-name coverage** for new model families (see `tools/rabbit_name_maps.py`)
+4. **Better error messages** in the converter and CLI
+5. **Bench baseline tables** and structured request logging (see ROADMAP Phase G)
+6. **Windows / WSL polish**
+7. Real tokenizer backends behind the existing API (SentencePiece / HF)
 
 ## Pull requests
 
 1. Fork and branch from `main`
-2. Keep changes scoped
+2. Keep changes scoped (one logical change per PR)
 3. Update docs / CHANGELOG when behavior or CLI changes
 4. Describe what you tested (`make`, `make test-model`, `make check`, converter flags, etc.)
+5. Fill in the PR template
+
+We merge small, correct PRs quickly. Large design changes should start as an issue first.
 
 ## Reporting issues
 
@@ -76,6 +85,12 @@ Include:
 - Exact command line
 - Model source (synthetic vs converted)
 - Relevant log output
+
+Use the issue templates — they make triage much faster.
+
+## Recognition
+
+Every meaningful contribution is valued. We plan to adopt an all-contributors style recognition once volume grows.
 
 ## License
 
