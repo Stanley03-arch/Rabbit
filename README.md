@@ -9,6 +9,9 @@ Inspired by the *idea* behind [Colibrì](https://github.com/JustVugg/colibri) �
 > **Status:** v0.4.28 — Phase A–G. Incremental ref-v2 decode, mmap-free expert load, multi-model dashboard, SSE metrics, OpenAI `usage`. **Windows/WSL:** `RABBIT_NO_MMAP=1` (see `docs/WINDOWS.md`).
 
 [![Dashboard in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Stanley03-arch/Rabbit/blob/main/notebooks/rabbit_colab_dashboard.ipynb)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Good First Issues](https://img.shields.io/github/issues/Stanley03-arch/Rabbit/good%20first%20issue)](https://github.com/Stanley03-arch/Rabbit/labels/good%20first%20issue)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 ---
 
@@ -108,6 +111,19 @@ make live-olmoe LIVE_QUANT=0  # f32 experts (large disk)
 ```
 
 See [docs/WINDOWS.md](docs/WINDOWS.md), [docs/PHASE_D.md](docs/PHASE_D.md), [ROADMAP.md](ROADMAP.md).
+
+---
+
+## Contributing
+
+**PRs are very welcome.** We are deliberately building a high volume of small, high-quality contributions.
+
+- Read [CONTRIBUTING.md](CONTRIBUTING.md)
+- Look for issues labeled [`good first issue`](https://github.com/Stanley03-arch/Rabbit/labels/good%20first%20issue) or [`help wanted`](https://github.com/Stanley03-arch/Rabbit/labels/help%20wanted)
+- Docs, tests, name-map additions, clearer error messages, and Windows polish are especially easy entry points
+- Keep PRs focused (one logical change)
+
+We aim to review and merge small PRs quickly.
 
 ---
 
